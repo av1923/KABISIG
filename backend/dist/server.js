@@ -8,6 +8,8 @@ import feedbackRoutes from './routes/feedback.routes.js';
 import documentRoutes from './routes/document.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import barangayRoutes from './routes/barangay.routes.js';
+import adminRoutes from './routes/admin.routes.js';
+import userRoutes from './routes/user.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
 dotenv.config({ path: '.env.local' });
@@ -25,6 +27,8 @@ app.get('/', (req, res) => {
             health: '/api/health',
             dbCheck: '/api/db-check',
             auth: '/api/auth',
+            admin: '/api/admin',
+            users: '/api/users',
             barangays: '/api/barangays',
             programs: '/api/programs',
             budget: '/api/budget',
@@ -36,6 +40,8 @@ app.get('/', (req, res) => {
 });
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/barangays', barangayRoutes);
 app.use('/api/programs', programRoutes);
 app.use('/api/budget', budgetRoutes);

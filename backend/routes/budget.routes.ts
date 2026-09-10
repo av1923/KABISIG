@@ -37,7 +37,7 @@ router.get('/', authenticateUser, async (req: Request, res: Response): Promise<v
 
   let query = supabaseAdmin.from('budget').select('*, barangay(name)');
 
-  if (user.role !== 'SUPER_ADMIN' && user.role !== 'FEDERATION_OBSERVER' && user.role !== 'LGU_AUDITOR') {
+  if (user.role !== 'SUPER_ADMIN') {
     query = query.eq('tenant_id', user.tenant_id);
   } else if (tenant_id && typeof tenant_id === 'string') {
     query = query.eq('tenant_id', tenant_id);
@@ -154,7 +154,7 @@ router.get('/expenses', authenticateUser, async (req: Request, res: Response): P
     .from('expense')
     .select('*, budget(category, fiscal_year), program(title)');
 
-  if (user.role !== 'SUPER_ADMIN' && user.role !== 'FEDERATION_OBSERVER' && user.role !== 'LGU_AUDITOR') {
+  if (user.role !== 'SUPER_ADMIN') {
     query = query.eq('tenant_id', user.tenant_id);
   }
 

@@ -143,7 +143,7 @@ router.get('/barangay', authenticateUser, async (req: Request, res: Response): P
 router.get(
   '/federation',
   authenticateUser,
-  requireRoles('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'),
+  requireRoles('SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')

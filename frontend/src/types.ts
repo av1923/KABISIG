@@ -25,7 +25,9 @@ export interface BarangayTenant {
   contact: string;
   status: 'Active' | 'Inactive';
   logo?: string;
-  dateCreated: string;
+  dateCreated?: string;
+  district?: string;
+  city?: string;
   chairpersonEmail?: string;
   mustChangePassword?: boolean;
 }

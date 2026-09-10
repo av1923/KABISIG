@@ -24,7 +24,7 @@ router.get('/', authenticateUser, async (req, res) => {
     let query = supabaseAdmin
         .from('program')
         .select('*, barangay(name), program_registrations(count)', { count: 'exact' });
-    if (user.role !== 'SUPER_ADMIN' && user.role !== 'FEDERATION_OBSERVER' && user.role !== 'LGU_AUDITOR') {
+    if (user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {

@@ -104,6 +104,26 @@ class KabisigApiClient {
     return { success: res.success, message: res.message, error: res.error };
   }
 
+  async assignChairpersonByEmail(barangayId: string, email: string): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/admin/assign-chairperson', {
+      method: 'POST',
+      body: JSON.stringify({ barangay_id: barangayId, email }),
+    });
+  }
+
+  async completeProfile(data: {
+    full_name: string;
+    phone?: string;
+    birthdate: string;
+    sex: string;
+    address: string;
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/users/complete-profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async saveBarangayConfiguration(id: string, data: {
     chairperson?: string;
     chairpersonEmail?: string;

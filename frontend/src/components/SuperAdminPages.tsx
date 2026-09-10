@@ -5,17 +5,18 @@ import {
   CheckCircle2, AlertTriangle, Users, Wallet, Calendar,
   ArrowUpRight, Lock, Eye, ShieldCheck, FileText, Check,
   X, ChevronDown, RefreshCw, Layers, Award, TrendingUp, LogOut, Menu,
-  Upload, Image as ImageIcon, Trash2
+  Upload, Image as ImageIcon, Trash2, Mail, Loader2, Settings, AlertCircle
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { BarangayTenant, Program, SystemAuditLog } from '../types';
-import { DEFAULT_BARANGAY_LOGOS } from '../data';
+import { DEFAULT_BARANGAY_LOGOS, BARANGAY_DISTRICTS } from '../data';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProgramTrendD3 from './charts/ProgramTrendD3';
+import { kabisigApi } from '../lib/api';
 
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
@@ -46,6 +47,14 @@ export default function SuperAdminPages({
 
   // LYDP Report Modal
   const [showLydpModal, setShowLydpModal] = useState(false);
+
+  // Dedicated Assign SK Chairperson Modal State (Email-only)
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assigningBarangay, setAssigningBarangay] = useState<BarangayTenant | null>(null);
+  const [assignEmail, setAssignEmail] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
+  const [districtFilter, setDistrictFilter] = useState<'All' | 'District 1' | 'District 2'>('All');
 
   // Tenant Provisioning Modals
   const [showModal, setShowModal] = useState(false);
@@ -92,11 +101,59 @@ export default function SuperAdminPages({
 
   // Filtered Barangays list
   const filteredBarangays = barangays.filter(b => {
+    const bgyDistrict = b.district || BARANGAY_DISTRICTS[b.name] || 'District 1';
     const matchesSearch = b.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          b.chairperson.toLowerCase().includes(searchTerm.toLowerCase());
+                          b.chairperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (b.chairpersonEmail && b.chairpersonEmail.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesStatus = statusFilter === 'All' || b.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesDistrict = districtFilter === 'All' || bgyDistrict === districtFilter;
+    return matchesSearch && matchesStatus && matchesDistrict;
   });
+
+  const handleOpenAssignModal = (b?: BarangayTenant) => {
+    const target = b || barangays[0];
+    setAssigningBarangay(target || null);
+    setAssignEmail(target?.chairpersonEmail && target.chairpersonEmail !== '' ? target.chairpersonEmail : '');
+    setAssignError(null);
+    setShowAssignModal(true);
+  };
+
+  const handleAssignChairpersonSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assigningBarangay) return;
+
+    const email = assignEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAssignError('Please enter a valid official email address.');
+      return;
+    }
+
+    setIsAssigning(true);
+    setAssignError(null);
+
+    try {
+      const res = await kabisigApi.assignChairpersonByEmail(assigningBarangay.id, email);
+      if (!res.success) {
+        setAssignError(res.message || 'Failed to dispatch Chairperson assignment.');
+        setIsAssigning(false);
+        return;
+      }
+
+      await onUpdateBarangay(assigningBarangay.id, {
+        chairperson: 'Pending Chairperson',
+        chairpersonEmail: email,
+      });
+
+      alert(`Chairperson invitation dispatched to ${email} for Barangay ${assigningBarangay.name}. The Chairperson will be prompted to complete their profile upon first login.`);
+      setShowAssignModal(false);
+      setAssigningBarangay(null);
+      setAssignEmail('');
+    } catch (err: any) {
+      setAssignError(err.message || 'Network connection failed.');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   // Filtered Audit Logs - SK President / Federation President (ONLY SK Chairperson history)
   const filteredAuditLogs = auditLogs.filter(log => {
@@ -636,148 +693,184 @@ export default function SuperAdminPages({
                   </div>
                   <h3 className="font-sans font-black text-lg">Official Naga City 27-Barangay Registry</h3>
                   <p className="text-xs text-blue-100 max-w-2xl">
-                    All 27 barangays are permanently seeded with fixed tenant UUIDs. Use this console to configure AIP budget allocations, youth population demographics, and assign SK Chairpersons (Barangay Admins) to their respective tenant_id.
+                    All 27 barangays are permanently seeded with fixed tenant UUIDs. To assign an SK Chairperson, simply enter their official email address below to dispatch a Supabase Auth invitation.
                   </p>
                 </div>
                 <button 
-                  onClick={() => {
-                    const target = barangays[0];
-                    if (target) handleEditClick(target);
-                  }}
+                  onClick={() => handleOpenAssignModal()}
                   className="px-4 py-2.5 bg-white hover:bg-blue-50 text-[#091d64] font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer whitespace-nowrap"
                 >
                   <ShieldCheck className="w-4 h-4 text-[#091d64]" />
-                  Assign SK Chairperson
+                  <span>Assign SK Chairperson</span>
                 </button>
               </div>
 
-              {/* CONTROL BAR */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                <div className="flex items-center gap-3 flex-1 max-w-md">
-                  <div className="relative flex-1">
+              {/* CONTROL & FILTER BAR */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3 flex-1">
+                  <div className="relative flex-1 min-w-[200px] max-w-md">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                     <input 
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search barangay name or chairperson..."
+                      placeholder="Search barangay name, chairperson, or email..."
                       className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                     />
                   </div>
+
+                  {/* District Filter */}
+                  <select 
+                    value={districtFilter}
+                    onChange={(e) => setDistrictFilter(e.target.value as any)}
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64] cursor-pointer"
+                  >
+                    <option value="All">All Districts</option>
+                    <option value="District 1">District 1 (11 Barangays)</option>
+                    <option value="District 2">District 2 (16 Barangays)</option>
+                  </select>
+
+                  {/* Status Filter */}
                   <select 
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value as any)}
-                    className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64] cursor-pointer"
                   >
                     <option value="All">All Status ({barangays.length})</option>
-                    <option value="Active">Active Tenants ({barangays.filter(b => b.status === 'Active').length})</option>
+                    <option value="Active">Active ({barangays.filter(b => b.status === 'Active').length})</option>
                     <option value="Inactive">Inactive ({barangays.filter(b => b.status === 'Inactive').length})</option>
                   </select>
                 </div>
 
                 <div className="text-xs text-slate-500 font-semibold flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>27 Naga City Tenants Provisioned</span>
+                  <span>{filteredBarangays.length} of 27 Naga Barangays</span>
                 </div>
               </div>
 
-              {/* TENANTS GRID */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredBarangays.map(b => {
-                  const spent = b.spentBudget || Math.round(b.totalBudget * 0.65);
-                  const utilRate = Math.round((spent / b.totalBudget) * 100);
+              {/* DATA TABLE: BARANGAY NAME | DISTRICT | ASSIGNED CHAIRPERSON | STATUS | ACTION */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-50/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
+                      <tr>
+                        <th className="py-3.5 px-4 font-bold">Barangay Name</th>
+                        <th className="py-3.5 px-4 font-bold">District</th>
+                        <th className="py-3.5 px-4 font-bold">Assigned Chairperson (Name & Email)</th>
+                        <th className="py-3.5 px-4 font-bold">Status</th>
+                        <th className="py-3.5 px-4 text-right font-bold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filteredBarangays.map(b => {
+                        const bDistrict = b.district || BARANGAY_DISTRICTS[b.name] || 'District 1';
+                        const isAssigned = b.chairperson && b.chairperson.trim() !== '' && b.chairperson.toLowerCase() !== 'unassigned';
 
-                  return (
-                    <div key={b.id} className="bg-white border border-slate-100 rounded-2xl p-5 hover:shadow-md transition-all space-y-4 relative group">
-                      <div className="flex justify-between items-start border-b border-slate-50 pb-3">
-                        <div className="flex items-center gap-3">
-                          {b.logo ? (
-                            <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-2xs p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
-                              <img src={b.logo} alt={`Brgy. ${b.name} Logo`} className="w-full h-full object-contain" />
-                            </div>
-                          ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 text-[#091d64] flex items-center justify-center font-black text-lg shadow-2xs flex-shrink-0">
-                              {b.name.charAt(0)}
-                            </div>
-                          )}
-                          <div>
-                            <h4 className="font-extrabold text-[#091d64] text-base leading-tight">Brgy. {b.name}</h4>
-                            <span className="text-[10px] font-mono font-bold text-slate-400">ID: {b.id.slice(0, 8)}...</span>
-                          </div>
-                        </div>
-                        <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-full ${
-                          b.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'
-                        }`}>
-                          {b.status}
-                        </span>
-                      </div>
+                        return (
+                          <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
+                            {/* Barangay Name */}
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-3">
+                                {b.logo ? (
+                                  <img 
+                                    src={b.logo} 
+                                    alt={b.name} 
+                                    className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shadow-2xs shrink-0" 
+                                  />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#091d64] font-bold text-xs flex items-center justify-center border border-blue-100 shrink-0">
+                                    {b.name.charAt(0)}
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="font-bold text-slate-900 block text-xs">Brgy. {b.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">ID: {b.id.slice(0, 8)}...</span>
+                                </div>
+                              </div>
+                            </td>
 
-                      <div className="space-y-2 text-xs">
-                        <div className="flex justify-between items-center text-slate-600">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">Chairperson:</span>
-                          {b.chairperson && b.chairperson !== 'Unassigned' ? (
-                            <div className="flex items-center gap-1.5 text-right">
-                              <span className="font-extrabold text-slate-800">{b.chairperson}</span>
-                              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                Assigned
+                            {/* District */}
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                bDistrict === 'District 1'
+                                  ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
+                                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200/80'
+                              }`}>
+                                {bDistrict}
                               </span>
-                            </div>
-                          ) : (
-                            <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-amber-50 text-amber-700 border border-amber-200">
-                              Unassigned
-                            </span>
-                          )}
-                        </div>
+                            </td>
 
-                        <div className="flex justify-between items-center text-slate-600">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">Youth Pop:</span>
-                          <span className="font-mono font-bold text-slate-800">
-                            {b.youthPopulation > 0 ? `${b.youthPopulation.toLocaleString()} Youth` : 'Not Set (Optional)'}
-                          </span>
-                        </div>
+                            {/* Assigned Chairperson (Name & Email) */}
+                            <td className="py-3.5 px-4">
+                              {isAssigned ? (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-900 text-xs">
+                                      {b.chairperson === 'Pending Chairperson' ? 'Pending Chairperson (Invited)' : b.chairperson}
+                                    </span>
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      Assigned
+                                    </span>
+                                  </div>
+                                  {b.chairpersonEmail ? (
+                                    <span className="text-[11px] text-slate-500 font-mono block">
+                                      {b.chairpersonEmail}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 italic block">No email recorded</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">
+                                      Unassigned
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-400 italic block">
+                                    No chairperson assigned yet
+                                  </span>
+                                </div>
+                              )}
+                            </td>
 
-                        <div className="flex justify-between items-center text-slate-600">
-                          <span className="text-[11px] font-bold text-slate-400 uppercase">AIP Budget:</span>
-                          <span className="font-mono font-bold text-emerald-700">
-                            {b.totalBudget > 0 ? `₱${b.totalBudget.toLocaleString()}` : 'Not Set (Optional)'}
-                          </span>
-                        </div>
+                            {/* Status */}
+                            <td className="py-3.5 px-4">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                b.status === 'Active'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${b.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                {b.status}
+                              </span>
+                            </td>
 
-                        {/* BUDGET PROGRESS BAR */}
-                        <div className="pt-2">
-                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 mb-1">
-                            <span>Budget Utilization</span>
-                            <span className={`font-mono ${utilRate > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
-                              {utilRate}% (₱{(spent / 1000).toFixed(0)}k spent)
-                            </span>
-                          </div>
-                          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div 
-                              className={`h-full rounded-full transition-all duration-300 ${utilRate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
-                              style={{ width: `${utilRate}%` }} 
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="pt-3 border-t border-slate-100 flex gap-2">
-                        <button 
-                          onClick={() => handleEditClick(b)}
-                          className="flex-1 py-2 bg-[#091d64] hover:bg-[#112d75] text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5 text-amber-300" /> Assign Chairperson
-                        </button>
-                        <button 
-                          onClick={() => handleEditClick(b)}
-                          className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl transition-colors border border-slate-200 flex items-center justify-center gap-1 cursor-pointer"
-                          title="Configure AIP Budget & Settings"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" /> Settings
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                            {/* Action */}
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="inline-flex items-center gap-2">
+                                <button
+                                  onClick={() => handleOpenAssignModal(b)}
+                                  className="px-3 py-1.5 bg-[#091d64] hover:bg-[#112d75] text-white font-bold text-xs rounded-xl transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                                  <span>{isAssigned ? 'Reassign' : 'Assign Chairperson'}</span>
+                                </button>
+                                <button
+                                  onClick={() => handleEditClick(b)}
+                                  className="p-1.5 text-slate-500 hover:text-[#091d64] hover:bg-slate-100 rounded-xl transition-colors border border-slate-200 cursor-pointer"
+                                  title="Configure AIP Budget & Settings"
+                                >
+                                  <Settings className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
             </div>
@@ -1088,7 +1181,7 @@ export default function SuperAdminPages({
               </button>
               <button 
                 onClick={() => {
-                  alert('✅ Official LYDP Report generated and downloaded as PDF!');
+                  alert('Official LYDP Report generated and downloaded as PDF.');
                   setShowLydpModal(false);
                 }}
                 className="px-5 py-2 bg-[#091d64] text-white text-xs font-bold rounded-xl hover:bg-opacity-95 flex items-center gap-1.5 cursor-pointer"
@@ -1096,6 +1189,147 @@ export default function SuperAdminPages({
                 <Download className="w-4 h-4" /> Download PDF Report
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED ASSIGN SK CHAIRPERSON MODAL (ONLY CHAIRPERSON EMAIL) */}
+      {showAssignModal && assigningBarangay && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
+              <div>
+                <h3 className="font-sans font-black text-base flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-amber-300" />
+                  Assign SK Chairperson
+                </h3>
+                <p className="text-xs text-blue-100">Barangay {assigningBarangay.name} • Naga City Multi-Tenant Registry</p>
+              </div>
+              <button 
+                onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); }} 
+                className="text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignChairpersonSubmit} className="p-6 space-y-4 text-left text-xs">
+              {/* Selected Barangay Card */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {assigningBarangay.logo ? (
+                    <img 
+                      src={assigningBarangay.logo} 
+                      alt="" 
+                      className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shrink-0" 
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#091d64] font-bold text-xs flex items-center justify-center border border-blue-100 shrink-0">
+                      {assigningBarangay.name.charAt(0)}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 font-semibold block">Target Jurisdiction</span>
+                    <h4 className="font-extrabold text-[#091d64] text-xs">Barangay {assigningBarangay.name}</h4>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                    {assigningBarangay.district || BARANGAY_DISTRICTS[assigningBarangay.name] || 'District 1'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Target Barangay Selector */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Change Target Barangay (27 Naga Barangays)
+                </label>
+                <select
+                  value={assigningBarangay.id}
+                  onChange={(e) => {
+                    const selected = barangays.find(b => b.id === e.target.value);
+                    if (selected) {
+                      setAssigningBarangay(selected);
+                      setAssignEmail(selected.chairpersonEmail || '');
+                      setAssignError(null);
+                    }
+                  }}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
+                >
+                  {barangays.map(b => (
+                    <option key={b.id} value={b.id}>
+                      Barangay {b.name} ({b.chairperson && b.chairperson !== 'Unassigned' ? `Assigned: ${b.chairperson}` : 'Unassigned'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Chairperson Official Email Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Chairperson Official Email Address <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input 
+                    type="email"
+                    value={assignEmail}
+                    onChange={(e) => setAssignEmail(e.target.value)}
+                    placeholder="chairperson.example@naga.gov.ph"
+                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] font-mono"
+                    required
+                  />
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Enter ONLY the Chairperson's email. An invitation link will be triggered.
+                </p>
+              </div>
+
+              {/* Onboarding Notice */}
+              <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  The backend sets the user's role to <strong>BARANGAY_ADMIN</strong> bound to <strong>Barangay {assigningBarangay.name}</strong>. Upon first login, the Chairperson will be required to complete their profile (Full Name, Contact, Birthdate, Biological Sex, and Address) before gaining access.
+                </p>
+              </div>
+
+              {assignError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{assignError}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button 
+                  type="button"
+                  disabled={isAssigning}
+                  onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); }}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isAssigning}
+                  className="px-5 py-2 bg-[#091d64] hover:bg-[#112d75] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isAssigning ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>Dispatching Invitation...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Send Invitation & Assign</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

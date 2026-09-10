@@ -17,6 +17,7 @@ import {
 import PublicPages from './components/PublicPages';
 import SuperAdminPages from './components/SuperAdminPages';
 import BarangayAdminPages from './components/BarangayAdminPages';
+import ChairpersonOnboarding from './components/ChairpersonOnboarding';
 import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
@@ -49,6 +50,7 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>(INITIAL_AUDIT_LOGS);
 
   // --- AUTHENTICATED USER SESSION ---
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentRole, setCurrentRole] = useState<UserRole | 'Viewer' | null>(null);
   const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
@@ -78,6 +80,7 @@ export default function App() {
     if (token) {
       kabisigApi.getCurrentUser().then(user => {
         if (user) {
+          setCurrentUser(user);
           setCurrentEmail(user.email || '');
           const roleId = user.role_id;
           if (roleId === 1) {
@@ -107,9 +110,16 @@ export default function App() {
   }, []);
 
   // --- AUTH CALLBACKS ---
-  const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string) => {
+  const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
     if (emailOrName) {
       setCurrentEmail(emailOrName);
+    }
+    if (userObj) {
+      setCurrentUser(userObj);
+    } else {
+      kabisigApi.getCurrentUser().then(user => {
+        if (user) setCurrentUser(user);
+      }).catch(console.warn);
     }
     // Check if the user has a registered profile with a pending or rejected status
     if (emailOrName) {
@@ -143,10 +153,13 @@ export default function App() {
       selectedTenant = tenants[0];
     }
 
+    const resolvedRole: UserRole = (role === 'SK Chairperson' || role === 'Barangay Admin') ? 'Barangay Admin' : role;
     setCurrentTenant(selectedTenant);
     setCurrentRole(role);
+    setCurrentRole(resolvedRole);
 
     if (role === 'Youth Constituent') {
+    if (resolvedRole === 'Youth Constituent') {
       const matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName?.toLowerCase() || p.name === emailOrName) || youthProfiles[0];
       setCurrentYouth(matchedProfile);
     } else {
@@ -159,6 +172,7 @@ export default function App() {
     setCurrentRole(null);
     setCurrentTenant(null);
     setCurrentYouth(null);
+    setCurrentUser(null);
     setCurrentEmail('');
     setPublicView('login');
   };
@@ -528,21 +542,36 @@ export default function App() {
 
       {/* 3. BARANGAY ADMIN (SK CHAIRPERSON) PANELS */}
       {currentRole === 'Barangay Admin' && currentTenant && (
-        <BarangayAdminPages 
-          currentBarangay={currentTenant}
-          programs={programs}
-          youthProfiles={youthProfiles}
-          documents={documents}
-          auditLogs={auditLogs}
-          registrations={registrations}
-          feedback={feedback}
-          expenses={expenses}
-          resolutions={resolutions}
-          onApproveYouth={handleApproveYouth}
-          onRejectYouth={handleRejectYouth}
-          onCreateProgram={handleCreateProgram}
-          onLogout={handleLogout}
-        />
+      {(currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson') && currentTenant && (
+        (!currentUser?.full_name || currentUser.full_name.trim() === '' || currentUser.full_name === 'Pending Chairperson' || !currentUser?.resident_profile?.birthdate) ? (
+          <ChairpersonOnboarding 
+            currentBarangay={currentTenant}
+            userEmail={currentEmail || currentUser?.email || ''}
+            onProfileCompleted={(updatedUser) => {
+              setCurrentUser(updatedUser);
+              if (updatedUser.full_name) {
+                setTenants(prev => prev.map(t => t.id === currentTenant.id ? { ...t, chairperson: updatedUser.full_name, chairpersonEmail: updatedUser.email } : t));
+              }
+            }}
+            onLogout={handleLogout}
+          />
+        ) : (
+          <BarangayAdminPages 
+            currentBarangay={currentTenant}
+            programs={programs}
+            youthProfiles={youthProfiles}
+            documents={documents}
+            auditLogs={auditLogs}
+            registrations={registrations}
+            feedback={feedback}
+            expenses={expenses}
+            resolutions={resolutions}
+            onApproveYouth={handleApproveYouth}
+            onRejectYouth={handleRejectYouth}
+            onCreateProgram={handleCreateProgram}
+            onLogout={handleLogout}
+          />
+        )
       )}
 
       {/* 4. OTHER SK OFFICIALS (KAGAWAD, SECRETARY, TREASURER) PANELS */}
@@ -584,7 +613,7 @@ export default function App() {
         />
       )}
 
-      {/* 6. PUBLIC VIEWER / AUDITOR / OBSERVER PANELS */}
+      {/* 6. PUBLIC TRANSPARENCY VIEWER PORTAL */}
       {currentRole === 'Viewer' && (
         <ViewerPages 
           tenants={tenants}

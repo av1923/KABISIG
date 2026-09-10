@@ -264,12 +264,12 @@ export function detectScheduleConflicts(
     if (datesOverlap) {
       // Rule A: Venue Double Booking Conflict
       if (prog.location.toLowerCase().trim() === newProg.location.toLowerCase().trim()) {
-        conflicts.push(`⚠️ Venue Double Booking: "${prog.title}" is already scheduled at ${prog.location} from ${prog.startDate} to ${prog.endDate}.`);
+        conflicts.push(`Venue Double Booking: "${prog.title}" is already scheduled at ${prog.location} from ${prog.startDate} to ${prog.endDate}.`);
       }
 
       // Rule B: High Frequency Warning (Same Barangay, Same Category overlapping)
       if (prog.category === 'Sports Development' && prog.title !== newProg.title) {
-        conflicts.push(`ℹ️ Coordination Advisory: Another Sports Development program ("${prog.title}") runs during this timeframe. Expect volunteer split.`);
+        conflicts.push(`Coordination Advisory: Another Sports Development program ("${prog.title}") runs during this timeframe. Expect volunteer split.`);
       }
     }
   }
@@ -351,13 +351,13 @@ export function monitorBudgets(
   if (utilizationRate >= 90) {
     alerts.push({
       level: 'Critical',
-      message: `🚨 Critical: ${tenant.name} overall budget spent has reached ${utilizationRate.toFixed(1)}% of maximum annual allocation.`,
+      message: `Critical: ${tenant.name} overall budget spent has reached ${utilizationRate.toFixed(1)}% of maximum annual allocation.`,
       code: 'BUDGET_LIMIT_90'
     });
   } else if (utilizationRate >= 80) {
     alerts.push({
       level: 'Warning',
-      message: `⚠️ Warning: ${tenant.name} spent budget is at ${utilizationRate.toFixed(1)}%. Allocate remaining resources carefully.`,
+      message: `Warning: ${tenant.name} spent budget is at ${utilizationRate.toFixed(1)}%. Allocate remaining resources carefully.`,
       code: 'BUDGET_LIMIT_80'
     });
   }
@@ -367,7 +367,7 @@ export function monitorBudgets(
   if (totalAllocated > tenant.totalBudget) {
     alerts.push({
       level: 'Critical',
-      message: `🚨 Critical Deficit: Total programmatic allocations (₱${totalAllocated.toLocaleString()}) exceed your general fund allotment (₱${tenant.totalBudget.toLocaleString()}) by ₱${(totalAllocated - tenant.totalBudget).toLocaleString()}.`,
+      message: `Critical Deficit: Total programmatic allocations (₱${totalAllocated.toLocaleString()}) exceed your general fund allotment (₱${tenant.totalBudget.toLocaleString()}) by ₱${(totalAllocated - tenant.totalBudget).toLocaleString()}.`,
       code: 'ALLOCATION_EXCEEDED'
     });
   }
@@ -380,13 +380,13 @@ export function monitorBudgets(
     if (actualSpent > prog.budgetAllocation) {
       alerts.push({
         level: 'Critical',
-        message: `🚨 Deficit Alert: Expense itemizations for "${prog.title}" (₱${actualSpent.toLocaleString()}) exceed approved program budget allocation (₱${prog.budgetAllocation.toLocaleString()}).`,
+        message: `Deficit Alert: Expense itemizations for "${prog.title}" (₱${actualSpent.toLocaleString()}) exceed approved program budget allocation (₱${prog.budgetAllocation.toLocaleString()}).`,
         code: `PROG_OVERSPENT_${prog.id}`
       });
     } else if (actualSpent >= prog.budgetAllocation * 0.9) {
       alerts.push({
         level: 'Warning',
-        message: `⚠️ Budget Cap reached: Program "${prog.title}" has consumed ${(actualSpent / prog.budgetAllocation * 100).toFixed(0)}% of its ₱${prog.budgetAllocation.toLocaleString()} limit.`,
+        message: `Budget Cap reached: Program "${prog.title}" has consumed ${(actualSpent / prog.budgetAllocation * 100).toFixed(0)}% of its ₱${prog.budgetAllocation.toLocaleString()} limit.`,
         code: `PROG_HIGH_SPENT_${prog.id}`
       });
     }
@@ -396,7 +396,7 @@ export function monitorBudgets(
       if (exp.amount > prog.budgetAllocation * 0.5) {
         alerts.push({
           level: 'Info',
-          message: `ℹ️ Outsized Invoice: Single expense of ₱${exp.amount.toLocaleString()} for "${exp.supplier}" represents over 50% of the entire program budget for "${prog.title}".`,
+          message: `Outsized Invoice: Single expense of ₱${exp.amount.toLocaleString()} for "${exp.supplier}" represents over 50% of the entire program budget for "${prog.title}".`,
           code: `OUTSIZED_EXPENSE_${exp.id}`
         });
       }
@@ -423,7 +423,7 @@ export function getComplianceIssues(
   if (pendingCount > 0) {
     issues.push({
       level: 'Urgent',
-      message: `🚨 Registration Backlog: There are ${pendingCount} pending youth registrations awaiting official SK validation.`,
+      message: `Registration Backlog: There are ${pendingCount} pending youth registrations awaiting official SK validation.`,
       action: 'Validate registration applications'
     });
   }
@@ -443,14 +443,14 @@ export function getComplianceIssues(
     if (!hasAccomplishment) {
       issues.push({
         level: 'Warning',
-        message: `⚠️ Missing Document: No accomplishment report uploaded for the completed program "${prog.title}".`,
+        message: `Missing Document: No accomplishment report uploaded for the completed program "${prog.title}".`,
         action: 'Draft and upload Accomplishment Report'
       });
     }
     if (!hasLiquidation) {
       issues.push({
         level: 'Warning',
-        message: `⚠️ Missing Liquidation: Financial liquidation details for completed initiative "${prog.title}" are outstanding.`,
+        message: `Missing Liquidation: Financial liquidation details for completed initiative "${prog.title}" are outstanding.`,
         action: 'Submit Liquidation Document Package'
       });
     }
@@ -461,7 +461,7 @@ export function getComplianceIssues(
   if (pendingExpenses > 0) {
     issues.push({
       level: 'Urgent',
-      message: `🚨 Unauthorized Ledgers: ${pendingExpenses} expense ledger logs are pending approval from the Treasurer/Chairperson.`,
+      message: `Unauthorized Ledgers: ${pendingExpenses} expense ledger logs are pending approval from the Treasurer/Chairperson.`,
       action: 'Review pending financial vouchers'
     });
   }
@@ -471,7 +471,7 @@ export function getComplianceIssues(
   if (!hasBudgetDoc) {
     issues.push({
       level: 'Urgent',
-      message: `🚨 Absolute Statutory Notice: No active Annual budget resolution (.pdf) is archived in your compliance folder.`,
+      message: `Absolute Statutory Notice: No active Annual budget resolution (.pdf) is archived in your compliance folder.`,
       action: 'Upload official SK Annual Budget Resolution'
     });
   }

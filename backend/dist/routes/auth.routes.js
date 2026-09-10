@@ -12,8 +12,6 @@ const ROLE_IDS = {
     SK_OFFICIAL: 3,
     YOUTH_CONSTITUENT: 4,
     VIEWER: 5,
-    FEDERATION_OBSERVER: 6,
-    LGU_AUDITOR: 7,
 };
 function calculateAge(birthdateStr) {
     const birthdate = new Date(birthdateStr);
@@ -313,6 +311,12 @@ router.post('/register-official', async (req, res) => {
         return;
     }
     const { email, password, full_name, barangay_id, role, phone } = parseResult.data;
+    // Enforce role boundary: Super Admin and Barangay Admin (Chairperson) cannot self-register
+    const forbiddenRoles = ['SUPER_ADMIN', 'BARANGAY_ADMIN', 'CHAIRPERSON', 'SK CHAIRPERSON', 'PRESIDENT'];
+    if (forbiddenRoles.some(r => role.toUpperCase().includes(r))) {
+        sendError(res, 'Barangay Admins and Super Admins cannot self-register through public forms. Chairpersons must be officially assigned by the SK Federation President.', 403);
+        return;
+    }
     // 1. Verify Barangay Existence
     const { data: barangay, error: bgyError } = await supabase
         .from('barangay')
@@ -336,7 +340,7 @@ router.post('/register-official', async (req, res) => {
         return;
     }
     const userId = authData.user.id;
-    const roleId = (role.includes('Chairperson') || role.includes('BARANGAY_ADMIN')) ? ROLE_IDS.BARANGAY_ADMIN : ROLE_IDS.SK_OFFICIAL;
+    const roleId = ROLE_IDS.SK_OFFICIAL; // Role 3 strictly for SK Officials (Kagawad, Secretary, Treasurer)
     // 3. Insert into users table
     const { error: userError } = await supabaseAdmin.from('users').insert([
         {

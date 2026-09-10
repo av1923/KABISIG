@@ -5,9 +5,7 @@ export type RoleName =
   | 'BARANGAY_ADMIN'
   | 'SK_OFFICIAL'
   | 'YOUTH_CONSTITUENT'
-  | 'VIEWER'
-  | 'FEDERATION_OBSERVER'
-  | 'LGU_AUDITOR';
+  | 'VIEWER';
 
 export type UserStatus = 'pending' | 'active' | 'rejected';
 export type SexType = 'Male' | 'Female' | 'Other' | 'Prefer not to say';

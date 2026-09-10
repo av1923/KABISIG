@@ -102,7 +102,7 @@ export function KabisigLogo({ className = "w-28" }: { className?: string }) {
 }
 
 interface PublicPagesProps {
-  onLogin: (email: string, role: UserRole, barangayId?: string) => void;
+  onLogin: (email: string, role: UserRole, barangayId?: string, userObj?: any) => void;
   onSignUp: (profile: Partial<YouthProfile>) => void;
   barangays: BarangayTenant[];
   programs: Program[];
@@ -134,6 +134,7 @@ export default function PublicPages({
 
   // Sign up state (Multi-step)
   const [signUpStep, setSignUpStep] = useState(1);
+  const [signUpBarangayId, setSignUpBarangayId] = useState('');
   const [signUpForm, setSignUpForm] = useState({
     name: '',
     sex: 'Male' as 'Male' | 'Female' | 'Other',
@@ -143,6 +144,7 @@ export default function PublicPages({
     email: '',
     address: '',
     zone: '',
+    zone: 'Zone 1',
     school: '',
     educationalLevel: 'College' as any,
     course: '',
@@ -155,6 +157,7 @@ export default function PublicPages({
     agreeTerms: false,
     profilePic: undefined,
     registeredRole: 'Youth Constituent' as UserRole
+    registeredRole: '' as any
   });
 
   const totalYouth = barangays.reduce((acc, curr) => acc + curr.youthPopulation, 0);
@@ -227,7 +230,7 @@ export default function PublicPages({
         return;
       }
 
-      onLogin(cleanEmail, finalRole, finalBarangay);
+      onLogin(cleanEmail, finalRole, finalBarangay, dbUser);
     } catch (err: any) {
       setLoginError(err.message || 'Network error: Backend server unavailable.');
     } finally {
@@ -236,6 +239,19 @@ export default function PublicPages({
   };
 
   const handleSignUpSubmit = async () => {
+    const targetBarangayId = signUpBarangayId || selectedBarangay;
+    if (!targetBarangayId) {
+      alert('Please select your Home Barangay from the Naga City registry.');
+      return;
+    }
+    if (!signUpForm.registeredRole) {
+      alert('Please select your Desired KABISIG Role.');
+      return;
+    }
+    if (!signUpForm.email.trim()) {
+      alert('Please enter your KABISIG email address.');
+      return;
+    }
     if (!signUpForm.agreeTerms) {
       alert('Please consent to the Data Privacy guidelines before proceeding.');
       return;
@@ -253,8 +269,12 @@ export default function PublicPages({
     }
 
     setIsSubmittingSignUp(true);
+    const isChairperson = signUpForm.registeredRole === 'SK Chairperson' || signUpForm.registeredRole === 'Barangay Admin';
+    const isOfficial = isChairperson || (signUpForm.registeredRole && signUpForm.registeredRole !== 'Youth Constituent');
+
     const newProfile: Partial<YouthProfile> = {
       name: signUpForm.name || 'Anonymous Youth',
+      name: signUpForm.name || 'Anonymous User',
       sex: signUpForm.sex,
       birthdate: signUpForm.birthdate,
       age: signUpForm.age,
@@ -263,6 +283,7 @@ export default function PublicPages({
       address: signUpForm.address,
       zone: signUpForm.zone,
       school: signUpForm.school,
+      school: isChairperson ? 'Naga City Official Administration' : signUpForm.school,
       educationalLevel: signUpForm.educationalLevel,
       course: signUpForm.course,
       year: signUpForm.year,
@@ -270,10 +291,12 @@ export default function PublicPages({
       guardianName: signUpForm.guardianName,
       guardianContact: signUpForm.guardianContact,
       status: 'Pending',
+      status: isChairperson ? 'Approved' : 'Pending',
       dateRegistered: new Date().toISOString().split('T')[0],
       profilePic: signUpForm.profilePic,
       registeredRole: signUpForm.registeredRole,
       barangayId: activeBarangayId
+      barangayId: targetBarangayId
     };
 
     try {
@@ -284,6 +307,7 @@ export default function PublicPages({
           password: signUpForm.password,
           full_name: signUpForm.name.trim(),
           barangay_id: activeBarangayId,
+          barangay_id: targetBarangayId,
           role: signUpForm.registeredRole || 'SK_OFFICIAL',
           phone: signUpForm.mobile.trim(),
         });
@@ -292,12 +316,24 @@ export default function PublicPages({
           setIsSubmittingSignUp(false);
           return;
         }
+
+        if (isChairperson) {
+          alert('SK Chairperson account created successfully!\n\nYou can now sign in with your email and password to access the Barangay Admin Portal.');
+          setEmail(signUpForm.email.trim());
+          setPassword('');
+          setSelectedRole('Barangay Admin');
+          setSelectedBarangay(targetBarangayId);
+          setActiveTab('login');
+          setSignUpStep(1);
+          return;
+        }
       } else {
         const res = await kabisigApi.registerYouth({
           email: signUpForm.email.trim(),
           password: signUpForm.password,
           full_name: signUpForm.name.trim(),
           barangay_id: activeBarangayId,
+          barangay_id: targetBarangayId,
           phone: signUpForm.mobile.trim(),
           birthdate: signUpForm.birthdate,
           sex: signUpForm.sex,
@@ -385,11 +421,30 @@ export default function PublicPages({
                 <div className="w-full bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 sm:p-10 flex flex-col items-center">
                   <KabisigLogo className="mb-4" />
                   
-                  <div className="text-amber-500 text-xs mb-3 select-none">★</div>
+                  <div className="w-6 h-0.5 bg-amber-400 rounded-full mb-3"></div>
 
                   <h2 className="font-sans font-black text-[#1a237e] text-xs tracking-[0.15em] uppercase mb-6 text-center">
+                  <h2 className="font-sans font-black text-[#1a237e] text-xs tracking-[0.15em] uppercase mb-4 text-center">
                     SECURE SIGN-IN PORTAL
                   </h2>
+
+                  {/* Navigation Switcher: Sign In / Create Account */}
+                  <div className="flex w-full p-1 bg-slate-100 rounded-xl mb-5 border border-slate-200/70">
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('login'); }}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-[#133285] shadow-xs cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTab('signup'); setSignUpStep(1); }}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-500 hover:text-slate-900 cursor-pointer"
+                    >
+                      Create Account
+                    </button>
+                  </div>
 
                   <div className="w-full space-y-4">
                     <div>
@@ -603,6 +658,13 @@ export default function PublicPages({
                   <button 
                     type="button"
                     onClick={() => setSignUpStep(signUpStep - 1)}
+                    onClick={() => {
+                      if (signUpStep === 4 && (signUpForm.registeredRole === 'SK Chairperson' || signUpForm.registeredRole === 'Barangay Admin')) {
+                        setSignUpStep(2);
+                      } else {
+                        setSignUpStep(signUpStep - 1);
+                      }
+                    }}
                     className="absolute top-6 left-6 text-slate-500 hover:text-slate-800 flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -613,7 +675,26 @@ export default function PublicPages({
                 {/* Central Logo, tagline and star matching Image 1 */}
                 <div className="flex flex-col items-center mb-4">
                   <KabisigLogo className="mb-2" />
-                  <div className="text-amber-500 text-xs mb-1 select-none">★</div>
+                  <div className="w-6 h-0.5 bg-amber-400 rounded-full mb-1"></div>
+                  <div className="w-6 h-0.5 bg-amber-400 rounded-full mb-3"></div>
+                </div>
+
+                {/* Navigation Switcher: Sign In / Create Account */}
+                <div className="flex w-full p-1 bg-slate-100 rounded-xl mb-5 border border-slate-200/70">
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('login'); }}
+                    className="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-500 hover:text-slate-900 cursor-pointer"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('signup'); setSignUpStep(1); }}
+                    className="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-[#133285] shadow-xs cursor-pointer"
+                  >
+                    Create Account
+                  </button>
                 </div>
 
                 {/* Headings according to Step */}
@@ -652,9 +733,15 @@ export default function PublicPages({
                     <>
                       <h2 className="font-sans font-extrabold text-[#091d64] text-lg tracking-[0.1em] uppercase mb-1.5">
                         CREATE YOUR ACCOUNT
+                        {signUpForm.registeredRole === 'SK Chairperson'
+                          ? 'CREATE CHAIRPERSON ACCOUNT'
+                          : 'CREATE YOUR ACCOUNT'}
                       </h2>
                       <p className="text-xs text-slate-500">
                         Fill in the details below to create your KABISIG account.
+                        {signUpForm.registeredRole === 'SK Chairperson'
+                          ? 'Set your official email and password to activate your Barangay Admin portal.'
+                          : 'Fill in the details below to create your KABISIG account.'}
                       </p>
                     </>
                   )}
@@ -677,7 +764,11 @@ export default function PublicPages({
                           value={activeBarangayId}
                           onChange={(e) => setSelectedBarangay(e.target.value)}
                           className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-bold"
+                          value={signUpBarangayId}
+                          onChange={(e) => setSignUpBarangayId(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-bold cursor-pointer"
                         >
+                          <option value="">-- Select Home Barangay --</option>
                           {barangays.map(b => (
                             <option key={b.id} value={b.id}>Barangay {b.name}</option>
                           ))}
@@ -686,6 +777,14 @@ export default function PublicPages({
                         {/* SELECTED BARANGAY LOGO & JURISDICTION CARD */}
                         {(() => {
                           const currentBgy = barangays.find(b => b.id === activeBarangayId) || barangays[0];
+                          if (!signUpBarangayId) {
+                            return (
+                              <div className="mt-2 p-3 bg-slate-50/70 border border-dashed border-slate-200 rounded-xl text-center">
+                                <span className="text-[11px] text-slate-400">Please select your Naga City barangay to bind your account.</span>
+                              </div>
+                            );
+                          }
+                          const currentBgy = barangays.find(b => b.id === signUpBarangayId);
                           return (
                             <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-3 animate-fade-in">
                               {currentBgy?.logo ? (
@@ -725,8 +824,11 @@ export default function PublicPages({
                           value={signUpForm.registeredRole}
                           onChange={(e) => setSignUpForm({...signUpForm, registeredRole: e.target.value as any})}
                           className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors animate-fade-in"
+                          className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-semibold cursor-pointer animate-fade-in"
                         >
+                          <option value="">-- Select Role --</option>
                           <option value="Youth Constituent">Youth Constituent</option>
+                          <option value="SK Chairperson">SK Chairperson (Barangay Admin)</option>
                           <option value="SK Kagawad">SK Kagawad</option>
                           <option value="SK Secretary">SK Secretary</option>
                           <option value="SK Treasurer">SK Treasurer</option>
@@ -1061,6 +1163,8 @@ export default function PublicPages({
                       onClick={() => {
                         // Validate active step with strict phone & format rules
                         if (signUpStep === 1) {
+                          if (!signUpBarangayId) { alert('Please select your Home Barangay from the Naga City registry.'); return; }
+                          if (!signUpForm.registeredRole) { alert('Please select your Desired KABISIG Role.'); return; }
                           if (!signUpForm.name.trim()) { alert('Full Name is required.'); return; }
                           if (!signUpForm.birthdate) { alert('Birthdate is required.'); return; }
                         }
@@ -1069,6 +1173,12 @@ export default function PublicPages({
                           if (/[a-zA-Z]/i.test(signUpForm.mobile)) { alert('Mobile phone number can only contain numbers and cannot accept alphabetic letters.'); return; }
                           if (signUpForm.mobile.replace(/[^0-9]/g, '').length < 10) { alert('Please enter a valid mobile number (at least 10 digits).'); return; }
                           if (!signUpForm.address.trim()) { alert('Street address is required.'); return; }
+
+                          // If user is registering as SK Chairperson, skip school/guardian details straight to account password creation
+                          if (signUpForm.registeredRole === 'SK Chairperson' || signUpForm.registeredRole === 'Barangay Admin') {
+                            setSignUpStep(4);
+                            return;
+                          }
                         }
                         if (signUpStep === 3) {
                           if (!signUpForm.guardianName.trim()) { alert('Guardian name is required.'); return; }
@@ -1096,6 +1206,11 @@ export default function PublicPages({
                         </>
                       ) : (
                         <span>Complete Registration</span>
+                        <span>
+                          {signUpForm.registeredRole === 'SK Chairperson'
+                            ? 'Create Chairperson Account'
+                            : 'Complete Registration'}
+                        </span>
                       )}
                     </button>
                   )}

@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-export type RoleName = 'SUPER_ADMIN' | 'BARANGAY_ADMIN' | 'SK_OFFICIAL' | 'YOUTH_CONSTITUENT' | 'VIEWER' | 'FEDERATION_OBSERVER' | 'LGU_AUDITOR';
+export type RoleName = 'SUPER_ADMIN' | 'BARANGAY_ADMIN' | 'SK_OFFICIAL' | 'YOUTH_CONSTITUENT' | 'VIEWER';
 export type UserStatus = 'pending' | 'active' | 'rejected';
 export type SexType = 'Male' | 'Female' | 'Other' | 'Prefer not to say';
 export type EducationalStatus = 'Elementary' | 'High School' | 'Vocational' | 'College' | 'Post-Graduate' | 'Out of School Youth';

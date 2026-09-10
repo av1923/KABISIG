@@ -63,7 +63,7 @@ export function canAccessTenant(
   user: AuthenticatedUser,
   targetTenantId: string | null | undefined
 ): boolean {
-  const citywideRoles: RoleName[] = ['SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'];
+  const citywideRoles: RoleName[] = ['SUPER_ADMIN'];
   if (citywideRoles.includes(user.role)) {
     return true;
   }

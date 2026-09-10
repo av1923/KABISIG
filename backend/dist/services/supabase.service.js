@@ -47,7 +47,7 @@ export function createUserClient(token) {
     });
 }
 export function canAccessTenant(user, targetTenantId) {
-    const citywideRoles = ['SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'];
+    const citywideRoles = ['SUPER_ADMIN'];
     if (citywideRoles.includes(user.role)) {
         return true;
     }

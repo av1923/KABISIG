@@ -1,4 +1,4 @@
-﻿import {
+import {
   BarangayTenant,
   YouthProfile,
   Program,
@@ -43,6 +43,36 @@ export const DEFAULT_BARANGAY_LOGOS: Record<string, string> = {
   "Tabuco": "/logos/tabuco_logo.png",
   "Tinago": "/logos/tinago_logo.png",
   "Triangulo": "/logos/triangulo_logo.png"
+};
+
+export const BARANGAY_DISTRICTS: Record<string, 'District 1' | 'District 2'> = {
+  'Bagumbayan Norte': 'District 1',
+  'Bagumbayan Sur': 'District 1',
+  'Calauag': 'District 1',
+  'Carolina': 'District 1',
+  'Dayangdang': 'District 1',
+  'Liboton': 'District 1',
+  'Pacol': 'District 1',
+  'Panicuason': 'District 1',
+  'Peñafrancia': 'District 1',
+  'San Felipe': 'District 1',
+  'Santa Cruz': 'District 1',
+  'Abella': 'District 2',
+  'Balatas': 'District 2',
+  'Cararayan': 'District 2',
+  'Concepcion Grande': 'District 2',
+  'Concepcion Pequeña': 'District 2',
+  'Del Rosario': 'District 2',
+  'Dinaga': 'District 2',
+  'Igualdad Interior': 'District 2',
+  'Lerma': 'District 2',
+  'Mabolo': 'District 2',
+  'Sabang': 'District 2',
+  'San Francisco': 'District 2',
+  'San Isidro': 'District 2',
+  'Tabuco': 'District 2',
+  'Tinago': 'District 2',
+  'Triangulo': 'District 2',
 };
 
 export const NAGA_BARANGAYS: BarangayTenant[] = [

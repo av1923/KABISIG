@@ -117,7 +117,7 @@ router.get('/barangay', authenticateUser, async (req, res) => {
         feedback: feedbackSummary,
     }, 'Barangay dashboard analytics retrieved.');
 });
-router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'), async (req, res) => {
+router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN'), async (req, res) => {
     const { data: barangays, error: bgyError } = await supabaseAdmin
         .from('barangay')
         .select('id, name, district')

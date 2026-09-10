@@ -480,8 +480,8 @@ export default function BarangayAdminPages({
     setAnnContent('');
     alert(
       annPostToFb && fbAutoSyncEnabled
-        ? '✅ Announcement published and successfully auto-synced to the Official SK Facebook Page!'
-        : '✅ Announcement published on KABISIG Constituent Portal!'
+        ? 'Announcement published and successfully auto-synced to the Official SK Facebook Page!'
+        : 'Announcement published on KABISIG Constituent Portal!'
     );
   };
 

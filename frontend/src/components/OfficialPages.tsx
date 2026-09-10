@@ -965,7 +965,7 @@ export default function OfficialPages({
         programTitle: wrongTitle,
         timestamp: timeStr
       });
-      setQrMessage(`⚠️ Event Mismatch: Ticket is for "${wrongTitle}". Switch active program above.`);
+      setQrMessage(`Event Mismatch: Ticket is for "${wrongTitle}". Switch active program above.`);
       return;
     }
 
@@ -999,7 +999,7 @@ export default function OfficialPages({
         programTitle: progTitle,
         timestamp: timeStr
       });
-      setQrMessage(`❌ Error: No approved registration found for ${youthName}.`);
+      setQrMessage(`Error: No approved registration found for ${youthName}.`);
       return;
     }
 
@@ -1020,7 +1020,7 @@ export default function OfficialPages({
         programTitle: progTitle,
         timestamp: timeStr
       });
-      setQrMessage(`⚠️ Refused: ${reg.participantName} is ALREADY marked Present.`);
+      setQrMessage(`Refused: ${reg.participantName} is ALREADY marked Present.`);
       return;
     }
 
@@ -1047,7 +1047,7 @@ export default function OfficialPages({
       programTitle: progTitle,
       timestamp: timeStr
     });
-    setQrMessage(`✅ SUCCESS: ${reg.participantName} verified and logged Present!`);
+    setQrMessage(`SUCCESS: ${reg.participantName} verified and logged Present!`);
   };
 
   // Live QR Attendance Simulation Action
