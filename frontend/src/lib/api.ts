@@ -1,4 +1,4 @@
-import { BarangayTenant } from '../types';
+import { BarangayTenant, YouthProfile } from '../types';
 import { NAGA_BARANGAYS } from '../data';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -63,9 +63,12 @@ class KabisigApiClient {
       };
     } catch (err: any) {
       console.warn(`API call failed for ${endpoint}:`, err.message);
+      const isConnectionFailed = err?.name === 'TypeError' || err?.message === 'Failed to fetch';
       return {
         success: false,
-        message: err.message || 'Network connection failed',
+        message: isConnectionFailed
+          ? 'Backend server is unreachable (Failed to fetch). Please ensure the backend server is running on http://localhost:5000.'
+          : (err.message || 'Network connection failed'),
         error: err,
       };
     }
@@ -117,6 +120,8 @@ class KabisigApiClient {
     birthdate: string;
     sex: string;
     address: string;
+    password?: string;
+    confirmPassword?: string;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     return await this.request('/users/complete-profile', {
       method: 'PUT',
@@ -154,6 +159,30 @@ class KabisigApiClient {
     return { success: false, message: res.message };
   }
 
+  async checkChairpersonInvite(email: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/auth/check-chairperson-invite?email=${encodeURIComponent(email)}`, {
+      method: 'GET',
+    });
+  }
+
+  async setupChairpersonPassword(data: {
+    email: string;
+    password: string;
+    confirmPassword: string;
+    full_name?: string;
+  }): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
+    const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+
+    if (res.success && res.data?.token) {
+      this.setToken(res.data.token);
+      return { success: true, token: res.data.token, user: res.data.user, message: res.message };
+    }
+    return { success: false, message: res.message || 'Password setup failed' };
+  }
+
   async registerYouth(payload: {
     email: string;
     password?: string;
@@ -166,7 +195,7 @@ class KabisigApiClient {
     educational_status?: string;
     employment_status?: string;
     is_registered_voter?: boolean;
-  }): Promise<{ success: boolean; data?: any; message?: string }> {
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     const body = {
       password: payload.password || 'KabisigYouth2026!',
       ...payload,
@@ -184,7 +213,7 @@ class KabisigApiClient {
     barangay_id: string;
     role: string;
     phone?: string;
-  }): Promise<{ success: boolean; data?: any; message?: string }> {
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     const body = {
       password: payload.password || 'KabisigOfficial2026!',
       ...payload,
@@ -251,6 +280,24 @@ class KabisigApiClient {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  }
+
+  // --- USER & RESIDENT PROFILES (DATABASE PERSISTENCE) ---
+  async updateProfile(profile: Partial<YouthProfile>): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/users/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profile),
+    });
+  }
+
+  async getProfile(): Promise<{ success: boolean; data?: YouthProfile; message?: string }> {
+    return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
+  }
+
+  async getYouthProfiles(tenantId?: string): Promise<YouthProfile[]> {
+    const url = tenantId ? `/users/youth-profiles?tenant_id=${tenantId}` : '/users/youth-profiles';
+    const res = await this.request<YouthProfile[]>(url, { method: 'GET' });
+    return res.success && res.data ? res.data : [];
   }
 }
 

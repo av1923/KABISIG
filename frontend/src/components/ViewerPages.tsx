@@ -93,7 +93,8 @@ export default function ViewerPages({
       <head>
         <title>Public COA Ledger Audit Report - ${targetBgy}</title>
         <style>
-          body { font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
+          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
           .header { text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 30px; }
           .header h1 { font-size: 13px; font-weight: 700; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
           .header h2 { font-size: 20px; font-weight: 800; color: #091d64; margin: 5px 0; }

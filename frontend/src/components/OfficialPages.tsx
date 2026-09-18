@@ -90,10 +90,10 @@ import {
   recommendPrograms,
   calculateEngagementScore
 } from '../lib/intelligence';
-import logoImage from '../assets/images/Logo w bg.png';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
+import kabisigApi from '../lib/api';
 
 interface OfficialPagesProps {
   currentRole: UserRole; // 'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'
@@ -246,7 +246,8 @@ export default function OfficialPages({
       <head>
         <title>KABISIG SK Official Compliance Report - Barangay ${currentTenant?.name || 'San Francisco'}</title>
         <style>
-          body { font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
+          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
           .header { text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 30px; }
           .header h1 { font-size: 14px; font-weight: 700; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
           .header h2 { font-size: 20px; font-weight: 800; color: #091d64; margin: 5px 0; }
@@ -788,7 +789,8 @@ export default function OfficialPages({
       <head>
         <title>${title} - SK Council Report</title>
         <style>
-          body { font-family: 'Arial', sans-serif; color: #0f172a; margin: 0; padding: 40px; background: #fff; }
+          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
+          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #0f172a; margin: 0; padding: 40px; background: #fff; }
           .header { text-align: center; border-bottom: 2px solid #091d64; padding-bottom: 15px; margin-bottom: 25px; }
           .header h1 { font-size: 11px; font-weight: bold; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1.5px; }
           .header h2 { font-size: 18px; font-weight: bold; color: #091d64; margin: 4px 0; }
@@ -1144,12 +1146,7 @@ export default function OfficialPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2">
-          <img 
-            src={logoImage.src}
-            alt="KABISIG Logo" 
-            className="w-24 h-auto object-contain bg-white/10 rounded p-1"
-            referrerPolicy="no-referrer"
-          />
+          <KabisigLogo className="w-24" />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">{currentRole}</span>
         </div>
         <button 
@@ -1224,12 +1221,7 @@ export default function OfficialPages({
           {/* Logo brand - Using Official Logo */}
           <div className="p-6 border-b border-slate-50">
             <div className="flex flex-col items-center">
-              <img 
-                src={logoImage.src}
-                alt="KABISIG Logo" 
-                className="w-40 h-auto object-contain"
-                referrerPolicy="no-referrer"
-              />
+              <KabisigLogo className="w-40" />
             </div>
           </div>
 
@@ -5459,12 +5451,18 @@ export default function OfficialPages({
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button onClick={() => setShowYouthDetailModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
                 <button 
-                  onClick={() => {
-                    setLocalYouthProfiles(prev => prev.map(y => y.id === selectedYouthProfile.id ? { ...y, ...youthEditForm } : y));
+                  onClick={async () => {
+                    const updated = { ...selectedYouthProfile, ...youthEditForm };
+                    setLocalYouthProfiles(prev => prev.map(y => y.id === selectedYouthProfile.id ? updated : y));
+                    try {
+                      await kabisigApi.updateProfile(updated);
+                    } catch (err) {
+                      console.warn('Database save warning from Official edit:', err);
+                    }
                     setShowYouthDetailModal(false);
                     alert(`Profile updated for ${youthEditForm.name}!`);
                   }} 
-                  className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs"
+                  className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs cursor-pointer"
                 >
                   Save Profile Updates
                 </button>

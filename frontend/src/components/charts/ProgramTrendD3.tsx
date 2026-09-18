@@ -23,7 +23,7 @@ export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const width = 720;
+    const width = Math.max(720, data.length * 48);
     const height = 260;
     const margin = { top: 20, right: 18, bottom: 34, left: 38 };
     const x = d3.scalePoint<string>().domain(data.map((point) => point.label)).range([margin.left, width - margin.right]);
@@ -35,7 +35,7 @@ export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
       .attr('transform', `translate(0,${height - margin.bottom})`)
       .call(d3.axisBottom(x).tickSize(0))
       .call((axis) => axis.select('.domain').attr('stroke', '#e2e8f0'))
-      .call((axis) => axis.selectAll('text').attr('fill', '#64748b').attr('font-size', '11px'));
+      .call((axis) => axis.selectAll('text').attr('fill', '#64748b').attr('font-size', '10px'));
 
     svg.append('g')
       .attr('transform', `translate(${margin.left},0)`)

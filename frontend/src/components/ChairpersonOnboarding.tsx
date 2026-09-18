@@ -9,10 +9,13 @@ import {
   Loader2, 
   LogOut,
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { BarangayTenant } from '../types';
-import { KabisigLogo, DecorativeBackground } from './PublicPages';
+import { KabisigLogo, DecorativeBackground, validatePassword } from './PublicPages';
 import { kabisigApi } from '../lib/api';
 
 interface ChairpersonOnboardingProps {
@@ -33,6 +36,10 @@ export default function ChairpersonOnboarding({
   const [birthdate, setBirthdate] = useState('');
   const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
   const [address, setAddress] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -88,6 +95,22 @@ export default function ChairpersonOnboarding({
       return;
     }
 
+    if (!password || !confirmPassword) {
+      setErrorMsg('Please create your password and confirm it before continuing.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setErrorMsg('Password and Confirm Password do not match.');
+      return;
+    }
+
+    const passwordChecks = validatePassword(password);
+    if (!passwordChecks.minLength || !passwordChecks.hasUpper || !passwordChecks.hasLower || !passwordChecks.hasNumber || !passwordChecks.hasSymbol) {
+      setErrorMsg('Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await kabisigApi.completeProfile({
@@ -96,6 +119,8 @@ export default function ChairpersonOnboarding({
         birthdate,
         sex,
         address: address.trim(),
+        password,
+        confirmPassword,
       });
 
       if (!res.success) {
@@ -289,6 +314,57 @@ export default function ChairpersonOnboarding({
                   required
                 />
                 <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Password Setup */}
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Create Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Create a secure password"
+                    className="w-full pl-9 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
+                    required
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Confirm Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter your password"
+                    className="w-full pl-9 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
+                    required
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
             </div>
 

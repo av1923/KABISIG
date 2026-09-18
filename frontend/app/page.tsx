@@ -1,4 +1,3 @@
-import App from '../src/App';
 'use client';
 
 import dynamic from 'next/dynamic';

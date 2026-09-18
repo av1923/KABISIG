@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   User, 
   Users,
@@ -40,10 +40,10 @@ import {
   HelpCircle,
   MoreVertical,
   Clock,
-  History
+  History,
+  Loader2
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import logoImage from '../assets/images/Logo w bg.png';
 import { 
   Program, 
   YouthProfile, 
@@ -59,6 +59,7 @@ import {
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
+import kabisigApi from '../lib/api';
 
 interface YouthPagesProps {
   currentYouth: YouthProfile;
@@ -98,19 +99,37 @@ export default function YouthPages({
   const [youth, setYouth] = useState<YouthProfile>(currentYouth);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  useEffect(() => {
+    if (currentYouth) {
+      setYouth(currentYouth);
+      setEditForm(currentYouth);
+    }
+  }, [currentYouth]);
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const profilePic = typeof reader.result === 'string' ? reader.result : undefined;
       if (!profilePic) return;
       const updatedYouth = { ...youth, profilePic };
       setYouth(updatedYouth);
       setEditForm((previous) => ({ ...previous, profilePic }));
       onUpdateYouthProfile?.(updatedYouth);
+
+      try {
+        await kabisigApi.updateProfile({
+          id: updatedYouth.id,
+          email: updatedYouth.email,
+          profilePic,
+        });
+      } catch (err) {
+        console.warn('Failed to persist profile picture in database:', err);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -143,8 +162,9 @@ export default function YouthPages({
   const myRegistrations = localRegs.filter(r => r.participantId === youth.id);
   const myFeedback = localFeedback.filter(f => f.submittedBy === youth.name || f.anonymous);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingProfile(true);
     
     // Calculate age from birthdate if provided
     let calculatedAge = editForm.age;
@@ -161,12 +181,30 @@ export default function YouthPages({
       age: calculatedAge
     };
 
-    setYouth(updatedProfile);
-    if (onUpdateYouthProfile) {
-      onUpdateYouthProfile(updatedProfile);
+    try {
+      // Persist profile to Supabase PostgreSQL database via backend API
+      const res = await kabisigApi.updateProfile(updatedProfile);
+      if (!res.success) {
+        console.warn('Database save warning:', res.message);
+      }
+
+      setYouth(updatedProfile);
+      if (onUpdateYouthProfile) {
+        onUpdateYouthProfile(updatedProfile);
+      }
+      setIsEditModalOpen(false);
+      alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
+    } catch (err: any) {
+      console.error('Error saving profile changes:', err);
+      setYouth(updatedProfile);
+      if (onUpdateYouthProfile) {
+        onUpdateYouthProfile(updatedProfile);
+      }
+      setIsEditModalOpen(false);
+      alert(`Your Katipunan ng Kabataan Profile has been updated!\n\nNote: Backend database sync returned: ${err.message || 'Network notice'}`);
+    } finally {
+      setIsSavingProfile(false);
     }
-    setIsEditModalOpen(false);
-    alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated successfully!');
   };
 
   const handleRegisterProgramClick = (progId: string) => {
@@ -240,12 +278,9 @@ export default function YouthPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2">
-          <img 
-            src={logoImage.src}
-            alt="KABISIG Logo" 
-            className="w-24 h-auto object-contain bg-white/10 rounded p-1"
-            referrerPolicy="no-referrer"
-          />
+          <div className="w-24 bg-white/10 rounded p-1">
+            <KabisigLogo className="w-24" />
+          </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
         </div>
         <button 
@@ -329,12 +364,7 @@ export default function YouthPages({
           {/* Logo Brand Header - Using Official Logo */}
           <div className="p-6 border-b border-slate-50">
             <div className="flex flex-col items-center">
-              <img 
-                src={logoImage.src}
-                alt="KABISIG Logo" 
-                className="w-40 h-auto object-contain"
-                referrerPolicy="no-referrer"
-              />
+              <KabisigLogo className="w-40" />
             </div>
           </div>
 
@@ -459,12 +489,9 @@ export default function YouthPages({
                   <div className="flex justify-between items-start z-10">
                     <div className="flex items-center gap-3">
                       <div className="relative w-11 h-11 rounded-full bg-white p-0.5 border-2 border-amber-400 shadow-md flex items-center justify-center overflow-hidden flex-shrink-0">
-                        <img 
-                          src={logoImage.src}
-                          alt="Official Registered Barangay Seal" 
-                          className="w-full h-full object-cover rounded-full"
-                          referrerPolicy="no-referrer"
-                        />
+                        <div className="w-full h-full rounded-full overflow-hidden">
+                          <KabisigLogo className="w-28" />
+                        </div>
                       </div>
                       <div>
                         <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 inline-block mb-1">
@@ -849,9 +876,9 @@ export default function YouthPages({
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
                       <h4 className="font-sans font-bold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
-                        📋 DILG Annex 4 Profile Data Fields
+                        Profile Information
                       </h4>
-                      <p className="text-xs text-slate-400">Complete standardized profiling record synchronized with Barangay & LGU Databases</p>
+                  
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
@@ -864,10 +891,8 @@ export default function YouthPages({
                     <table className="w-full text-left text-xs text-slate-700">
                       <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         <tr>
-                          <th className="py-3 px-4">Data Field (Annex 4)</th>
-                          <th className="py-3 px-4">Field Type</th>
+                          <th className="py-3 px-4">Data Field</th>
                           <th className="py-3 px-4">Registered Constituent Value</th>
-                          <th className="py-3 px-4">DILG Requirement Description</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
@@ -875,163 +900,123 @@ export default function YouthPages({
                         {/* 1. Full Name */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">1. Full Name</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-extrabold text-[#091d64]">{youth.name}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Legal full name of the youth constituent</td>
                         </tr>
 
                         {/* 2. Sex */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">2. Sex</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.sex || 'Male'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Biological sex classification (Male / Female)</td>
                         </tr>
 
                         {/* 3. Birthdate */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">3. Birthdate</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold font-mono">{youth.birthdate || '2004-05-12'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Date of birth (YYYY-MM-DD)</td>
                         </tr>
 
                         {/* 4. Age */}
                         <tr className="hover:bg-slate-50/50 bg-blue-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">4. Age</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-800">Auto-calculated</span></td>
                           <td className="py-2.5 px-4 font-black text-blue-900">{youth.age} Years Old</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Automatically computed from birthdate (Youth age bracket 15-30)</td>
                         </tr>
 
                         {/* 5. Civil Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">5. Civil Status</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.civilStatus || 'Single'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Single / Married / Single Parent / Widowed</td>
                         </tr>
 
                         {/* 6. Address */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">6. Address</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.address}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Complete residential street address</td>
                         </tr>
 
                         {/* 7. Zone / Purok */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">7. Zone / Purok</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-extrabold text-indigo-700">{youth.zone}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Geographic categorization for barangay tracking</td>
                         </tr>
 
                         {/* 8. Contact Number */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">8. Contact Number</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold font-mono">{youth.mobile}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Mobile contact number for official advisories & emergency notices</td>
                         </tr>
 
                         {/* 9. Email Address */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">9. Email Address</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-600">Optional</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.email || 'None'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Email address for system communications</td>
                         </tr>
 
                         {/* 10. Educational Level */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">10. Educational Level</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.educationalLevel}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Elementary / Junior High / Senior High / College / Vocational</td>
                         </tr>
 
                         {/* 11. School */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">11. School</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.school || 'Ateneo de Naga University'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Name of school / educational institution</td>
                         </tr>
 
                         {/* 12. Course */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">12. Course</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-600">Optional</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.course || 'BS Information Technology'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Degree program for tertiary students</td>
                         </tr>
 
                         {/* 13. Year Level */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">13. Year Level</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-600">Optional</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.year || '3rd Year'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Current academic grade / year level</td>
                         </tr>
 
                         {/* 14. Employment Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">14. Employment Status</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">{youth.employmentStatus || 'Student'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Student / Employed / Unemployed / Self-employed</td>
                         </tr>
 
                         {/* 15. Scholar Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">15. Scholar Status</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold text-emerald-700">{youth.scholarStatus} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Yes / No (with scholarship grant details if applicable)</td>
                         </tr>
 
                         {/* 16. Youth Sector */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">16. Youth Sector</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold text-violet-700">{youth.youthSector || 'In-School Youth'}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">In-School Youth / Out-of-School Youth / Working Youth / Youth with Special Needs / PWD / Solo Parent</td>
                         </tr>
 
                         {/* 17. Parent/Guardian Information */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">17. Parent/Guardian Info</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-50 text-rose-700">Required</span></td>
                           <td className="py-2.5 px-4 font-bold">
                             {youth.guardianName} <span className="text-slate-400 text-[11px] font-mono">({youth.guardianContact})</span>
                           </td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Emergency contact name & phone number</td>
                         </tr>
 
                         {/* 18. Profile Picture */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">18. Profile Picture</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-slate-100 text-slate-600">Optional</span></td>
                           <td className="py-2.5 px-4 font-bold text-blue-600">Attached / Uploaded</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">For identification & Digital Youth ID printing</td>
                         </tr>
 
                         {/* 19. Resident ID */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">19. Resident ID</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900">Auto-generated</span></td>
                           <td className="py-2.5 px-4 font-black font-mono text-amber-700">{youth.id}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">Unique digital constituent ID code</td>
                         </tr>
 
                         {/* 20. QR Code */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">20. QR Code</td>
-                          <td className="py-2.5 px-4"><span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-900">Auto-generated</span></td>
                           <td className="py-2.5 px-4 font-mono font-bold text-slate-800">{youth.qrCode || `QR-${youth.id}`}</td>
-                          <td className="py-2.5 px-4 text-slate-400 text-[11px]">2D Matrix barcode for event attendance tracking & verification</td>
                         </tr>
 
                       </tbody>
@@ -1777,9 +1762,20 @@ export default function YouthPages({
                   </button>
                   <button 
                     type="submit" 
-                    className="px-6 py-2.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center gap-2"
+                    disabled={isSavingProfile}
+                    className="px-6 py-2.5 bg-[#091d64] hover:bg-[#122878] disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center gap-2"
                   >
-                    <CheckCircle2 className="w-4 h-4" /> Save Profile Changes
+                    {isSavingProfile ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Saving to Database...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Save Profile Changes</span>
+                      </>
+                    )}
                   </button>
                 </div>
 

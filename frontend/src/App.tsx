@@ -64,11 +64,20 @@ export default function App() {
     kabisigApi.getBarangays().then((data) => {
       if (data && data.length > 0) {
         setTenants(prev => {
-          return data.map(b => {
-            const existing = prev.find(p => p.id === b.id) || NAGA_BARANGAYS.find(p => p.id === b.id);
+          return prev.map(existing => {
+            const backendBarangay = data.find(b => b.id === existing.id);
+            if (!backendBarangay) return existing;
+
             return {
-              ...b,
-              logo: b.logo || existing?.logo || ''
+              ...existing,
+              ...backendBarangay,
+              // Keep frontend defaults for optional metrics until the user explicitly enters data.
+              youthPopulation: existing.youthPopulation ?? 0,
+              activePrograms: existing.activePrograms ?? 0,
+              totalBudget: existing.totalBudget ?? 0,
+              allocatedBudget: existing.allocatedBudget ?? 0,
+              spentBudget: existing.spentBudget ?? 0,
+              logo: backendBarangay.logo || existing.logo || ''
             };
           });
         });
@@ -103,10 +112,57 @@ export default function App() {
               const bgy = NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
               if (bgy) setCurrentTenant(bgy);
             }
+            const meta = user.user_metadata || {};
+            const resident = user.resident_profile || {};
+            const youthFromDb: YouthProfile = {
+              id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
+              name: user.full_name || meta.name || 'Anonymous',
+              sex: resident.sex || meta.sex || 'Female',
+              birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
+              age: meta.age || 20,
+              civilStatus: meta.civilStatus || 'Single',
+              address: resident.address || meta.address || '',
+              zone: meta.zone || 'Zone 1',
+              mobile: user.phone || meta.mobile || '',
+              email: user.email || meta.email || '',
+              educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+              school: meta.school || '',
+              course: meta.course || '',
+              year: meta.year || '1st Year',
+              employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
+              scholarStatus: meta.scholarStatus || 'Non-Scholar',
+              scholarshipType: meta.scholarshipType || '',
+              youthSector: meta.youthSector || 'In-School Youth',
+              guardianName: meta.guardianName || '',
+              guardianContact: meta.guardianContact || '',
+              profilePic: meta.profilePic,
+              qrCode: resident.qr_code_url || meta.qrCode,
+              status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : 'Pending'),
+              barangayId: user.tenant_id || '',
+              dateRegistered: user.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+              registeredRole: 'Youth Constituent',
+            };
+            setCurrentYouth(youthFromDb);
+            setYouthProfiles(prev => [youthFromDb, ...prev.filter(p => p.id !== youthFromDb.id && p.email !== youthFromDb.email)]);
           }
         }
       }).catch(console.warn);
     }
+
+    // Load registered youth constituents from database
+    kabisigApi.getYouthProfiles().then((profiles) => {
+      if (profiles && profiles.length > 0) {
+        setYouthProfiles(prev => {
+          const merged = [...profiles];
+          prev.forEach(p => {
+            if (!merged.some(m => m.id === p.id || m.email.toLowerCase() === p.email.toLowerCase())) {
+              merged.push(p);
+            }
+          });
+          return merged;
+        });
+      }
+    }).catch(console.warn);
   }, []);
 
   // --- AUTH CALLBACKS ---
@@ -155,13 +211,59 @@ export default function App() {
 
     const resolvedRole: UserRole = (role === 'SK Chairperson' || role === 'Barangay Admin') ? 'Barangay Admin' : role;
     setCurrentTenant(selectedTenant);
-    setCurrentRole(role);
     setCurrentRole(resolvedRole);
 
-    if (role === 'Youth Constituent') {
     if (resolvedRole === 'Youth Constituent') {
-      const matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName?.toLowerCase() || p.name === emailOrName) || youthProfiles[0];
-      setCurrentYouth(matchedProfile);
+      let matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName?.toLowerCase() || p.name === emailOrName);
+      if (userObj) {
+        const meta = userObj.user_metadata || {};
+        const resident = userObj.resident_profile || {};
+        const mergedFromDb: YouthProfile = {
+          id: meta.id || resident.digital_youth_id || matchedProfile?.id || `SK-2026-${userObj.id.slice(0, 4)}`,
+          name: userObj.full_name || meta.name || matchedProfile?.name || 'Anonymous',
+          sex: resident.sex || meta.sex || matchedProfile?.sex || 'Female',
+          birthdate: resident.birthdate || meta.birthdate || matchedProfile?.birthdate || '2005-01-01',
+          age: meta.age || matchedProfile?.age || 20,
+          civilStatus: meta.civilStatus || matchedProfile?.civilStatus || 'Single',
+          address: resident.address || meta.address || matchedProfile?.address || '',
+          zone: meta.zone || matchedProfile?.zone || 'Zone 1',
+          mobile: userObj.phone || meta.mobile || matchedProfile?.mobile || '',
+          email: userObj.email || meta.email || matchedProfile?.email || emailOrName || '',
+          educationalLevel: meta.educationalLevel || resident.educational_status || matchedProfile?.educationalLevel || 'College',
+          school: meta.school || matchedProfile?.school || '',
+          course: meta.course || matchedProfile?.course || '',
+          year: meta.year || matchedProfile?.year || '1st Year',
+          employmentStatus: meta.employmentStatus || resident.employment_status || matchedProfile?.employmentStatus || 'Student',
+          scholarStatus: meta.scholarStatus || matchedProfile?.scholarStatus || 'Non-Scholar',
+          scholarshipType: meta.scholarshipType || matchedProfile?.scholarshipType || '',
+          youthSector: meta.youthSector || matchedProfile?.youthSector || 'In-School Youth',
+          guardianName: meta.guardianName || matchedProfile?.guardianName || '',
+          guardianContact: meta.guardianContact || matchedProfile?.guardianContact || '',
+          profilePic: meta.profilePic || matchedProfile?.profilePic,
+          qrCode: resident.qr_code_url || meta.qrCode || matchedProfile?.qrCode,
+          status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : 'Pending'),
+          barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
+          dateRegistered: userObj.created_at?.split('T')[0] || matchedProfile?.dateRegistered || new Date().toISOString().split('T')[0],
+          registeredRole: 'Youth Constituent',
+        };
+        matchedProfile = mergedFromDb;
+      }
+
+      if (!matchedProfile && typeof window !== 'undefined') {
+        const saved = localStorage.getItem('kabisig_current_youth');
+        if (saved) {
+          try { matchedProfile = JSON.parse(saved); } catch {}
+        }
+      }
+
+      const finalProfile = matchedProfile || youthProfiles[0];
+      setCurrentYouth(finalProfile);
+      if (finalProfile) {
+        setYouthProfiles(prev => {
+          const exists = prev.some(p => p.id === finalProfile.id || p.email.toLowerCase() === finalProfile.email.toLowerCase());
+          return exists ? prev.map(p => (p.id === finalProfile.id || p.email.toLowerCase() === finalProfile.email.toLowerCase()) ? finalProfile : p) : [finalProfile, ...prev];
+        });
+      }
     } else {
       setCurrentYouth(null);
     }
@@ -213,6 +315,16 @@ export default function App() {
       setAuditLogs(prev => [newLog, ...prev]);
     } else {
       // Connect to backend API: Register Youth Constituent
+      const validEduStatuses = ['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'];
+      const isEdu = validEduStatuses.includes(boundProfile.educationalLevel || '');
+      const eduStatus = isEdu ? boundProfile.educationalLevel : undefined;
+      let empStatus = boundProfile.employmentStatus;
+      if (!empStatus) {
+        if (boundProfile.educationalLevel === 'Employed') empStatus = 'Employed';
+        else if (boundProfile.educationalLevel === 'Unemployed' || boundProfile.educationalLevel === 'Out of School Youth') empStatus = 'Unemployed';
+        else empStatus = 'Student';
+      }
+
       kabisigApi.registerYouth({
         email: boundProfile.email,
         full_name: boundProfile.name,
@@ -221,8 +333,8 @@ export default function App() {
         birthdate: boundProfile.birthdate || '2005-01-01',
         sex: (boundProfile.sex as any) || 'Prefer not to say',
         address: boundProfile.address || `${boundProfile.zone || 'Zone 1'}, ${targetTenant.name}, Naga City`,
-        educational_status: boundProfile.educationalLevel,
-        employment_status: boundProfile.employmentStatus,
+        educational_status: eduStatus,
+        employment_status: empStatus,
         is_registered_voter: false,
       }).catch(console.warn);
 
@@ -502,16 +614,21 @@ export default function App() {
             const brgyName = targetTenant ? targetTenant.name : id;
 
             // Connect to backend API: Persist settings and Chairperson in Supabase database
-            const res = await kabisigApi.saveBarangayConfiguration(id, {
+            const configPayload: any = {
               chairperson: updated.chairperson,
               chairpersonEmail: updated.chairpersonEmail || `sk.${brgyName.toLowerCase().replace(/\s+/g, '')}@naga.gov.ph`,
               contact: updated.contact,
               youthPopulation: updated.youthPopulation,
-              allocatedBudget: updated.allocatedBudget ?? updated.totalBudget,
-              totalBudget: updated.totalBudget,
               status: updated.status,
               logo: updated.logo,
-            });
+            };
+
+            if (typeof updated.totalBudget === 'number' && updated.totalBudget > 0) {
+              configPayload.allocatedBudget = updated.allocatedBudget ?? updated.totalBudget;
+              configPayload.totalBudget = updated.totalBudget;
+            }
+
+            const res = await kabisigApi.saveBarangayConfiguration(id, configPayload);
 
             if (!res.success) {
               throw new Error(res.message || 'Database error: Could not save barangay settings.');
@@ -541,9 +658,8 @@ export default function App() {
       )}
 
       {/* 3. BARANGAY ADMIN (SK CHAIRPERSON) PANELS */}
-      {currentRole === 'Barangay Admin' && currentTenant && (
       {(currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson') && currentTenant && (
-        (!currentUser?.full_name || currentUser.full_name.trim() === '' || currentUser.full_name === 'Pending Chairperson' || !currentUser?.resident_profile?.birthdate) ? (
+        (!currentUser?.full_name || currentUser.full_name.trim() === '' || currentUser.full_name === 'Pending Chairperson' || currentUser.full_name === 'Pending Invitation' || !currentUser?.resident_profile?.birthdate) ? (
           <ChairpersonOnboarding 
             currentBarangay={currentTenant}
             userEmail={currentEmail || currentUser?.email || ''}
@@ -608,6 +724,10 @@ export default function App() {
           onUpdateYouthProfile={(updated) => {
             setCurrentYouth(updated);
             setYouthProfiles(prev => prev.map(p => p.id === updated.id ? updated : p));
+            kabisigApi.updateProfile(updated).catch(console.warn);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('kabisig_current_youth', JSON.stringify(updated));
+            }
           }}
           onLogout={handleLogout}
         />

@@ -19,12 +19,22 @@ function calculateAge(birthdateStr: string): number {
   return age;
 }
 
+const SecurePasswordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters long')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter (A-Z)')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter (a-z)')
+  .regex(/[0-9]/, 'Password must contain at least one number (0-9)')
+  .regex(/[^A-Za-z0-9]/, 'Password must contain at least one symbol (!@#$%^&*...)');
+
 const CompleteProfileSchema = z.object({
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),
   phone: z.string().optional(),
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD'),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   address: z.string().min(3, 'Address is required'),
+  password: z.string().optional(),
+  confirmPassword: z.string().optional(),
 });
 
 /**
@@ -40,8 +50,26 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     return;
   }
 
-  const { full_name, phone, birthdate, sex, address } = parseResult.data;
+  const { full_name, phone, birthdate, sex, address, password, confirmPassword } = parseResult.data;
   const user = (req as AuthRequest).user!;
+
+  if ((password || confirmPassword) && (!password || !confirmPassword)) {
+    sendError(res, 'Please provide both password and confirm password.', 400);
+    return;
+  }
+
+  if (password && confirmPassword && password !== confirmPassword) {
+    sendError(res, 'Password and confirm password must match.', 400);
+    return;
+  }
+
+  if (password) {
+    const passwordCheck = SecurePasswordSchema.safeParse(password);
+    if (!passwordCheck.success) {
+      sendError(res, 'Invalid password format.', 400, passwordCheck.error.flatten().fieldErrors);
+      return;
+    }
+  }
 
   // 1. Age Verification (Republic Act No. 10742 - SK Reform Act: 15 to 30 years old)
   const age = calculateAge(birthdate);
@@ -108,13 +136,19 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     return;
   }
 
-  // 5. Update auth user metadata in Supabase Auth
+  // 5. Update auth user metadata and password in Supabase Auth
   try {
-    await supabaseAdmin.auth.admin.updateUserById(user.id, {
+    const authUpdateData: Record<string, any> = {
       user_metadata: { full_name: full_name.trim() },
-    });
+    };
+
+    if (password) {
+      authUpdateData.password = password;
+    }
+
+    await supabaseAdmin.auth.admin.updateUserById(user.id, authUpdateData);
   } catch (authErr) {
-    console.warn('Failed to update Supabase Auth user_metadata:', authErr);
+    console.warn('Failed to update Supabase Auth user metadata/password:', authErr);
   }
 
   // 6. Record system audit log
@@ -154,6 +188,365 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     },
     'Chairperson profile completed successfully. Full administrative access unlocked.'
   );
+});
+
+function normalizeEducationalStatus(level?: string | null): 'Elementary' | 'High School' | 'Vocational' | 'College' | 'Post-Graduate' | 'Out of School Youth' | null {
+  if (!level) return null;
+  const valid = ['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'] as const;
+  if (valid.includes(level as any)) return level as any;
+  if (level.includes('High')) return 'High School';
+  if (level.includes('College') || level.includes('Tertiary')) return 'College';
+  if (level.includes('Vocational')) return 'Vocational';
+  if (level.includes('Elementary')) return 'Elementary';
+  if (level.includes('Post') || level.includes('Master') || level.includes('Doctor')) return 'Post-Graduate';
+  if (level.includes('Out of School') || level.includes('OSY')) return 'Out of School Youth';
+  return null;
+}
+
+function normalizeEmploymentStatus(status?: string | null): 'Employed' | 'Unemployed' | 'Self-Employed' | 'Student' | null {
+  if (!status) return null;
+  const valid = ['Employed', 'Unemployed', 'Self-Employed', 'Student'] as const;
+  if (valid.includes(status as any)) return status as any;
+  const lower = status.toLowerCase();
+  if (lower.includes('student')) return 'Student';
+  if (lower.includes('self')) return 'Self-Employed';
+  if (lower.includes('unemploy') || lower.includes('out-of-school')) return 'Unemployed';
+  if (lower.includes('employ') || lower.includes('working')) return 'Employed';
+  return 'Student';
+}
+
+async function resolveUserRecord(req: Request): Promise<{ id: string; email?: string | undefined; tenant_id?: string | null | undefined; full_name?: string | undefined } | null> {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+  if (token) {
+    try {
+      const { data: { user: authUser } } = await supabaseAdmin.auth.getUser(token);
+      if (authUser) {
+        const { data: dbUser } = await supabaseAdmin
+          .from('users')
+          .select('id, email, tenant_id, full_name')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        if (dbUser) return dbUser;
+        return { id: authUser.id, email: authUser.email };
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
+  const candidateId = req.body?.user_id || req.body?.id || req.query?.user_id || req.query?.id;
+  const candidateEmail = req.body?.email || req.query?.email;
+
+  if (candidateId && typeof candidateId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId)) {
+    const { data: userById } = await supabaseAdmin
+      .from('users')
+      .select('id, email, tenant_id, full_name')
+      .eq('id', candidateId)
+      .maybeSingle();
+    if (userById) return userById;
+  }
+
+  if (candidateEmail && typeof candidateEmail === 'string' && candidateEmail.includes('@')) {
+    const { data: userByEmail } = await supabaseAdmin
+      .from('users')
+      .select('id, email, tenant_id, full_name')
+      .eq('email', candidateEmail.trim().toLowerCase())
+      .maybeSingle();
+    if (userByEmail) return userByEmail;
+  }
+
+  if (candidateId && typeof candidateId === 'string') {
+    const { data: resident } = await supabaseAdmin
+      .from('resident_profile')
+      .select('user_id')
+      .eq('digital_youth_id', candidateId)
+      .maybeSingle();
+    if (resident) {
+      const { data: userByRes } = await supabaseAdmin
+        .from('users')
+        .select('id, email, tenant_id, full_name')
+        .eq('id', resident.user_id)
+        .maybeSingle();
+      if (userByRes) return userByRes;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * PUT /api/users/profile
+ * Updates Constituent / Youth Profile in public.users, public.resident_profile,
+ * and permanently saves all 20 Katipunan ng Kabataan profile fields in Supabase Auth user_metadata.
+ */
+router.put('/profile', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await resolveUserRecord(req);
+    if (!user) {
+      sendError(res, 'User record not found. Please log in or provide email.', 404);
+      return;
+    }
+
+    const userId = user.id;
+    const body = req.body || {};
+
+    // 1. Update public.users
+    const userUpdates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (body.name || body.full_name) {
+      userUpdates.full_name = (body.name || body.full_name).trim();
+    }
+    if (body.mobile || body.phone) {
+      userUpdates.phone = (body.mobile || body.phone).trim();
+    }
+
+    await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
+
+    // 2. Fetch or update resident_profile
+    const { data: existingProfile } = await supabaseAdmin
+      .from('resident_profile')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const { data: dbUser } = await supabaseAdmin
+      .from('users')
+      .select('tenant_id, email, full_name')
+      .eq('id', userId)
+      .single();
+
+    const tenantId = dbUser?.tenant_id || body.barangayId || existingProfile?.tenant_id;
+    const birthdate = body.birthdate || existingProfile?.birthdate || '2005-01-01';
+    const sex = body.sex || existingProfile?.sex || 'Female';
+    const address = body.address || existingProfile?.address || 'Naga City';
+    const rawEdu = body.educationalLevel || body.educational_status;
+    const rawEmp = body.employmentStatus || body.employment_status;
+    const normalizedEdu = normalizeEducationalStatus(rawEdu) || existingProfile?.educational_status;
+    const normalizedEmp = normalizeEmploymentStatus(rawEmp) || existingProfile?.employment_status;
+
+    const residentPayload: Record<string, any> = {
+      user_id: userId,
+      tenant_id: tenantId,
+      birthdate,
+      sex: ['Male', 'Female', 'Other', 'Prefer not to say'].includes(sex) ? sex : 'Female',
+      address,
+      educational_status: normalizedEdu || null,
+      employment_status: normalizedEmp || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (body.digital_youth_id || body.id) {
+      residentPayload.digital_youth_id = body.digital_youth_id || body.id;
+    }
+    if (body.qrCode || body.qr_code_url) {
+      residentPayload.qr_code_url = body.qrCode || body.qr_code_url;
+    }
+
+    const { error: profileUpsertErr } = await supabaseAdmin
+      .from('resident_profile')
+      .upsert(residentPayload, { onConflict: 'user_id' });
+
+    if (profileUpsertErr) {
+      console.warn('Resident Profile Upsert Notice:', profileUpsertErr.message);
+    }
+
+    // 3. Update Supabase Auth user_metadata to persist all 20 KK fields
+    let updatedMetadata: Record<string, any> = {};
+    try {
+      const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const prevMeta = authData?.user?.user_metadata || {};
+      const calculatedAge = calculateAge(birthdate);
+
+      updatedMetadata = {
+        ...prevMeta,
+        id: body.id || prevMeta.id || residentPayload.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
+        name: body.name || body.full_name || prevMeta.name || userUpdates.full_name || user.full_name,
+        sex: body.sex || prevMeta.sex || sex,
+        birthdate: birthdate,
+        age: body.age || calculatedAge || prevMeta.age || 20,
+        civilStatus: body.civilStatus || prevMeta.civilStatus || 'Single',
+        address: body.address || prevMeta.address || address,
+        zone: body.zone || prevMeta.zone || 'Zone 1',
+        mobile: body.mobile || body.phone || prevMeta.mobile || userUpdates.phone,
+        email: body.email || dbUser?.email || user.email || prevMeta.email,
+        educationalLevel: body.educationalLevel || prevMeta.educationalLevel || normalizedEdu || 'College',
+        school: body.school ?? prevMeta.school ?? '',
+        course: body.course ?? prevMeta.course ?? '',
+        year: body.year ?? prevMeta.year ?? '1st Year',
+        employmentStatus: body.employmentStatus || prevMeta.employmentStatus || normalizedEmp || 'Student',
+        scholarStatus: body.scholarStatus || prevMeta.scholarStatus || 'Non-Scholar',
+        scholarshipType: body.scholarshipType ?? prevMeta.scholarshipType ?? '',
+        youthSector: body.youthSector || prevMeta.youthSector || 'In-School Youth',
+        guardianName: body.guardianName ?? prevMeta.guardianName ?? '',
+        guardianContact: body.guardianContact ?? prevMeta.guardianContact ?? '',
+        profilePic: body.profilePic ?? prevMeta.profilePic ?? '',
+        qrCode: body.qrCode || prevMeta.qrCode || residentPayload.qr_code_url || residentPayload.digital_youth_id,
+        status: body.status || prevMeta.status || 'Pending',
+        barangayId: tenantId,
+        dateRegistered: body.dateRegistered || prevMeta.dateRegistered || new Date().toISOString().split('T')[0],
+      };
+
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        user_metadata: updatedMetadata,
+      });
+    } catch (metaErr) {
+      console.warn('Failed to update Supabase Auth user_metadata:', metaErr);
+    }
+
+    // 4. Record Audit Log
+    await recordAuditLog({
+      tenantId,
+      userId,
+      action: 'UPDATE_YOUTH_PROFILE',
+      entityName: 'resident_profile',
+      entityId: userId,
+      details: {
+        full_name: userUpdates.full_name || user.full_name,
+        updated_fields: Object.keys(body),
+      },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(
+      res,
+      updatedMetadata,
+      'Katipunan ng Kabataan Profile updated and saved to the database successfully!'
+    );
+  } catch (err: any) {
+    console.error('Update Profile Handler Error:', err);
+    sendError(res, err.message || 'Internal error saving profile', 500);
+  }
+});
+
+/**
+ * GET /api/users/profile
+ * Returns the current user's complete KK profile from database.
+ */
+router.get('/profile', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = await resolveUserRecord(req);
+    if (!user) {
+      sendError(res, 'User profile not found.', 404);
+      return;
+    }
+
+    const { data: dbUser } = await supabaseAdmin
+      .from('users')
+      .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+      .eq('id', user.id)
+      .single();
+
+    const { data: authData } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    const meta = authData?.user?.user_metadata || {};
+    const resident = dbUser?.resident_profile || {};
+
+    const fullProfile = {
+      id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
+      name: dbUser?.full_name || meta.name || meta.full_name || '',
+      sex: resident.sex || meta.sex || 'Female',
+      birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
+      age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
+      civilStatus: meta.civilStatus || 'Single',
+      address: resident.address || meta.address || '',
+      zone: meta.zone || 'Zone 1',
+      mobile: dbUser?.phone || meta.mobile || '',
+      email: dbUser?.email || meta.email || '',
+      educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+      school: meta.school || '',
+      course: meta.course || '',
+      year: meta.year || '1st Year',
+      employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
+      scholarStatus: meta.scholarStatus || 'Non-Scholar',
+      scholarshipType: meta.scholarshipType || '',
+      youthSector: meta.youthSector || 'In-School Youth',
+      guardianName: meta.guardianName || '',
+      guardianContact: meta.guardianContact || '',
+      profilePic: meta.profilePic || '',
+      qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
+      status: dbUser?.status === 'active' ? 'Approved' : (dbUser?.status === 'rejected' ? 'Rejected' : 'Pending'),
+      barangayId: dbUser?.tenant_id || meta.barangayId || '',
+      dateRegistered: dbUser?.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
+      registeredRole: 'Youth Constituent',
+    };
+
+    sendSuccess(res, fullProfile, 'Profile retrieved successfully.');
+  } catch (err: any) {
+    sendError(res, err.message || 'Error retrieving profile', 500);
+  }
+});
+
+/**
+ * GET /api/users/youth-profiles
+ * Returns all Katipunan ng Kabataan constituents for a barangay.
+ */
+router.get('/youth-profiles', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const tenantId = req.query.tenant_id as string | undefined;
+
+    let query = supabaseAdmin
+      .from('users')
+      .select('*, resident_profile(*)')
+      .eq('role_id', 4);
+
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    const { data: users, error } = await query;
+    if (error) {
+      sendError(res, `Failed to load youth constituents: ${error.message}`, 500);
+      return;
+    }
+
+    const profiles = await Promise.all(
+      (users || []).map(async (u) => {
+        let meta: Record<string, any> = {};
+        try {
+          const { data: authData } = await supabaseAdmin.auth.admin.getUserById(u.id);
+          meta = authData?.user?.user_metadata || {};
+        } catch {
+          // Ignore
+        }
+
+        const resident = u.resident_profile || {};
+        return {
+          id: meta.id || resident.digital_youth_id || `SK-2026-${u.id.slice(0, 4)}`,
+          name: u.full_name || meta.name || '',
+          sex: resident.sex || meta.sex || 'Female',
+          birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
+          age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
+          civilStatus: meta.civilStatus || 'Single',
+          address: resident.address || meta.address || '',
+          zone: meta.zone || 'Zone 1',
+          mobile: u.phone || meta.mobile || '',
+          email: u.email || meta.email || '',
+          educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+          school: meta.school || '',
+          course: meta.course || '',
+          year: meta.year || '1st Year',
+          employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
+          scholarStatus: meta.scholarStatus || 'Non-Scholar',
+          scholarshipType: meta.scholarshipType || '',
+          youthSector: meta.youthSector || 'In-School Youth',
+          guardianName: meta.guardianName || '',
+          guardianContact: meta.guardianContact || '',
+          profilePic: meta.profilePic || '',
+          qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
+          status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : 'Pending'),
+          barangayId: u.tenant_id || meta.barangayId || '',
+          dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
+          registeredRole: 'Youth Constituent',
+        };
+      })
+    );
+
+    sendSuccess(res, profiles, 'Youth constituent profiles retrieved.');
+  } catch (err: any) {
+    sendError(res, err.message || 'Error fetching youth profiles', 500);
+  }
 });
 
 export default router;

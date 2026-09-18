@@ -191,7 +191,7 @@ router.patch('/:id', authenticateUser, requireRoles('SUPER_ADMIN'), async (req, 
     const chairEmail = updates.chairperson_email || updates.chairpersonEmail;
     const phone = updates.contact;
     // 1. If allocating budget, upsert into budget table for current year
-    if (allocatedBudget !== undefined) {
+    if (typeof allocatedBudget === 'number' && allocatedBudget > 0) {
         const currentYear = new Date().getFullYear();
         await supabaseAdmin.from('budget').upsert({
             tenant_id: id,
