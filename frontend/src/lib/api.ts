@@ -255,17 +255,83 @@ class KabisigApiClient {
     });
   }
 
+  async updateProgram(id: string, programData: any): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/programs/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(programData),
+    });
+  }
+
+  // --- DOCUMENTS ---
+  async getDocuments(tenantId?: string): Promise<any[]> {
+    const url = tenantId ? `/documents?tenant_id=${tenantId}` : '/documents';
+    const res = await this.request<any[]>(url, { method: 'GET' });
+    return res.success && res.data ? res.data : [];
+  }
+
+  async uploadDocument(payload: {
+    title: string;
+    document_type: string;
+    file_url: string;
+    status?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/documents', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async approveDocument(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/documents/${id}/approve`, {
+      method: 'PUT',
+    });
+  }
+
   // --- BUDGET & EXPENSES ---
   async getBudgets(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/budget?tenant_id=${tenantId}` : '/budget';
-    const res = await this.request<any[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    const res = await this.request<any>(url, { method: 'GET' });
+    if (res.success && res.data) {
+      if (Array.isArray(res.data)) return res.data;
+      if (res.data.allocations && Array.isArray(res.data.allocations)) return res.data.allocations;
+      return [res.data];
+    }
+    return [];
   }
 
   async getExpenses(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/budget/expenses?tenant_id=${tenantId}` : '/budget/expenses';
     const res = await this.request<any[]>(url, { method: 'GET' });
     return res.success && res.data ? res.data : [];
+  }
+
+  async recordExpense(payload: {
+    budget_id: string;
+    program_id?: string;
+    title: string;
+    description?: string;
+    gross_amount: number;
+    tax_type: 'VAT' | 'NON_VAT' | 'EXEMPT';
+    tax_rate?: number;
+    receipt_url?: string;
+    expense_date?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/budget/expense', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // --- ANALYTICS ---
+  async getBarangayAnalytics(tenantId?: string): Promise<any | null> {
+    const url = tenantId ? `/analytics/barangay?tenant_id=${tenantId}` : '/analytics/barangay';
+    const res = await this.request<any>(url, { method: 'GET' });
+    return res.success && res.data ? res.data : null;
+  }
+
+  async getFederationAnalytics(): Promise<any | null> {
+    const res = await this.request<any>('/analytics/federation', { method: 'GET' });
+    return res.success && res.data ? res.data : null;
   }
 
   // --- FEEDBACK ---

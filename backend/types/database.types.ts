@@ -254,5 +254,5 @@ export interface AuthenticatedUser {
 }
 
 export interface AuthRequest extends Request {
-  user?: AuthenticatedUser;
+  user?: AuthenticatedUser | undefined;
 }

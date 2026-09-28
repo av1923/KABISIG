@@ -2,7 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 const router = express.Router();
 const CreateProgramSchema = z.object({
     title: z.string().min(3, 'Title must be at least 3 characters'),
@@ -18,13 +18,13 @@ const UpdateProgramSchema = CreateProgramSchema.partial();
 const AttendanceScanSchema = z.object({
     qr_payload: z.string().min(1, 'QR payload or digital ID is required'),
 });
-router.get('/', authenticateUser, async (req, res) => {
+router.get('/', optionalAuthenticateUser, async (req, res) => {
     const user = req.user;
     const { category, status, tenant_id } = req.query;
     let query = supabaseAdmin
         .from('program')
         .select('*, barangay(name), program_registrations(count)', { count: 'exact' });
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user && user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {

@@ -2,7 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 const router = express.Router();
 const CreateDocumentSchema = z.object({
     title: z.string().min(3, 'Document title is required'),
@@ -20,13 +20,13 @@ const CreateDocumentSchema = z.object({
 const RejectDocumentSchema = z.object({
     feedback: z.string().min(5, 'A clear reason for rejection must be provided in feedback'),
 });
-router.get('/', authenticateUser, async (req, res) => {
+router.get('/', optionalAuthenticateUser, async (req, res) => {
     const user = req.user;
     const { status, document_type, tenant_id } = req.query;
     let query = supabaseAdmin
         .from('documents')
         .select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)');
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user && user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {

@@ -220,6 +220,6 @@ export interface AuthenticatedUser {
     status: UserStatus;
 }
 export interface AuthRequest extends Request {
-    user?: AuthenticatedUser;
+    user?: AuthenticatedUser | undefined;
 }
 //# sourceMappingURL=database.types.d.ts.map

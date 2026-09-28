@@ -82,29 +82,37 @@ export default function SuperAdminPages({
   const totalActivePrograms = programs.length + barangays.reduce((sum, b) => sum + toNumber(b.activePrograms), 0);
   const avgBudgetUtilization = totalCityBudget > 0 ? Math.round((totalCitySpent / totalCityBudget) * 100) : 0;
 
+  // Consistently sort barangays in alphabetical order
+  const sortedBarangays = [...barangays].sort((a, b) => a.name.localeCompare(b.name));
+
   // Data for Charts
-  const chartBarangayData = barangays.map(b => {
+  const chartBarangayData = sortedBarangays.map(b => {
     const youthPopulation = toNumber(b.youthPopulation);
     const totalBudget = toNumber(b.totalBudget);
     const spentBudget = toNumber(b.spentBudget);
-    const registeredYouth = Math.round(youthPopulation * 0.72);
+    const registeredYouth = youthPopulation;
 
     return {
+      id: b.id,
       name: b.name.length > 10 ? b.name.slice(0, 10) + '...' : b.name,
       fullName: b.name,
       youthPopulation,
       registeredYouth,
+      activePrograms: toNumber(b.activePrograms),
       budget: Math.round(totalBudget / 1000), // in thousands
       spent: Math.round(spentBudget / 1000),
       utilization: totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0
     };
   });
 
-  const programTrendData = chartBarangayData.map((item, index) => ({
-    label: item.name,
-    programs: Math.max(0, Math.round((item.youthPopulation / 500) + index)),
-    participants: Math.max(0, item.registeredYouth),
-  }));
+  const programTrendData = chartBarangayData.map((item) => {
+    const brgyPrograms = programs.filter(p => (p as any).tenant_id === item.id || (p as any).barangayId === item.id);
+    return {
+      label: item.name,
+      programs: brgyPrograms.length || item.activePrograms,
+      participants: item.registeredYouth,
+    };
+  });
 
   const pieBudgetData = [
     { name: 'Governance & Admin', value: Math.round(totalCityBudget * 0.35), color: '#091d64' },
@@ -115,7 +123,7 @@ export default function SuperAdminPages({
   ];
 
   // Filtered Barangays list
-  const filteredBarangays = barangays.filter(b => {
+  const filteredBarangays = sortedBarangays.filter(b => {
     const bgyDistrict = b.district || BARANGAY_DISTRICTS[b.name] || 'District 1';
     const matchesSearch = b.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           b.chairperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -126,7 +134,7 @@ export default function SuperAdminPages({
   });
 
   const handleOpenAssignModal = (b?: BarangayTenant) => {
-    const target = b || barangays[0];
+    const target = b || sortedBarangays[0];
     setAssigningBarangay(target || null);
     setAssignEmail(target?.chairpersonEmail && target.chairpersonEmail !== '' ? target.chairpersonEmail : '');
     setAssignError(null);
@@ -160,7 +168,7 @@ export default function SuperAdminPages({
       }
 
       await onUpdateBarangay(assigningBarangay.id, {
-        chairperson: 'Pending Invitation',
+        chairperson: res.data?.full_name || (assigningBarangay.chairperson && assigningBarangay.chairperson !== 'Unassigned' ? assigningBarangay.chairperson : 'Pending Invitation'),
         chairpersonEmail: email,
       });
 
@@ -196,12 +204,12 @@ export default function SuperAdminPages({
     const defaultLogo = DEFAULT_BARANGAY_LOGOS[b.name] || '';
     setModalForm({
       name: b.name,
-      chairperson: '',
-      chairpersonEmail: '',
-      youthPopulation: 0,
-      totalBudget: 0,
-      contact: '',
-      status: '',
+      chairperson: b.chairperson && b.chairperson !== 'Unassigned' ? b.chairperson : '',
+      chairpersonEmail: b.chairpersonEmail || '',
+      youthPopulation: b.youthPopulation || 0,
+      totalBudget: b.totalBudget || 0,
+      contact: b.contact || '',
+      status: b.status || '',
       logo: b.logo || defaultLogo
     });
     setShowModal(true);
@@ -237,8 +245,8 @@ export default function SuperAdminPages({
 
     const payload: Partial<BarangayTenant> & { chairpersonEmail?: string; contact?: string; logo?: string } = {
       ...modalForm,
-      chairperson: editingBarangay?.chairperson || '',
-      chairpersonEmail: email,
+      chairperson: modalForm.chairperson.trim(),
+      chairpersonEmail: email || editingBarangay?.chairpersonEmail || '',
       contact: modalForm.contact.trim(),
       youthPopulation: modalForm.youthPopulation || 0,
       status: nextStatus,
@@ -271,6 +279,9 @@ export default function SuperAdminPages({
         type: 'success',
         text: `Barangay ${currentName} settings and SK Chairperson assignment saved permanently to the database.`
       });
+      setTimeout(() => {
+        setShowModal(false);
+      }, 1200);
     } catch (err: any) {
       setModalNotice({
         type: 'error',
@@ -489,8 +500,15 @@ export default function SuperAdminPages({
                     </div>
                   </div>
                   <span className="text-3xl font-black text-[#091d64] block">{totalYouthPop.toLocaleString()}</span>
-                  <p className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
-                    <TrendingUp className="w-3.5 h-3.5" /> 72% Registered KK Members
+                  <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                    {totalYouthPop > 0 ? (
+                      <>
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-600 font-bold">{totalYouthPop} Registered KK Members</span>
+                      </>
+                    ) : (
+                      '0 Registered KK Members'
+                    )}
                   </p>
                 </div>
 
@@ -501,8 +519,12 @@ export default function SuperAdminPages({
                       <Wallet className="w-5 h-5" />
                     </div>
                   </div>
-                  <span className="text-3xl font-black text-emerald-600 block">₱{(totalCityBudget / 1000000).toFixed(1)}M</span>
-                  <p className="text-[11px] text-slate-400 font-medium">₱{(totalCitySpent / 1000000).toFixed(1)}M Spent ({avgBudgetUtilization}%)</p>
+                  <span className="text-3xl font-black text-emerald-600 block">
+                    {totalCityBudget > 0 ? `₱${(totalCityBudget / 1000000).toFixed(1)}M` : '₱0'}
+                  </span>
+                  <p className="text-[11px] text-slate-400 font-medium">
+                    {totalCitySpent > 0 ? `₱${(totalCitySpent / 1000000).toFixed(1)}M Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
+                  </p>
                 </div>
 
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
@@ -574,18 +596,28 @@ export default function SuperAdminPages({
                     <h4 className="font-sans font-bold text-slate-800 text-sm">Municipal Budget Allocation</h4>
                     <p className="text-xs text-slate-400">Distribution by Youth Development Pillar</p>
                   </div>
-                  <div className="h-52 w-full min-w-0 overflow-hidden">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <PieChart>
-                        <Pie data={pieBudgetData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} innerRadius={35} paddingAngle={3}>
-                          {pieBudgetData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => `₱${(value / 1000000).toFixed(2)}M`} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {totalCityBudget === 0 ? (
+                    <div className="h-52 w-full flex flex-col items-center justify-center text-center p-4">
+                      <div className="w-12 h-12 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-2 font-bold text-lg">
+                        ₱0
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">No Budget Allocated Yet</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Barangay AIP budgets have not been inputted yet</p>
+                    </div>
+                  ) : (
+                    <div className="h-52 w-full min-w-0 overflow-hidden">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                        <PieChart>
+                          <Pie data={pieBudgetData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={65} innerRadius={35} paddingAngle={3}>
+                            {pieBudgetData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => `₱${(value / 1000000).toFixed(2)}M`} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                   <div className="space-y-1.5 pt-2 border-t border-slate-100">
                     {pieBudgetData.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[11px] font-semibold">
@@ -593,7 +625,9 @@ export default function SuperAdminPages({
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                           <span className="text-slate-600 truncate max-w-[140px]">{item.name}</span>
                         </div>
-                        <span className="font-bold text-slate-900">₱{(item.value / 1000000).toFixed(1)}M</span>
+                        <span className="font-bold text-slate-900">
+                          {item.value > 0 ? `₱${(item.value / 1000000).toFixed(1)}M` : '₱0'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -630,10 +664,10 @@ export default function SuperAdminPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
-                      {barangays.slice(0, 5).map(b => {
+                      {sortedBarangays.slice(0, 5).map(b => {
                         const totalBudget = toNumber(b.totalBudget);
                         const spentBudget = toNumber(b.spentBudget);
-                        const spent = spentBudget || Math.round(totalBudget * 0.65);
+                        const spent = spentBudget;
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
@@ -956,14 +990,14 @@ export default function SuperAdminPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
-                      {barangays.map(b => {
+                      {sortedBarangays.map(b => {
                         const youthPopulation = toNumber(b.youthPopulation);
                         const totalBudget = toNumber(b.totalBudget);
                         const spentBudget = toNumber(b.spentBudget);
                         const activePrograms = toNumber(b.activePrograms);
-                        const reg = Math.round(youthPopulation * 0.72);
+                        const reg = youthPopulation;
                         const rate = totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0;
-                        const registrationPct = youthPopulation > 0 ? Math.round((reg / youthPopulation) * 100) : 0;
+                        const registrationPct = youthPopulation > 0 ? 100 : 0;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64]">Brgy. {b.name}</td>
@@ -1221,7 +1255,7 @@ export default function SuperAdminPages({
                     }}
                     className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                   >
-                    {barangays.map(b => (
+                    {sortedBarangays.map(b => (
                       <option key={b.id} value={b.id}>
                         Barangay {b.name} ({b.chairperson && b.chairperson !== 'Unassigned' ? `Assigned: ${b.chairperson}` : 'Unassigned'})
                       </option>
@@ -1395,6 +1429,20 @@ export default function SuperAdminPages({
                       </button>
                     )}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    SK Chairperson Full Name
+                  </label>
+                  <input
+                    type="text"
+                    value={modalForm.chairperson}
+                    onChange={(e) => setModalForm({ ...modalForm, chairperson: e.target.value })}
+                    placeholder="e.g. Hon. Juan Dela Cruz (or auto-resolved if already registered)"
+                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-[#091d64] focus:outline-none bg-slate-50 text-slate-800"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Optional. Automatically resolved if the email belongs to a registered user.</p>
                 </div>
 
                 <div>

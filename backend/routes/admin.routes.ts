@@ -276,6 +276,7 @@ router.post(
       {
         user_id: targetUserId,
         email: cleanEmail,
+        full_name: (existingUser?.full_name && existingUser.full_name !== 'Pending Invitation' ? existingUser.full_name : existingAuthUser?.user_metadata?.full_name) || null,
         barangay_id,
         barangay_name: barangay.name,
         role: 'BARANGAY_ADMIN',

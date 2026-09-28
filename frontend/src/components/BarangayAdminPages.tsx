@@ -81,9 +81,11 @@ import {
 } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
+import { DEFAULT_BARANGAY_LOGOS } from '../data';
 
 export interface BarangayAdminPagesProps {
   currentBarangay: BarangayTenant;
+  currentUser?: any;
   programs: Program[];
   youthProfiles: YouthProfile[];
   documents: DocumentRecord[];
@@ -100,6 +102,7 @@ export interface BarangayAdminPagesProps {
 
 export default function BarangayAdminPages({
   currentBarangay,
+  currentUser,
   programs = [],
   youthProfiles = [],
   documents = [],
@@ -118,6 +121,7 @@ export default function BarangayAdminPages({
   >('dashboard');
 
   const [searchTerm, setSearchTerm] = useState('');
+  const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
 
   const generatePDFReport = (reportTitle: string = 'COA Annual Audit & AIP Financial Performance Report') => {
     const printWindow = window.open('', '_blank');
@@ -129,7 +133,7 @@ export default function BarangayAdminPages({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${reportTitle} - Barangay ${currentBarangay?.name || 'San Francisco'}</title>
+        <title>${reportTitle} - Barangay ${currentBarangay?.name || 'Barangay'}</title>
         <style>
           body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
           .header { text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 30px; }
@@ -153,7 +157,7 @@ export default function BarangayAdminPages({
       <body>
         <div class="header">
           <h1>Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</h1>
-          <h2>Barangay ${currentBarangay?.name || 'San Francisco'} &bull; Sangguniang Kabataan Council</h2>
+          <h2>Barangay ${currentBarangay?.name || 'Barangay'} &bull; Sangguniang Kabataan Council</h2>
           <p>Official Statutory ${reportTitle} &bull; Date Generated: ${new Date().toLocaleDateString()}</p>
         </div>
 
@@ -233,7 +237,7 @@ export default function BarangayAdminPages({
           <p>Certified Correct & Attested:</p>
           <div class="sign">
             HON. CHAIRPERSON &bull; SK EXECUTIVE BOARD<br>
-            <span style="font-weight: normal; color: #64748b;">Barangay ${currentBarangay?.name || 'San Francisco'}, City of Naga</span>
+            <span style="font-weight: normal; color: #64748b;">Barangay ${currentBarangay?.name || 'Barangay'}, City of Naga</span>
           </div>
         </div>
 
@@ -307,7 +311,7 @@ export default function BarangayAdminPages({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${title} - Barangay ${currentBarangay?.name || 'San Francisco'}</title>
+        <title>${title} - Barangay ${currentBarangay?.name || 'Barangay'}</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
           body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #0f172a; margin: 0; padding: 40px; background: #ffffff; }
@@ -341,7 +345,7 @@ export default function BarangayAdminPages({
       <body>
         <div class="header">
           <p class="republic">Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</p>
-          <p class="city">SANGGUNIANG KABATAAN EXECUTIVE COUNCIL &bull; BARANGAY ${currentBarangay?.name?.toUpperCase() || 'SAN FRANCISCO'}</p>
+          <p class="city">SANGGUNIANG KABATAAN EXECUTIVE COUNCIL &bull; BARANGAY ${currentBarangay?.name?.toUpperCase() || 'BARANGAY'}</p>
           <h2>${title}</h2>
           <p class="meta">Statutory Document Ref: <strong>${refCode}</strong> &bull; Generated: ${new Date().toLocaleDateString()} &bull; DILG RA 10742 Compliant System Record</p>
         </div>
@@ -399,7 +403,7 @@ export default function BarangayAdminPages({
     description: '',
     startDate: '2026-05-20',
     endDate: '2026-05-22',
-    location: `Barangay ${currentBarangay?.name || 'San Francisco'} Hall Complex`,
+    location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
     maxParticipants: 100,
     budgetAllocation: 50000,
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
@@ -440,7 +444,7 @@ export default function BarangayAdminPages({
   });
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
-  const intelligentBudget = getBudgetAnalytics(currentBarangay?.totalBudget || 850000, programs, expenses);
+  const intelligentBudget = getBudgetAnalytics(currentBarangay?.totalBudget || 0, programs, expenses);
   const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
   const complianceIssues = getComplianceIssues(localProfiles, programs, documents, expenses);
   const lowEngagementItems = detectLowEngagement(localProfiles, registrations);
@@ -464,7 +468,7 @@ export default function BarangayAdminPages({
       category: annCategory,
       content: annContent,
       targetPurok: annTarget,
-      author: currentBarangay?.chairperson || 'SK Chairperson',
+      author: currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson'),
       datePublished: new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
       postStatus: 'Published',
       fbSyncStatus: (annPostToFb && fbAutoSyncEnabled) ? 'Synced' : 'Draft',
@@ -482,51 +486,64 @@ export default function BarangayAdminPages({
     );
   };
 
+  const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
+  const femaleCount = localProfiles.filter(p => p.sex === 'Female').length;
+  const otherCount = localProfiles.filter(p => p.sex !== 'Male' && p.sex !== 'Female').length;
   const demographicsDonutData = [
-    { name: 'Male', value: 1120, color: '#1e3a8a' },
-    { name: 'Female', value: 980, color: '#dc2626' },
-    { name: 'Other', value: 50, color: '#f59e0b' }
+    { name: 'Male', value: maleCount, color: '#1e3a8a' },
+    { name: 'Female', value: femaleCount, color: '#dc2626' },
+    { name: 'Other', value: otherCount, color: '#f59e0b' }
   ];
 
-  const programParticipationData = [
-    { name: 'Leadership Training', count: 850 },
-    { name: 'Sports Development', count: 620 },
-    { name: 'Environmental Clean-up', count: 430 },
-    { name: 'Digital Literacy', count: 250 }
+  const programParticipationData = programs.length > 0 ? programs.map(p => ({
+    name: p.title.length > 22 ? p.title.slice(0, 20) + '...' : p.title,
+    count: p.registeredCount || registrations.filter(r => r.programId === p.id).length || 0
+  })) : [
+    { name: 'No Active Programs', count: 0 }
   ];
 
-  const budgetVsActualMonthlyData = [
-    { month: 'Jan', budget: 2300000, spent: 1800000 },
-    { month: 'Feb', budget: 2450000, spent: 1950000 },
-    { month: 'Mar', budget: 2600000, spent: 2100000 },
-    { month: 'Apr', budget: 2750000, spent: 2300000 },
-    { month: 'May', budget: 2900000, spent: 2500000 },
-    { month: 'Jun', budget: 3000000, spent: 2000000 },
-    { month: 'Jul', budget: 3100000, spent: 2200000 },
-    { month: 'Aug', budget: 3250000, spent: 1900000 },
-    { month: 'Sep', budget: 3300000, spent: 2400000 },
-    { month: 'Oct', budget: 3450000, spent: 2100000 },
-    { month: 'Nov', budget: 3500000, spent: 2650000 },
-    { month: 'Dec', budget: 3600000, spent: 2350000 }
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const totalBgyBudget = currentBarangay?.totalBudget || 0;
+  const monthlyAlloc = totalBgyBudget > 0 ? Math.round(totalBgyBudget / 12) : 0;
+  const budgetVsActualMonthlyData = months.map((month, idx) => {
+    const monthExpenses = expenses.filter(e => {
+      const d = e.date || e.created_at || e.expense_date ? new Date(e.date || e.created_at || e.expense_date) : null;
+      return d && d.getMonth() === idx;
+    }).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0);
+    return {
+      month,
+      budget: monthlyAlloc,
+      spent: monthExpenses
+    };
+  });
+
+  const progColors = ['#091d64', '#2563eb', '#60a5fa', '#93c5fd', '#94a3b8', '#cbd5e1'];
+  const totalAllocBudget = currentBarangay?.totalBudget || (programs.reduce((sum, p) => sum + (p.budgetAllocation || 0), 0) || 1);
+  const budgetAllocationByProgramData = programs.length > 0 ? programs.map((p, idx) => {
+    const alloc = p.budgetAllocation || 0;
+    const pct = totalAllocBudget > 0 ? ((alloc / totalAllocBudget) * 100).toFixed(1) : '0';
+    return {
+      name: p.title,
+      value: alloc,
+      color: progColors[idx % progColors.length],
+      percentage: `${pct}%`
+    };
+  }) : [
+    { name: 'Unallocated', value: totalBgyBudget, color: '#091d64', percentage: '100%' }
   ];
 
-  const budgetAllocationByProgramData = [
-    { name: 'Youth Leadership Summit', value: 6000000, color: '#091d64', percentage: '23.6%' },
-    { name: 'Sports Development Program', value: 5000000, color: '#2563eb', percentage: '19.7%' },
-    { name: 'Community Service Initiatives', value: 4500000, color: '#60a5fa', percentage: '17.7%' },
-    { name: 'Skills Training & Seminars', value: 3800000, color: '#93c5fd', percentage: '14.9%' },
-    { name: 'Environmental Programs', value: 2600000, color: '#94a3b8', percentage: '10.2%' },
-    { name: 'Others', value: 3580000, color: '#cbd5e1', percentage: '14.0%' }
-  ];
-
-  const budgetUtilizationTable = [
-    { program: 'Youth Leadership Summit', allocated: 6000000, spent: 2950000, remaining: 3050000, rate: 49.2 },
-    { program: 'Sports Development Program', allocated: 5000000, spent: 2800000, remaining: 2200000, rate: 56.0 },
-    { program: 'Community Service Initiatives', allocated: 4500000, spent: 1750000, remaining: 2750000, rate: 38.9 },
-    { program: 'Skills Training & Seminars', allocated: 3800000, spent: 1950000, remaining: 1850000, rate: 51.3 },
-    { program: 'Environmental Programs', allocated: 2600000, spent: 1450000, remaining: 1150000, rate: 55.8 },
-    { program: 'Others', allocated: 3580000, spent: 1750000, remaining: 1830000, rate: 48.9 }
-  ];
+  const budgetUtilizationTable = programs.map(p => {
+    const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0) || p.spentBudget || 0;
+    const remaining = Math.max(0, (p.budgetAllocation || 0) - spent);
+    const rate = p.budgetAllocation > 0 ? Number(((spent / p.budgetAllocation) * 100).toFixed(1)) : 0;
+    return {
+      program: p.title,
+      allocated: p.budgetAllocation || 0,
+      spent,
+      remaining,
+      rate
+    };
+  });
 
   const handleCreateProgramSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -558,7 +575,7 @@ export default function BarangayAdminPages({
       description: '',
       startDate: '2026-05-20',
       endDate: '2026-05-22',
-      location: `Barangay ${currentBarangay?.name || 'San Francisco'} Hall Complex`,
+      location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
       maxParticipants: 100,
       budgetAllocation: 50000,
       status: 'Upcoming'
@@ -570,8 +587,15 @@ export default function BarangayAdminPages({
       
       {/* MOBILE HEADER */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <KabisigLogo className="scale-75" />
+          {barangayLogo && (
+            <img 
+              src={barangayLogo} 
+              alt={`Brgy. ${currentBarangay?.name} Seal`} 
+              className="w-7 h-7 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0 shadow-2xs" 
+            />
+          )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
         <button 
@@ -587,7 +611,16 @@ export default function BarangayAdminPages({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 lg:hidden flex flex-col justify-between p-6 animate-in fade-in duration-200">
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
-              <KabisigLogo className="scale-90" />
+              <div className="flex items-center gap-3">
+                <KabisigLogo className="scale-90" />
+                {barangayLogo && (
+                  <img 
+                    src={barangayLogo} 
+                    alt={`Brgy. ${currentBarangay?.name} Seal`} 
+                    className="w-8 h-8 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0" 
+                  />
+                )}
+              </div>
               <button 
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10"
@@ -681,8 +714,21 @@ export default function BarangayAdminPages({
       {/* DESKTOP SIDEBAR */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-100 flex-col justify-between h-full flex-shrink-0 z-40 shadow-sm">
         <div className="flex flex-col h-full overflow-y-auto">
-          <div className="p-6 pb-4 border-b border-slate-50 flex flex-col items-center">
+          <div className="p-5 border-b border-slate-100 flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50/40 to-transparent">
             <KabisigLogo className="scale-90" />
+            {barangayLogo && (
+              <div className="flex items-center gap-2.5 px-3 py-2 bg-white rounded-xl border border-slate-200/70 shadow-2xs w-full">
+                <img 
+                  src={barangayLogo} 
+                  alt={`Barangay ${currentBarangay?.name} Official Seal`} 
+                  className="w-9 h-9 object-contain shrink-0" 
+                />
+                <div className="min-w-0 flex-1 text-left">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Official Seal</span>
+                  <p className="text-[11px] font-extrabold text-[#091d64] truncate leading-tight">Brgy. {currentBarangay?.name}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <nav className="p-4 space-y-1 flex-1">
@@ -807,27 +853,38 @@ export default function BarangayAdminPages({
         
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
-                {activeMenu === 'dashboard' && `Barangay ${currentBarangay?.name || 'San Francisco'} Dashboard`}
-                {activeMenu === 'youth' && 'Youth Management Registry'}
-                {activeMenu === 'programs' && 'Manage Programs'}
-                {activeMenu === 'budget' && 'Budget Monitoring'}
-                {activeMenu === 'documents' && 'Document Repository'}
-                {activeMenu === 'reports' && 'Reports Desk'}
-                {activeMenu === 'announcements' && 'Sangguniang Kabataan Announcements'}
-                {activeMenu === 'calendar' && 'AIP Program Scheduling Calendar'}
-                {activeMenu === 'settings' && 'System Parameters Settings'}
-                {activeMenu === 'profile' && 'Sangguniang Kabataan Admin Profile'}
-              </h1>
-              <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
-                Barangay Admin
+          <div className="flex items-center gap-4">
+            {barangayLogo && (
+              <div className="w-13 h-13 rounded-2xl bg-white border border-slate-200/80 p-1 flex items-center justify-center overflow-hidden shadow-xs shrink-0">
+                <img 
+                  src={barangayLogo} 
+                  alt={`Barangay ${currentBarangay?.name} Seal`} 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
+                  {activeMenu === 'dashboard' && `Barangay ${currentBarangay?.name || 'Barangay'} Dashboard`}
+                  {activeMenu === 'youth' && 'Youth Management Registry'}
+                  {activeMenu === 'programs' && 'Manage Programs'}
+                  {activeMenu === 'budget' && 'Budget Monitoring'}
+                  {activeMenu === 'documents' && 'Document Repository'}
+                  {activeMenu === 'reports' && 'Reports Desk'}
+                  {activeMenu === 'announcements' && 'Sangguniang Kabataan Announcements'}
+                  {activeMenu === 'calendar' && 'AIP Program Scheduling Calendar'}
+                  {activeMenu === 'settings' && 'System Parameters Settings'}
+                  {activeMenu === 'profile' && 'Sangguniang Kabataan Admin Profile'}
+                </h1>
+                <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
+                  Barangay Admin
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" /> Sangguniang Kabataan • Barangay {currentBarangay?.name || 'Barangay'}, Naga City
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1">
-              Web-Based Kabataan Information System for Inclusive Governance
-            </span>
           </div>
 
           <div className="flex items-center gap-5">
@@ -891,7 +948,7 @@ export default function BarangayAdminPages({
             </div>
 
             <UserMenu 
-              userName={currentBarangay?.chairperson || 'SK Chairperson'}
+              userName={currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson')}
               role="SK Chairperson"
               onLogout={onLogout}
             />
@@ -908,20 +965,26 @@ export default function BarangayAdminPages({
               {/* METRICS CARDS */}
               <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                 
-                {/* CARD 1 */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-4 flex items-center gap-3">
-                  <div className="w-16 h-16 rounded-full bg-[#eff6ff] flex items-center justify-center border-2 border-blue-100 flex-shrink-0 overflow-hidden">
-                    <svg className="w-12 h-12 text-[#091d64]" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="50" cy="50" r="45" stroke="#091d64" strokeWidth="2" strokeDasharray="3,3" />
-                      <circle cx="50" cy="50" r="38" fill="#eff6ff" stroke="#e0f2fe" strokeWidth="2" />
-                      <path d="M50 20 L55 35 L70 35 L58 45 L62 60 L50 50 L38 60 L42 45 L30 35 L45 35 Z" fill="#fbbf24" stroke="#d97706" strokeWidth="1" />
-                      <path d="M25 65 Q 50 85 75 65" stroke="#091d64" strokeWidth="3" strokeLinecap="round" />
-                    </svg>
+                {/* CARD 1: BARANGAY IDENTITY */}
+                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-4 flex items-center gap-3.5">
+                  <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center border border-slate-200/80 p-1.5 flex-shrink-0 shadow-2xs overflow-hidden">
+                    {barangayLogo ? (
+                      <img 
+                        src={barangayLogo} 
+                        alt={`Barangay ${currentBarangay?.name} Official Seal`} 
+                        className="w-full h-full object-contain" 
+                      />
+                    ) : (
+                      <Building2 className="w-8 h-8 text-[#091d64]" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm text-[#091d64] leading-tight">Barangay {currentBarangay?.name || 'San Francisco'}</h3>
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                      Official Seal
+                    </span>
+                    <h3 className="font-extrabold text-sm text-[#091d64] leading-tight mt-1">Barangay {currentBarangay?.name || 'Barangay'}</h3>
                     <p className="text-[10px] text-slate-400 font-medium">Naga City, Camarines Sur</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-1">SK Council: 2026-2027</p>
+                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">SK Council {new Date().getFullYear()}</p>
                   </div>
                 </div>
 
@@ -934,7 +997,7 @@ export default function BarangayAdminPages({
                     </div>
                   </div>
                   <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">{currentBarangay?.youthPopulation || 2150}</h4>
+                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">{currentBarangay?.youthPopulation || localProfiles.length || 0}</h4>
                     <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">Ages 15-30</span>
                   </div>
                   <button 
@@ -974,8 +1037,8 @@ export default function BarangayAdminPages({
                     </div>
                   </div>
                   <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">₱ {(currentBarangay?.totalBudget || 850000).toLocaleString()}</h4>
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">FY 2026 Budget</span>
+                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">₱ {(currentBarangay?.totalBudget || 0).toLocaleString()}</h4>
+                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">FY {new Date().getFullYear()} Budget</span>
                   </div>
                   <button 
                     onClick={() => setActiveMenu('budget')}
@@ -1443,8 +1506,8 @@ export default function BarangayAdminPages({
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Budget</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {(currentBarangay?.totalBudget || 850000).toLocaleString()}</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">FY 2026 Budget</p>
+                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {(currentBarangay?.totalBudget || 0).toLocaleString()}</h4>
+                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">FY {new Date().getFullYear()} Budget</p>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
                     <Briefcase className="w-5 h-5" />
@@ -1454,7 +1517,7 @@ export default function BarangayAdminPages({
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Spent</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ 457,000</h4>
+                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.spent.toLocaleString()}</h4>
                     <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Live Disbursed</p>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
@@ -1465,8 +1528,8 @@ export default function BarangayAdminPages({
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Remaining</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ 393,000</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">46.2% Available</p>
+                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.remaining.toLocaleString()}</h4>
+                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{(currentBarangay?.totalBudget || 0) > 0 ? ((intelligentBudget.remaining / (currentBarangay?.totalBudget || 1)) * 100).toFixed(1) : '0'}% Available</p>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
                     <DollarSign className="w-5 h-5" />
@@ -1476,8 +1539,8 @@ export default function BarangayAdminPages({
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Utilization Rate</span>
-                    <h4 className="text-xl font-extrabold text-[#091d64] mt-1">53.8%</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">On Track</p>
+                    <h4 className="text-xl font-extrabold text-[#091d64] mt-1">{intelligentBudget.utilizationRate.toFixed(1)}%</h4>
+                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{intelligentBudget.consumptionTrend}</p>
                   </div>
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
                     <TrendingUp className="w-5 h-5" />
@@ -1575,7 +1638,7 @@ export default function BarangayAdminPages({
                 <div>
                   <h3 className="text-2xl font-black font-sans tracking-tight">Executive Reports & Decision Analytics Center</h3>
                   <p className="text-xs text-blue-100 mt-1 max-w-2xl">
-                    Synchronized live governance database across Barangay {currentBarangay?.name || 'San Francisco'}.
+                    Synchronized live governance database across Barangay {currentBarangay?.name || 'Barangay'}.
                   </p>
                 </div>
                 <button 
@@ -1814,7 +1877,7 @@ export default function BarangayAdminPages({
                   id: `DOC-2026-00${localDocs.length + 1}`,
                   title: newDocForm.title,
                   category: newDocForm.category,
-                  uploadedBy: `Hon. SK Chairperson (${currentBarangay?.name || 'San Francisco'})`,
+                  uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
                   uploadedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                   fileSize: '1.8 MB',
                   status: 'Approved',

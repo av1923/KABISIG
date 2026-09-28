@@ -59,6 +59,37 @@ const DEFAULT_BARANGAY_LOGOS: Record<string, string> = {
   'Triangulo': '/logos/triangulo_logo.png',
 };
 
+import fs from 'fs';
+import path from 'path';
+
+const LOGOS_FILE = path.resolve(process.cwd(), 'data', 'custom_logos.json');
+
+function getCustomLogos(): Record<string, string> {
+  try {
+    if (fs.existsSync(LOGOS_FILE)) {
+      return JSON.parse(fs.readFileSync(LOGOS_FILE, 'utf-8'));
+    }
+  } catch (err) {
+    console.warn('Error reading custom logos:', err);
+  }
+  return {};
+}
+
+function saveCustomLogo(idOrName: string, logoUrl: string) {
+  try {
+    const logos = getCustomLogos();
+    logos[idOrName] = logoUrl;
+    fs.writeFileSync(LOGOS_FILE, JSON.stringify(logos, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Error saving custom logo:', err);
+  }
+}
+
+function resolveBarangayLogo(id: string, name: string): string {
+  const custom = getCustomLogos();
+  return custom[id] || custom[name] || DEFAULT_BARANGAY_LOGOS[name] || '';
+}
+
 // GET /api/barangays - Public/Authenticated: List all 27 Naga City permanently seeded barangays
 router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -75,13 +106,14 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     // Fetch assigned SK Chairpersons (role_id = 2)
     const { data: chairpersons } = await supabaseAdmin
       .from('users')
-      .select('id, full_name, email, phone, tenant_id, status')
+      .select('id, full_name, email, phone, tenant_id, status, updated_at')
       .eq('role_id', 2)
-      .eq('status', 'active');
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false });
 
     const chairMap = new Map<string, { full_name: string; email: string; phone: string | null }>();
     chairpersons?.forEach((c) => {
-      if (c.tenant_id) {
+      if (c.tenant_id && !chairMap.has(c.tenant_id)) {
         chairMap.set(c.tenant_id, {
           full_name: c.full_name,
           email: c.email,
@@ -102,14 +134,18 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       }
     });
 
-    // Fetch registered youth population per barangay
-    const { data: youthProfiles } = await supabaseAdmin
-      .from('resident_profile')
-      .select('tenant_id');
+    // Fetch registered youth population per barangay (users with role_id = 4: YOUTH_CONSTITUENT)
+    const { data: youthUsers } = await supabaseAdmin
+      .from('users')
+      .select('tenant_id')
+      .eq('role_id', 4)
+      .eq('status', 'active');
 
     const youthCountMap = new Map<string, number>();
-    youthProfiles?.forEach((yp) => {
-      youthCountMap.set(yp.tenant_id, (youthCountMap.get(yp.tenant_id) || 0) + 1);
+    youthUsers?.forEach((u) => {
+      if (u.tenant_id) {
+        youthCountMap.set(u.tenant_id, (youthCountMap.get(u.tenant_id) || 0) + 1);
+      }
     });
 
     // Fetch current year budgets
@@ -146,10 +182,12 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
         status: 'Active',
-        logo: DEFAULT_BARANGAY_LOGOS[b.name] || '',
+        logo: resolveBarangayLogo(b.id, b.name),
         dateCreated: b.created_at || '2026-01-01',
       };
     });
+
+    enrichedBarangays.sort((a, b) => a.name.localeCompare(b.name));
 
     sendSuccess(res, enrichedBarangays, '27 Naga City barangays retrieved successfully.');
   } catch (err: any) {
@@ -186,7 +224,7 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
     chairperson: chair?.full_name || 'Unassigned',
     chairpersonEmail: chair?.email || '',
     contact: chair?.phone || '',
-    logo: DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
+    logo: resolveBarangayLogo(barangay.id, barangay.name),
   }, 'Barangay details retrieved.');
 });
 
@@ -223,7 +261,7 @@ router.patch(
     const phone = updates.contact;
 
     // 1. If allocating budget, upsert into budget table for current year
-    if (typeof allocatedBudget === 'number' && allocatedBudget > 0) {
+    if (typeof allocatedBudget === 'number' && allocatedBudget >= 0) {
       const currentYear = new Date().getFullYear();
       await supabaseAdmin.from('budget').upsert({
         tenant_id: id,
@@ -236,19 +274,32 @@ router.patch(
       }, { onConflict: 'tenant_id,fiscal_year,category' });
     }
 
-    // 2. If chairperson provided, update or assign in users table
-    if (chairName && chairName.trim() && chairName !== 'Unassigned' && chairEmail) {
+    // 2. Chairperson assignment and resolution
+    let resolvedChairName = chairName && chairName.trim() && chairName !== 'Unassigned' ? chairName.trim() : null;
+    let resolvedChairEmail = chairEmail && chairEmail.trim() ? chairEmail.trim().toLowerCase() : null;
+
+    if (resolvedChairEmail) {
       const { data: existingUser } = await supabaseAdmin
         .from('users')
-        .select('id, email')
-        .eq('email', chairEmail.trim().toLowerCase())
+        .select('id, email, full_name, tenant_id')
+        .eq('email', resolvedChairEmail)
         .maybeSingle();
 
       if (existingUser) {
+        resolvedChairName = resolvedChairName || existingUser.full_name || 'Hon. SK Chairperson';
+
+        // Unassign any other previous chairperson for this barangay
+        await supabaseAdmin
+          .from('users')
+          .update({ role_id: 4, updated_at: new Date().toISOString() })
+          .eq('tenant_id', id)
+          .eq('role_id', 2)
+          .neq('id', existingUser.id);
+
         await supabaseAdmin
           .from('users')
           .update({
-            full_name: chairName.trim(),
+            full_name: resolvedChairName,
             tenant_id: id,
             role_id: 2, // BARANGAY_ADMIN
             status: 'active',
@@ -258,29 +309,79 @@ router.patch(
           })
           .eq('id', existingUser.id);
       } else {
+        resolvedChairName = resolvedChairName || 'Hon. SK Chairperson';
         const secureTempPassword = `KabisigChairperson${new Date().getFullYear()}!`;
         const { data: authData } = await supabaseAdmin.auth.admin.createUser({
-          email: chairEmail.trim().toLowerCase(),
+          email: resolvedChairEmail,
           password: secureTempPassword,
           email_confirm: true,
-          user_metadata: { full_name: chairName.trim(), tenant_id: id, role_id: 2 },
+          user_metadata: { full_name: resolvedChairName, tenant_id: id, role_id: 2 },
         });
 
         if (authData?.user) {
-          await supabaseAdmin.from('users').insert([
-            {
-              id: authData.user.id,
-              tenant_id: id,
-              role_id: 2, // BARANGAY_ADMIN
-              full_name: chairName.trim(),
-              email: chairEmail.trim().toLowerCase(),
-              phone: phone || null,
-              status: 'active',
-              approved_by: admin.id,
-            },
-          ]);
+          // Unassign any previous chairperson for this barangay
+          await supabaseAdmin
+            .from('users')
+            .update({ role_id: 4, updated_at: new Date().toISOString() })
+            .eq('tenant_id', id)
+            .eq('role_id', 2);
+
+          await supabaseAdmin.from('users').upsert({
+            id: authData.user.id,
+            tenant_id: id,
+            role_id: 2, // BARANGAY_ADMIN
+            full_name: resolvedChairName,
+            email: resolvedChairEmail,
+            phone: phone || null,
+            status: 'active',
+            approved_by: admin.id,
+            updated_at: new Date().toISOString(),
+          });
         }
       }
+    } else if (resolvedChairName) {
+      const { data: currentChair } = await supabaseAdmin
+        .from('users')
+        .select('id, email')
+        .eq('tenant_id', id)
+        .eq('role_id', 2)
+        .maybeSingle();
+
+      if (currentChair) {
+        resolvedChairEmail = currentChair.email;
+        await supabaseAdmin
+          .from('users')
+          .update({
+            full_name: resolvedChairName,
+            phone: phone || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentChair.id);
+      }
+    }
+
+    // 3. Fallback to existing active chairperson in DB if not updated in this request
+    if (!resolvedChairName || !resolvedChairEmail) {
+      const { data: existingChair } = await supabaseAdmin
+        .from('users')
+        .select('full_name, email, phone')
+        .eq('tenant_id', id)
+        .eq('role_id', 2)
+        .eq('status', 'active')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingChair) {
+        if (!resolvedChairName) resolvedChairName = existingChair.full_name;
+        if (!resolvedChairEmail) resolvedChairEmail = existingChair.email;
+      }
+    }
+
+    if (updates.logo || updates.logo_url) {
+      const newLogo = updates.logo || updates.logo_url!;
+      saveCustomLogo(id, newLogo);
+      saveCustomLogo(existingBgy.name, newLogo);
     }
 
     await recordAuditLog({
@@ -289,20 +390,20 @@ router.patch(
       action: 'UPDATE_BARANGAY_SETTINGS',
       entityName: 'barangay',
       entityId: id,
-      details: { ...updates, updated_by: admin.full_name, barangay_name: existingBgy.name },
+      details: { ...updates, chairperson: resolvedChairName, chairpersonEmail: resolvedChairEmail, updated_by: admin.full_name, barangay_name: existingBgy.name },
       ipAddress: req.ip || null,
     });
 
     sendSuccess(res, {
       id,
       name: existingBgy.name,
-      chairperson: chairName || 'Unassigned',
-      chairpersonEmail: chairEmail || '',
+      chairperson: resolvedChairName || 'Unassigned',
+      chairpersonEmail: resolvedChairEmail || '',
       contact: phone || '',
-      allocatedBudget: allocatedBudget || 0,
-      totalBudget: allocatedBudget || 0,
+      allocatedBudget: allocatedBudget !== undefined ? allocatedBudget : 0,
+      totalBudget: allocatedBudget !== undefined ? allocatedBudget : 0,
       youthPopulation: updates.youth_population ?? updates.youthPopulation ?? 0,
-      logo: updates.logo || updates.logo_url || DEFAULT_BARANGAY_LOGOS[existingBgy.name] || '',
+      logo: resolveBarangayLogo(id, existingBgy.name),
       status: updates.status || 'Active',
     }, `Settings updated for Barangay ${existingBgy.name}.`);
   }

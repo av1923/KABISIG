@@ -63,6 +63,67 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
   }
 }
 
+export async function optionalAuthenticateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+  if (!token) {
+    (req as AuthRequest).user = undefined;
+    return next();
+  }
+
+  try {
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !authUser) {
+      (req as AuthRequest).user = undefined;
+      return next();
+    }
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, email, tenant_id, role_id, status, roles(role_name), barangay(name)')
+      .eq('id', authUser.id)
+      .single();
+
+    if (profileError || !profile) {
+      (req as AuthRequest).user = undefined;
+      return next();
+    }
+
+    const roleRecord = profile.roles as unknown as { role_name: RoleName } | { role_name: RoleName }[] | null;
+    const barangayRecord = profile.barangay as unknown as { name: string } | { name: string }[] | null;
+
+    const roleName: RoleName = Array.isArray(roleRecord)
+      ? roleRecord[0]?.role_name || 'YOUTH_CONSTITUENT'
+      : roleRecord?.role_name || 'YOUTH_CONSTITUENT';
+
+    const barangayName = Array.isArray(barangayRecord)
+      ? barangayRecord[0]?.name || null
+      : barangayRecord?.name || null;
+
+    const authenticatedUser: AuthenticatedUser = {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      role: roleName,
+      role_id: profile.role_id,
+      tenant_id: profile.tenant_id,
+      barangay_name: barangayName,
+      status: profile.status,
+    };
+
+    (req as AuthRequest).user = authenticatedUser;
+    next();
+  } catch (err) {
+    (req as AuthRequest).user = undefined;
+    next();
+  }
+}
+
 export function requireActiveUser(req: Request, res: Response, next: NextFunction): void {
   const user = (req as AuthRequest).user;
   if (!user) {

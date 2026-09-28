@@ -36,8 +36,9 @@ router.get('/barangay', authenticateUser, async (req, res) => {
         .single();
     const { data: profiles } = await supabaseAdmin
         .from('resident_profile')
-        .select('birthdate, sex, educational_status, employment_status, is_registered_voter')
-        .eq('tenant_id', tenantId);
+        .select('birthdate, sex, educational_status, employment_status, is_registered_voter, users!inner(role_id)')
+        .eq('tenant_id', tenantId)
+        .eq('users.role_id', 4);
     const totalRegisteredYouth = profiles?.length || 0;
     let votersCount = 0;
     const ageDistribution = { '15-17': 0, '18-24': 0, '25-30': 0 };
@@ -183,6 +184,7 @@ router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN'), async (
             budget_utilization_pct: utilization,
         };
     });
+    barangayMatrix.sort((a, b) => a.name.localeCompare(b.name));
     sendSuccess(res, {
         city: 'Naga City',
         fiscal_year: currentYear,

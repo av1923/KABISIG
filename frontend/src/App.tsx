@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import kabisigApi from './lib/api';
 import { 
   NAGA_BARANGAYS, 
+  DEFAULT_BARANGAY_LOGOS,
   INITIAL_PROGRAMS, 
   INITIAL_YOUTH_PROFILES, 
   INITIAL_REGISTRATIONS, 
@@ -64,23 +65,120 @@ export default function App() {
     kabisigApi.getBarangays().then((data) => {
       if (data && data.length > 0) {
         setTenants(prev => {
-          return prev.map(existing => {
+          const updated = prev.map(existing => {
             const backendBarangay = data.find(b => b.id === existing.id);
             if (!backendBarangay) return existing;
 
             return {
               ...existing,
               ...backendBarangay,
-              // Keep frontend defaults for optional metrics until the user explicitly enters data.
-              youthPopulation: existing.youthPopulation ?? 0,
-              activePrograms: existing.activePrograms ?? 0,
-              totalBudget: existing.totalBudget ?? 0,
-              allocatedBudget: existing.allocatedBudget ?? 0,
-              spentBudget: existing.spentBudget ?? 0,
+              youthPopulation: backendBarangay.youthPopulation ?? existing.youthPopulation ?? 0,
+              activePrograms: backendBarangay.activePrograms ?? existing.activePrograms ?? 0,
+              totalBudget: backendBarangay.totalBudget ?? existing.totalBudget ?? 0,
+              allocatedBudget: backendBarangay.allocatedBudget ?? existing.allocatedBudget ?? 0,
+              spentBudget: backendBarangay.spentBudget ?? existing.spentBudget ?? 0,
               logo: backendBarangay.logo || existing.logo || ''
             };
           });
+          return updated.sort((a, b) => a.name.localeCompare(b.name));
         });
+
+        // If user already restored with tenant_id, sync currentTenant with backend data
+        const token = kabisigApi.getToken();
+        if (token) {
+          kabisigApi.getCurrentUser().then(user => {
+            if (user?.tenant_id) {
+              const matchedBgy = data.find(b => b.id === user.tenant_id);
+              if (matchedBgy) {
+                setCurrentTenant({
+                  ...matchedBgy,
+                  logo: matchedBgy.logo || DEFAULT_BARANGAY_LOGOS[matchedBgy.name] || ''
+                });
+              }
+            }
+          }).catch(console.warn);
+        }
+      }
+    }).catch(console.warn);
+
+    // Load live programs from database
+    kabisigApi.getPrograms().then((progs) => {
+      if (progs && progs.length > 0) {
+        const formatted: Program[] = progs.map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          description: p.description || '',
+          startDate: p.start_date ? p.start_date.split('T')[0] : '2026-05-20',
+          endDate: p.end_date ? p.end_date.split('T')[0] : '2026-05-22',
+          location: p.location || 'Barangay Hall',
+          maxParticipants: p.total_slots || 100,
+          budgetAllocation: p.budgetAllocation || 0,
+          spentBudget: 0,
+          aipReference: `AIP-2026-${(p.id || 'PROG').slice(0, 4).toUpperCase()}`,
+          category: p.category || 'General',
+          status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
+          registeredCount: p.program_registrations?.[0]?.count || 0
+        }));
+        setPrograms(formatted);
+      }
+    }).catch(console.warn);
+
+    // Load live documents from database
+    kabisigApi.getDocuments().then((docs) => {
+      if (docs && docs.length > 0) {
+        const formatted: DocumentRecord[] = docs.map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          category: d.document_type || 'Other',
+          uploadedBy: d.submitter?.full_name || 'Official',
+          uploadedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+          fileSize: '1.2 MB',
+          status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
+          resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
+          description: d.description || '',
+          designatedApprover: 'Hon. SK Chairperson',
+          barangayId: d.tenant_id
+        }));
+        setDocuments(formatted);
+      }
+    }).catch(console.warn);
+
+    // Load live expenses from database
+    kabisigApi.getExpenses().then((exps) => {
+      if (exps && exps.length > 0) {
+        const formatted: ExpenseRecord[] = exps.map((e: any) => ({
+          id: e.id,
+          programId: e.program_id || '',
+          programTitle: e.program?.title || e.title,
+          category: e.budget?.category || 'Supplies',
+          amount: Number(e.gross_amount) || Number(e.amount) || 0,
+          description: e.description || '',
+          date: e.expense_date || (e.created_at ? e.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+          voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
+          status: e.status === 'approved' ? 'Approved' : 'Pending',
+          payee: e.payee || e.title,
+          barangayId: e.tenant_id
+        }));
+        setExpenses(formatted);
+      }
+    }).catch(console.warn);
+
+    // Load live feedback from database
+    kabisigApi.getFeedback().then((feeds) => {
+      if (feeds && feeds.length > 0) {
+        const formatted: FeedbackRecord[] = feeds.map((f: any) => ({
+          id: f.id,
+          type: f.category || 'General',
+          title: f.subject,
+          content: f.message,
+          rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
+          anonymous: f.is_anonymous || false,
+          status: f.status === 'resolved' ? 'Resolved' : 'Pending',
+          dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          submittedBy: f.users?.full_name || 'Anonymous Youth',
+          response: f.admin_response || ''
+        }));
+        setFeedback(formatted);
       }
     }).catch(console.warn);
 
@@ -97,20 +195,35 @@ export default function App() {
           } else if (roleId === 2) {
             setCurrentRole('Barangay Admin');
             if (user.tenant_id) {
-              const bgy = NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
-              if (bgy) setCurrentTenant(bgy);
+              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              if (bgy) {
+                setCurrentTenant({
+                  ...bgy,
+                  logo: bgy.logo || DEFAULT_BARANGAY_LOGOS[bgy.name] || ''
+                });
+              }
             }
           } else if (roleId === 3) {
             setCurrentRole('SK Kagawad');
             if (user.tenant_id) {
-              const bgy = NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
-              if (bgy) setCurrentTenant(bgy);
+              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              if (bgy) {
+                setCurrentTenant({
+                  ...bgy,
+                  logo: bgy.logo || DEFAULT_BARANGAY_LOGOS[bgy.name] || ''
+                });
+              }
             }
           } else if (roleId === 4) {
             setCurrentRole('Youth Constituent');
             if (user.tenant_id) {
-              const bgy = NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
-              if (bgy) setCurrentTenant(bgy);
+              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              if (bgy) {
+                setCurrentTenant({
+                  ...bgy,
+                  logo: bgy.logo || DEFAULT_BARANGAY_LOGOS[bgy.name] || ''
+                });
+              }
             }
             const meta = user.user_metadata || {};
             const resident = user.resident_profile || {};
@@ -207,6 +320,13 @@ export default function App() {
     }
     if (!selectedTenant) {
       selectedTenant = tenants[0];
+    }
+
+    if (selectedTenant) {
+      selectedTenant = {
+        ...selectedTenant,
+        logo: selectedTenant.logo || DEFAULT_BARANGAY_LOGOS[selectedTenant.name] || ''
+      };
     }
 
     const resolvedRole: UserRole = (role === 'SK Chairperson' || role === 'Barangay Admin') ? 'Barangay Admin' : role;
@@ -456,13 +576,28 @@ export default function App() {
     }
 
     setPrograms(prev => [newP, ...prev]);
+
+    // Connect to backend API: Create Program in database
+    kabisigApi.createProgram({
+      title: newP.title,
+      description: newP.description,
+      category: newP.category || 'Sports Development',
+      location: newP.location || `Barangay ${currentTenant?.name || 'Hall'}`,
+      start_date: new Date(newP.startDate).toISOString(),
+      end_date: new Date(newP.endDate).toISOString(),
+      total_slots: newP.maxParticipants || 50,
+      status: 'upcoming',
+      tenant_id: currentTenant?.id
+    }).catch(console.warn);
+
     // Also log a public announcement about the new program automatically!
+    const authorName = currentUser?.full_name || (currentTenant?.chairperson && currentTenant.chairperson !== 'Unassigned' ? currentTenant.chairperson : 'SK Chairperson');
     const newAnn: AnnouncementRecord = {
       id: `ann-${Date.now().toString().slice(-3)}`,
       title: `Registration Open: ${newP.title}`,
       content: `${newP.description}\nLocation: ${newP.location}\nBudget Allocation: ₱${newP.budgetAllocation.toLocaleString()}\nSlots available: ${newP.maxParticipants}. Under the AIP framework, registration is free for KK validated members.`,
-      author: 'Hon. Ashley Kyla D. Vinzon',
-      barangay: currentTenant?.name || 'Balatas',
+      author: authorName,
+      barangay: currentTenant?.name || 'City-Wide',
       datePosted: new Date().toISOString().split('T')[0],
       category: 'Opportunity',
       attachments: ['AIP-Initiative-Flyer.pdf']
@@ -472,6 +607,17 @@ export default function App() {
 
   const handleLogExpense = (newE: ExpenseRecord) => {
     setExpenses(prev => [newE, ...prev]);
+
+    if (currentTenant?.id) {
+      kabisigApi.recordExpense({
+        budget_id: 'a0111111-1111-4000-8000-000000000001',
+        program_id: newE.programId || undefined,
+        title: newE.programTitle || 'Expense Item',
+        description: newE.description,
+        gross_amount: newE.amount,
+        tax_type: 'VAT',
+      }).catch(console.warn);
+    }
     
     // Increment the tenant's spent budget reactively
     if (currentTenant) {
@@ -547,7 +693,7 @@ export default function App() {
 
   // --- SUPER ADMIN INTERACTION WORKFLOWS ---
   const handleCreateTenant = (newTenant: BarangayTenant) => {
-    setTenants(prev => [...prev, newTenant]);
+    setTenants(prev => [...prev, newTenant].sort((a, b) => a.name.localeCompare(b.name)));
   };
 
   const handleUpdateTenant = (updated: BarangayTenant) => {
@@ -616,14 +762,14 @@ export default function App() {
             // Connect to backend API: Persist settings and Chairperson in Supabase database
             const configPayload: any = {
               chairperson: updated.chairperson,
-              chairpersonEmail: updated.chairpersonEmail || `sk.${brgyName.toLowerCase().replace(/\s+/g, '')}@naga.gov.ph`,
+              chairpersonEmail: updated.chairpersonEmail !== undefined ? updated.chairpersonEmail : (targetTenant?.chairpersonEmail || ''),
               contact: updated.contact,
               youthPopulation: updated.youthPopulation,
               status: updated.status,
               logo: updated.logo,
             };
 
-            if (typeof updated.totalBudget === 'number' && updated.totalBudget > 0) {
+            if (typeof updated.totalBudget === 'number' && updated.totalBudget >= 0) {
               configPayload.allocatedBudget = updated.allocatedBudget ?? updated.totalBudget;
               configPayload.totalBudget = updated.totalBudget;
             }
@@ -634,11 +780,19 @@ export default function App() {
               throw new Error(res.message || 'Database error: Could not save barangay settings.');
             }
 
-            // Update local state reactively
-            setTenants(prev => prev.map(t => t.id === id ? { ...t, ...updated } : t));
+            // Update local state reactively with backend response data
+            const savedData = res.data || updated;
+            setTenants(prev => prev.map(t => t.id === id ? { ...t, ...savedData } : t));
 
-            const detailsMsg = updated.chairperson 
-              ? `Assigned SK Chairperson ${updated.chairperson} (${updated.chairpersonEmail || 'email unset'}) to Brgy. ${brgyName} (Tenant ID: ${id}).`
+            // Re-fetch all barangays in background to ensure database-level consistency across all views
+            kabisigApi.getBarangays().then(fresh => {
+              if (fresh && fresh.length > 0) {
+                setTenants(fresh);
+              }
+            }).catch(() => {});
+
+            const detailsMsg = savedData.chairperson && savedData.chairperson !== 'Unassigned'
+              ? `Assigned SK Chairperson ${savedData.chairperson} (${savedData.chairpersonEmail || 'email unset'}) to Brgy. ${brgyName} (Tenant ID: ${id}).`
               : `Configured settings for Brgy. ${brgyName} (Tenant ID: ${id}).`;
 
             // Log an audit log reactively!
@@ -674,6 +828,7 @@ export default function App() {
         ) : (
           <BarangayAdminPages 
             currentBarangay={currentTenant}
+            currentUser={currentUser}
             programs={programs}
             youthProfiles={youthProfiles}
             documents={documents}
@@ -701,6 +856,8 @@ export default function App() {
           documents={documents}
           expenses={expenses}
           currentTenant={currentTenant}
+          tenants={tenants}
+          currentUser={currentUser}
           onAddProgram={handleCreateProgram}
           onAddExpense={handleLogExpense}
           onAddDocument={(d) => setDocuments(prev => [d, ...prev])}

@@ -47,6 +47,54 @@ export async function authenticateUser(req, res, next) {
         sendError(res, 'Authentication internal error: ' + (err.message || 'Unknown error'), 500);
     }
 }
+export async function optionalAuthenticateUser(req, res, next) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    if (!token) {
+        req.user = undefined;
+        return next();
+    }
+    try {
+        const { data: { user: authUser }, error: authError, } = await supabaseAdmin.auth.getUser(token);
+        if (authError || !authUser) {
+            req.user = undefined;
+            return next();
+        }
+        const { data: profile, error: profileError } = await supabaseAdmin
+            .from('users')
+            .select('id, full_name, email, tenant_id, role_id, status, roles(role_name), barangay(name)')
+            .eq('id', authUser.id)
+            .single();
+        if (profileError || !profile) {
+            req.user = undefined;
+            return next();
+        }
+        const roleRecord = profile.roles;
+        const barangayRecord = profile.barangay;
+        const roleName = Array.isArray(roleRecord)
+            ? roleRecord[0]?.role_name || 'YOUTH_CONSTITUENT'
+            : roleRecord?.role_name || 'YOUTH_CONSTITUENT';
+        const barangayName = Array.isArray(barangayRecord)
+            ? barangayRecord[0]?.name || null
+            : barangayRecord?.name || null;
+        const authenticatedUser = {
+            id: profile.id,
+            email: profile.email,
+            full_name: profile.full_name,
+            role: roleName,
+            role_id: profile.role_id,
+            tenant_id: profile.tenant_id,
+            barangay_name: barangayName,
+            status: profile.status,
+        };
+        req.user = authenticatedUser;
+        next();
+    }
+    catch (err) {
+        req.user = undefined;
+        next();
+    }
+}
 export function requireActiveUser(req, res, next) {
     const user = req.user;
     if (!user) {

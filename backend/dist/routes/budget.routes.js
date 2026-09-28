@@ -2,7 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 const router = express.Router();
 function round2(num) {
     return Math.round((num + Number.EPSILON) * 100) / 100;
@@ -24,11 +24,11 @@ const RecordExpenseSchema = z.object({
     receipt_url: z.string().url().optional(),
     expense_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
-router.get('/', authenticateUser, async (req, res) => {
+router.get('/', optionalAuthenticateUser, async (req, res) => {
     const user = req.user;
     const { fiscal_year, tenant_id } = req.query;
     let query = supabaseAdmin.from('budget').select('*, barangay(name)');
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user && user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {
@@ -109,14 +109,17 @@ router.post('/', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADM
     });
     sendCreated(res, newBudget, `Budget of ₱${allocated_amount.toLocaleString()} allocated for ${category}.`);
 });
-router.get('/expenses', authenticateUser, async (req, res) => {
+router.get('/expenses', optionalAuthenticateUser, async (req, res) => {
     const user = req.user;
-    const { budget_id, status } = req.query;
+    const { budget_id, status, tenant_id } = req.query;
     let query = supabaseAdmin
         .from('expense')
         .select('*, budget(category, fiscal_year), program(title)');
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user && user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
+    }
+    else if (tenant_id && typeof tenant_id === 'string') {
+        query = query.eq('tenant_id', tenant_id);
     }
     if (budget_id && typeof budget_id === 'string') {
         query = query.eq('budget_id', budget_id);

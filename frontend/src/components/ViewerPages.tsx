@@ -86,7 +86,7 @@ export default function ViewerPages({
       alert('Please allow popups for this website to export the PDF report.');
       return;
     }
-    const targetBgy = selectedBarangayId === 'All' ? 'City-Wide Naga Federation' : tenants.find(t => t.id === selectedBarangayId)?.name || 'San Francisco';
+    const targetBgy = selectedBarangayId === 'All' ? 'City-Wide Naga Federation' : tenants.find(t => t.id === selectedBarangayId)?.name || 'Barangay';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -134,7 +134,7 @@ export default function ViewerPages({
             ${expenses.slice(0, 10).map(e => `
               <tr>
                 <td><strong>${e.voucherNumber || 'DV-2026-001'}</strong></td>
-                <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'San Francisco'}</td>
+                <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'Barangay'}</td>
                 <td>${e.payee || e.title}</td>
                 <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
                 <td class="text-right">₱${e.amount.toLocaleString()}</td>
@@ -186,44 +186,56 @@ export default function ViewerPages({
   const totalCityYouth = tenants.reduce((acc, curr) => acc + curr.youthPopulation, 0);
 
   // Demographics aggregation
-  const maleCount = youthProfiles.filter(p => p.sex === 'Male').length || 180;
-  const femaleCount = youthProfiles.filter(p => p.sex === 'Female').length || 220;
-  const scholarCount = youthProfiles.filter(p => p.scholarStatus === 'Scholar').length || 85;
+  const maleCount = youthProfiles.filter(p => p.sex === 'Male').length;
+  const femaleCount = youthProfiles.filter(p => p.sex === 'Female').length;
+  const scholarCount = youthProfiles.filter(p => p.scholarStatus === 'Scholar').length;
 
   const genderDemographicData = [
     { name: 'Male Youth', value: maleCount, color: '#091d64' },
     { name: 'Female Youth', value: femaleCount, color: '#ec4899' }
   ];
 
+  const highSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'High School' || p.educationalLevel === 'Junior High' || p.educationalLevel === 'Senior High').length;
+  const collegeCount = youthProfiles.filter(p => p.educationalLevel === 'College' || p.educationalLevel === 'Vocational').length;
+  const outOfSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'Out of School Youth' || p.employmentStatus === 'Unemployed').length;
+
   const educationDemographicData = [
-    { name: 'High School', value: 120, color: '#3b82f6' },
-    { name: 'College / TVET', value: 240, color: '#10b981' },
-    { name: 'Employed / Out of School', value: 60, color: '#f59e0b' }
+    { name: 'High School', value: highSchoolCount, color: '#3b82f6' },
+    { name: 'College / TVET', value: collegeCount, color: '#10b981' },
+    { name: 'Employed / Out of School', value: outOfSchoolCount, color: '#f59e0b' }
   ];
 
+  // Consistently sort barangays alphabetically
+  const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
+
   // Recharts Chart F1: City-Wide budget comparison
-  const cityWideBarData = tenants.slice(0, 7).map(t => ({
+  const cityWideBarData = sortedTenants.slice(0, 7).map(t => ({
     name: t.name,
     budget: t.totalBudget,
     spent: t.spentBudget
   }));
 
   // Recharts Pie Chart F2: Category expense allocations
+  const suppliesSpent = expenses.filter(e => e.category === 'Supplies').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const honorariumSpent = expenses.filter(e => e.category === 'Honorarium').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const foodSpent = expenses.filter(e => e.category === 'Food & Catering').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const transportSpent = expenses.filter(e => e.category === 'Travel & Transport').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+
   const expenseCategoriesData = [
-    { name: 'Supplies', value: expenses.filter(e => e.category === 'Supplies').reduce((acc, curr) => acc + curr.amount, 0) || 50000, color: '#1a237e' },
-    { name: 'Honorarium', value: expenses.filter(e => e.category === 'Honorarium').reduce((acc, curr) => acc + curr.amount, 0) || 30000, color: '#d32f2f' },
-    { name: 'Food/Catering', value: expenses.filter(e => e.category === 'Food & Catering').reduce((acc, curr) => acc + curr.amount, 0) || 45000, color: '#fdd835' },
-    { name: 'Travel/Transport', value: expenses.filter(e => e.category === 'Travel & Transport').reduce((acc, curr) => acc + curr.amount, 0) || 12000, color: '#78909c' }
+    { name: 'Supplies', value: suppliesSpent, color: '#1a237e' },
+    { name: 'Honorarium', value: honorariumSpent, color: '#d32f2f' },
+    { name: 'Food/Catering', value: foodSpent, color: '#fdd835' },
+    { name: 'Travel/Transport', value: transportSpent, color: '#78909c' }
   ];
 
-  // FPD Compliance Documents mock list
-  const fpdDocuments = [
-    { title: 'Annual Investment Program (AIP) 2026', category: 'CBYDP / AIP', barangay: 'City Wide Federation', date: '2026-01-15', status: 'Compliant' },
-    { title: 'Comprehensive Barangay Youth Development Plan (CBYDP) 2025-2028', category: 'CBYDP / AIP', barangay: 'Balatas', date: '2025-11-20', status: 'Compliant' },
-    { title: 'Q1 SK Financial Utilization Report 2026', category: 'Financial Statement', barangay: 'Concepcion Pequeña', date: '2026-04-05', status: 'Verified' },
-    { title: 'Annual Procurement Plan (APP-CSE) 2026', category: 'Procurement', barangay: 'Carolina', date: '2026-01-10', status: 'Compliant' },
-    { title: 'Sangguniang Kabataan Resolution No. 04-2026 (Youth Education Fund)', category: 'Resolutions', barangay: 'San Felipe', date: '2026-02-18', status: 'Published' }
-  ];
+  // FPD Compliance Documents list from live documents
+  const fpdDocuments = documents.length > 0 ? documents.map(d => ({
+    title: d.title,
+    category: d.category || 'Compliance',
+    barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
+    date: d.uploadedDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+    status: d.status || 'Compliant'
+  })) : [];
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans">
@@ -883,7 +895,7 @@ export default function ViewerPages({
                         className="w-full px-3 py-2 border border-slate-200 bg-white rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Barangays</option>
-                        {tenants.map(t => (
+                        {sortedTenants.map(t => (
                           <option key={t.id} value={t.name}>{t.name}</option>
                         ))}
                       </select>
@@ -980,7 +992,7 @@ export default function ViewerPages({
                   >
                     All Barangays
                   </button>
-                  {tenants.map(t => (
+                  {sortedTenants.map(t => (
                     <button
                       key={t.id}
                       onClick={() => setSelectedBarangayId(t.name)}

@@ -94,6 +94,7 @@ import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
+import { DEFAULT_BARANGAY_LOGOS } from '../data';
 
 interface OfficialPagesProps {
   currentRole: UserRole; // 'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'
@@ -104,6 +105,8 @@ interface OfficialPagesProps {
   documents: DocumentRecord[];
   expenses: ExpenseRecord[];
   currentTenant?: BarangayTenant | null;
+  tenants?: BarangayTenant[];
+  currentUser?: any;
   onAddProgram: (p: Program) => void;
   onAddExpense: (e: ExpenseRecord) => void;
   onAddDocument: (d: DocumentRecord) => void;
@@ -120,6 +123,8 @@ export default function OfficialPages({
   documents,
   expenses,
   currentTenant,
+  tenants = [],
+  currentUser,
   onAddProgram,
   onAddExpense,
   onAddDocument,
@@ -137,6 +142,7 @@ export default function OfficialPages({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
   // --- LOCAL PERSISTENT STATES TO SEED WORKING DATA REPLICANTS ---
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
@@ -244,7 +250,7 @@ export default function OfficialPages({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>KABISIG SK Official Compliance Report - Barangay ${currentTenant?.name || 'San Francisco'}</title>
+        <title>KABISIG SK Official Compliance Report - Barangay ${currentTenant?.name || 'Barangay'}</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
           body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
@@ -275,7 +281,7 @@ export default function OfficialPages({
       <body>
         <div class="header">
           <h1>Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</h1>
-          <h2>Barangay ${currentTenant?.name || 'San Francisco'} &bull; Sangguniang Kabataan Council</h2>
+          <h2>Barangay ${currentTenant?.name || 'Barangay'} &bull; Sangguniang Kabataan Council</h2>
           <p>Official Municipal Compliance & Financial Statements Report &bull; Generated: ${new Date().toLocaleDateString()}</p>
         </div>
 
@@ -367,7 +373,7 @@ export default function OfficialPages({
           <p>Certified Accurate and Compliant by:</p>
           <div class="sign">
             HON. NANA BARROSA<br>
-            <span style="font-weight: normal; color: #64748b;">SK Treasurer, Barangay ${currentTenant?.name || 'San Francisco'}</span>
+            <span style="font-weight: normal; color: #64748b;">SK Treasurer, Barangay ${currentTenant?.name || 'Barangay'}</span>
           </div>
         </div>
 
@@ -454,35 +460,21 @@ export default function OfficialPages({
     setCalcNet(parseFloat(net.toFixed(2)));
   }, [expenseForm.amount, expenseForm.taxType]);
 
-  const nagaBarangaysBudget = [
-    { barangay: "ABELLA", chairperson: "Shimi J. Reluano", allocated: 125000, actual: 98000 },
-    { barangay: "BAGUMBAYAN NORTE", chairperson: "Florabelle P. Palugar", allocated: 110000, actual: 85000 },
-    { barangay: "BAGUMBAYAN SUR", chairperson: "Patricia Mae P. Dimabayao", allocated: 135000, actual: 120000 },
-    { barangay: "BALATAS", chairperson: "Joseph S. Ibasco, Jr.", allocated: 150000, actual: 142000 },
-    { barangay: "CALAUAG", chairperson: "Patrick B. Bernas", allocated: 140000, actual: 115000 },
-    { barangay: "CARARAYAN", chairperson: "Jeffrey V. Bilbao", allocated: 120000, actual: 95000 },
-    { barangay: "CAROLINA", chairperson: "Shahmanne Oroy Bacay", allocated: 115000, actual: 88000 },
-    { barangay: "CONCEPCION GRANDE", chairperson: "Marinel Mac M. Chica", allocated: 155000, actual: 148000 },
-    { barangay: "CONCEPCION PEQUEÑA", chairperson: "Maica DC. Imperial", allocated: 160000, actual: 152000 },
-    { barangay: "DAYANGDANG", chairperson: "James Joshua E. Manlangit", allocated: 130000, actual: 105000 },
-    { barangay: "DEL ROSARIO", chairperson: "Cedrick Azaña", allocated: 145000, actual: 130000 },
-    { barangay: "DINAGA", chairperson: "Josemaria Delacruz", allocated: 95000, actual: 72000 },
-    { barangay: "IGUALDAD", chairperson: "Jamaica B. Soñás", allocated: 105000, actual: 81000 },
-    { barangay: "LERMA", chairperson: "Ma. Angelica Pujado", allocated: 110000, actual: 89000 },
-    { barangay: "LIBOTON", chairperson: "Don Vallen Colarina", allocated: 100000, actual: 78000 },
-    { barangay: "MABOLO", chairperson: "Marlon Casilao", allocated: 135000, actual: 112000 },
-    { barangay: "PACOL", chairperson: "Rosary D. Diaz", allocated: 150000, actual: 138000 },
-    { barangay: "PANICUASON", chairperson: "John Mark Cosa", allocated: 90000, actual: 65000 },
-    { barangay: "PEÑAFRANCIA", chairperson: "Crystal Rose Ofemaria", allocated: 125000, actual: 99000 },
-    { barangay: "SABANG", chairperson: "John Niño Realda", allocated: 135000, actual: 110000 },
-    { barangay: "SAN FELIPE", chairperson: "Nikka O. Navera", allocated: 140000, actual: 125000 },
-    { barangay: "SAN FRANCISCO", chairperson: "Zaldy D. Bragais Jr.", allocated: 150000, actual: 134000 },
-    { barangay: "SAN ISIDRO", chairperson: "Christopher Ken Labrador Mendoza", allocated: 115000, actual: 90000 },
-    { barangay: "STA. CRUZ", chairperson: "Jefson Romeo B. Felix", allocated: 120000, actual: 96000 },
-    { barangay: "TABUCO", chairperson: "Christobal Salvador Cambe", allocated: 130000, actual: 112000 },
-    { barangay: "TINAGO", chairperson: "Kristin Ros Maleniza", allocated: 100000, actual: 75000 },
-    { barangay: "TRIANGULO", chairperson: "Jyla Mir Dangca", allocated: 125000, actual: 102000 }
-  ];
+  const nagaBarangaysBudget = (tenants && tenants.length > 0)
+    ? [...tenants].sort((a, b) => a.name.localeCompare(b.name)).map(t => ({
+        barangay: t.name.toUpperCase(),
+        chairperson: t.chairperson || 'Unassigned',
+        allocated: t.totalBudget || t.allocatedBudget || 0,
+        actual: t.spentBudget || 0
+      }))
+    : [
+        {
+          barangay: currentTenant?.name?.toUpperCase() || 'BARANGAY',
+          chairperson: currentTenant?.chairperson || 'SK Chairperson',
+          allocated: currentTenant?.totalBudget || currentTenant?.allocatedBudget || 0,
+          actual: currentTenant?.spentBudget || 0
+        }
+      ];
 
   const treasurerProgramsBudget = programs.map(p => {
     const actual = expenses
@@ -808,7 +800,7 @@ export default function OfficialPages({
         <div class="header">
           <h1>Republic of the Philippines • City of Naga</h1>
           <h2>SANGGUNIANG KABATAAN COUNCIL</h2>
-          <h3>Barangay ${currentTenant?.name || 'San Francisco'}</h3>
+          <h3>Barangay ${currentTenant?.name || 'Barangay'}</h3>
         </div>
         <div class="meta-bar">
           <span><strong>Report Title:</strong> ${title}</span>
@@ -1145,8 +1137,15 @@ export default function OfficialPages({
       
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <KabisigLogo className="w-24" />
+          {barangayLogo && (
+            <img 
+              src={barangayLogo} 
+              alt={`Brgy. ${currentTenant?.name} Seal`} 
+              className="w-7 h-7 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0 shadow-2xs" 
+            />
+          )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">{currentRole}</span>
         </div>
         <button 
@@ -1179,7 +1178,7 @@ export default function OfficialPages({
 
             <nav className="space-y-2">
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
-                Official SK Navigation — Brgy. {currentTenant?.name || 'San Francisco'}
+                Official SK Navigation — Brgy. {currentTenant?.name || 'Barangay'}
               </div>
               {menuConfig[currentRole]?.map(menu => {
                 const Icon = menu.icon;
@@ -1219,10 +1218,21 @@ export default function OfficialPages({
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-100 flex-col justify-between h-full flex-shrink-0 z-40 shadow-sm">
         <div className="flex flex-col h-full overflow-y-auto">
           {/* Logo brand - Using Official Logo */}
-          <div className="p-6 border-b border-slate-50">
-            <div className="flex flex-col items-center">
-              <KabisigLogo className="w-40" />
-            </div>
+          <div className="p-5 border-b border-slate-100 flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50/40 to-transparent">
+            <KabisigLogo className="w-36" />
+            {barangayLogo && (
+              <div className="flex items-center gap-2.5 px-3 py-2 bg-white rounded-xl border border-slate-200/70 shadow-2xs w-full">
+                <img 
+                  src={barangayLogo} 
+                  alt={`Barangay ${currentTenant?.name} Seal`} 
+                  className="w-9 h-9 object-contain shrink-0" 
+                />
+                <div className="min-w-0 flex-1 text-left">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Official Seal</span>
+                  <p className="text-[11px] font-extrabold text-[#091d64] truncate leading-tight">Brgy. {currentTenant?.name}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Navigation Links */}
@@ -1231,7 +1241,7 @@ export default function OfficialPages({
               <span className="text-[9px] font-bold text-[#091d64] uppercase tracking-wider block">
                 KABISIG OFFICIAL CONSOLE
               </span>
-              <span className="text-[8px] text-slate-400 block mt-0.5">Barangay {currentTenant?.name || 'San Francisco'} SK Council</span>
+              <span className="text-[8px] text-slate-400 block mt-0.5">Barangay {currentTenant?.name || 'Barangay'} SK Council</span>
             </div>
 
             {menuConfig[currentRole]?.map(menu => {
@@ -1273,18 +1283,29 @@ export default function OfficialPages({
         
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
-                {activeMenu.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </h1>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
-                {currentRole}
+          <div className="flex items-center gap-4">
+            {barangayLogo && (
+              <div className="w-13 h-13 rounded-2xl bg-white border border-slate-200/80 p-1 flex items-center justify-center overflow-hidden shadow-xs shrink-0">
+                <img 
+                  src={barangayLogo} 
+                  alt={`Barangay ${currentTenant?.name} Seal`} 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            )}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
+                  {activeMenu.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </h1>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
+                  {currentRole}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'Barangay'} SK Council ● Naga City
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'San Francisco'} SK Council ● Naga City
-            </span>
           </div>
 
           <div className="flex items-center gap-5">
@@ -1554,7 +1575,7 @@ export default function OfficialPages({
                         <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
                           Council Secretariat Console
                         </span>
-                        <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'San Francisco'} • 2023–2026 Term</span>
+                        <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'Barangay'} • 2023–2026 Term</span>
                       </div>
                       <h3 className="text-xl font-bold font-sans tracking-tight">Legislative Repository & KK Profiling Governance</h3>
                       <p className="text-xs text-blue-100 leading-relaxed">
@@ -1906,7 +1927,7 @@ export default function OfficialPages({
                         <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
                           Program Operations & Youth Engagement Console
                         </span>
-                        <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'San Francisco'} • AYDP Aligned</span>
+                        <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'Barangay'} • AYDP Aligned</span>
                       </div>
                       <h3 className="text-xl font-bold font-sans tracking-tight">CBYDP Youth Initiatives, Attendance & Feedback Hub</h3>
                       <p className="text-xs text-blue-100 leading-relaxed">
@@ -2069,7 +2090,7 @@ export default function OfficialPages({
                         <span className="px-2.5 py-0.5 bg-emerald-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
                           Financial Management & COA Audit Console
                         </span>
-                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'San Francisco'} • FY 2026 Budget</span>
+                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY 2026 Budget</span>
                       </div>
                       <h3 className="text-xl font-bold font-sans tracking-tight">10% SK Allocation, Tax Withholding & Public Ledger</h3>
                       <p className="text-xs text-emerald-100 leading-relaxed">
@@ -3072,7 +3093,7 @@ export default function OfficialPages({
                   <div className="border-b border-slate-100 pb-4">
                     <div className="flex items-center gap-2">
                       <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">FINANCIAL GOVERNANCE • FISCAL YEAR 2026</span>
-                      <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'San Francisco'} • Naga City</span>
+                      <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'Barangay'} • Naga City</span>
                     </div>
                     <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Financial Statements & Reports</h3>
                     <p className="text-xs text-slate-500 mt-0.5">Financial statements and compliance tracking for SK funds and disbursements.</p>
@@ -3525,8 +3546,8 @@ export default function OfficialPages({
                             {nagaBarangaysBudget
                               .filter(b => b.barangay.toLowerCase().includes(nagaBarangaySearch.toLowerCase()) || b.chairperson.toLowerCase().includes(nagaBarangaySearch.toLowerCase()))
                               .map((bg, idx) => {
-                                const util = ((bg.actual / bg.allocated) * 100).toFixed(1);
-                                const isCurrent = bg.barangay === (currentTenant?.name?.toUpperCase() || 'SAN FRANCISCO');
+                                const util = bg.allocated > 0 ? ((bg.actual / bg.allocated) * 100).toFixed(1) : '0.0';
+                                const isCurrent = currentTenant?.name ? bg.barangay === currentTenant.name.toUpperCase() : false;
                                 return (
                                   <tr key={idx} className={`hover:bg-slate-50 ${isCurrent ? 'bg-blue-50/70 font-bold' : ''}`}>
                                     <td className="px-5 py-3 font-mono text-slate-400">{idx + 1}</td>
@@ -3606,7 +3627,7 @@ export default function OfficialPages({
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">DILG IRR RA 10742 • SEC 14 COMPLIANT</span>
-                        <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'San Francisco'}</span>
+                        <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'Barangay'}</span>
                       </div>
                       <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Official Secretariat & Compliance Reports Suite</h3>
                       <p className="text-xs text-slate-500 mt-0.5">Generate, audit, print, and export official KK rosters, program attendance sheets, meeting minutes, and quarterly accomplishment reports.</p>
@@ -4393,7 +4414,7 @@ export default function OfficialPages({
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
-                  <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'San Francisco'}.</p>
+                  <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
                 </div>
                 <button 
                   onClick={() => {
@@ -4756,7 +4777,7 @@ export default function OfficialPages({
                   )}
 
                   <div className="border-t border-slate-100 pt-4 text-right">
-                    <button onClick={() => alert(`${currentRole} configuration successfully applied to ${currentTenant?.name || 'San Francisco'} Sangguniang Kabataan registry!`)} className="px-5 py-2.5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg text-xs">Save Configuration</button>
+                    <button onClick={() => alert(`${currentRole} configuration successfully applied to ${currentTenant?.name || 'Barangay'} Sangguniang Kabataan registry!`)} className="px-5 py-2.5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg text-xs">Save Configuration</button>
                   </div>
                 </div>
               </div>
@@ -5482,7 +5503,7 @@ export default function OfficialPages({
                   KATIPUNAN NG KABATAAN MASTERLIST
                 </span>
                 <h3 className="font-sans font-bold text-lg mt-1">Beneficiaries Demographic Summary</h3>
-                <p className="text-xs text-slate-300 mt-0.5">Barangay {currentTenant?.name || 'San Francisco'} Youth Registry Analytics</p>
+                <p className="text-xs text-slate-300 mt-0.5">Barangay {currentTenant?.name || 'Barangay'} Youth Registry Analytics</p>
               </div>
               <button onClick={() => setShowBeneficiariesModal(false)} className="text-slate-300 hover:text-white p-1 rounded-lg">
                 <X className="w-5 h-5" />

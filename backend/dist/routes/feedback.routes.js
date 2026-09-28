@@ -2,7 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 const router = express.Router();
 const POSITIVE_LEXICON = new Set([
     'good', 'great', 'awesome', 'excellent', 'helpful', 'impressive', 'love', 'satisfying',
@@ -127,13 +127,13 @@ router.post('/', async (req, res) => {
         },
     }, 'Your voice has been heard! Feedback submitted to Boses ng Kabataan.');
 });
-router.get('/', authenticateUser, async (req, res) => {
+router.get('/', optionalAuthenticateUser, async (req, res) => {
     const user = req.user;
     const { sentiment, category, status, tenant_id } = req.query;
     let query = supabaseAdmin
         .from('feedback')
         .select('*, barangay(name), users(full_name)');
-    if (user.role !== 'SUPER_ADMIN') {
+    if (user && user.role !== 'SUPER_ADMIN') {
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {

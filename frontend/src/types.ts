@@ -114,8 +114,8 @@ export interface AttendanceRecord {
 export interface DocumentRecord {
   id: string;
   title: string;
-  category: 'Resolutions' | 'Vouchers' | 'Liquidation' | 'Accomplishment' | 'Budget' | 'Minutes' | 'Reports' | 'Communications';
-  status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Archived';
+  category: 'Resolutions' | 'Vouchers' | 'Liquidation' | 'Accomplishment' | 'Budget' | 'Minutes' | 'Reports' | 'Communications' | string;
+  status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Archived' | string;
   uploadedBy: string; // name
   uploadedDate: string;
   fileSize: string;
@@ -124,6 +124,8 @@ export interface DocumentRecord {
   designatedApprover?: string;
   version?: string;
   history?: { date: string; action: string; user: string; notes?: string }[];
+  barangayId?: string;
+  created_at?: string;
 }
 
 export interface ExpenseRecord {
@@ -131,14 +133,14 @@ export interface ExpenseRecord {
   programId: string;
   programTitle: string;
   amount: number;
-  supplier: string;
-  taxType: 'VAT' | 'Non-VAT' | 'Exempt' | 'Withholding';
-  vatAmount: number;
-  withholdingTax: number;
-  netAmount: number;
-  category: 'Supplies' | 'Honorarium' | 'Food & Catering' | 'Travel & Transport' | 'Equipment rental' | 'Others';
-  status: 'Pending' | 'Approved';
-  dateLogged: string;
+  supplier?: string;
+  taxType?: 'VAT' | 'Non-VAT' | 'Exempt' | 'Withholding' | string;
+  vatAmount?: number;
+  withholdingTax?: number;
+  netAmount?: number;
+  category: 'Supplies' | 'Honorarium' | 'Food & Catering' | 'Travel & Transport' | 'Equipment rental' | 'Others' | string;
+  status: 'Pending' | 'Approved' | string;
+  dateLogged?: string;
   receiptUrl?: string;
   voucherNumber?: string;
   payee?: string;
@@ -146,6 +148,8 @@ export interface ExpenseRecord {
   aipCode?: string;
   isVat?: boolean;
   barangayId?: string;
+  date?: string;
+  description?: string;
 }
 
 export interface FeedbackRecord {

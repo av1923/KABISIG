@@ -44,8 +44,9 @@ router.get('/barangay', authenticateUser, async (req: Request, res: Response): P
 
   const { data: profiles } = await supabaseAdmin
     .from('resident_profile')
-    .select('birthdate, sex, educational_status, employment_status, is_registered_voter')
-    .eq('tenant_id', tenantId);
+    .select('birthdate, sex, educational_status, employment_status, is_registered_voter, users!inner(role_id)')
+    .eq('tenant_id', tenantId)
+    .eq('users.role_id', 4);
 
   const totalRegisteredYouth = profiles?.length || 0;
   let votersCount = 0;
@@ -222,6 +223,8 @@ router.get(
         budget_utilization_pct: utilization,
       };
     });
+
+    barangayMatrix.sort((a, b) => a.name.localeCompare(b.name));
 
     sendSuccess(
       res,
