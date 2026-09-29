@@ -8,6 +8,40 @@ const AssignChairpersonByEmailSchema = z.object({
     email: z.string().email('Valid email address is required'),
     barangay_id: z.string().uuid('Valid Barangay ID is required'),
 });
+router.get('/audit-logs', authenticateUser, requireRoles('SUPER_ADMIN'), async (req, res) => {
+    const requestedLimit = Number(req.query.limit);
+    const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 500)
+        : 200;
+    const { data, error } = await supabaseAdmin
+        .from('audit_logs')
+        .select('id, tenant_id, user_id, action, entity_name, entity_id, details, created_at, users(full_name, roles(role_name)), barangay(name)')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) {
+        sendError(res, `Failed to retrieve audit logs: ${error.message}`, 500);
+        return;
+    }
+    const logs = (data || []).map((entry) => {
+        const user = Array.isArray(entry.users) ? entry.users[0] : entry.users;
+        const role = Array.isArray(user?.roles) ? user.roles[0] : user?.roles;
+        const barangay = Array.isArray(entry.barangay) ? entry.barangay[0] : entry.barangay;
+        const details = typeof entry.details === 'string'
+            ? entry.details
+            : entry.details
+                ? JSON.stringify(entry.details)
+                : '';
+        return {
+            id: entry.id,
+            timestamp: entry.created_at,
+            user: user?.full_name || 'System',
+            role: role?.role_name === 'BARANGAY_ADMIN' ? 'Barangay Admin' : role?.role_name || 'System',
+            action: entry.action,
+            details: barangay?.name ? `${details} (Barangay: ${barangay.name})` : details,
+        };
+    });
+    sendSuccess(res, logs, 'Audit logs retrieved successfully.');
+});
 /**
  * POST /api/admin/assign-chairperson
  * Super Admin (SK Federation President) assigns an SK Chairperson to a barangay.

@@ -33,6 +33,7 @@ export interface BarangayTenant {
 }
 
 export interface YouthProfile {
+  userId?: string;
   id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
   name: string; // Full Name (Required)
   sex: 'Male' | 'Female' | 'Other'; // Sex (Required)
@@ -120,6 +121,8 @@ export interface DocumentRecord {
   uploadedDate: string;
   fileSize: string;
   description: string;
+  fileUrl?: string;
+  reviewFeedback?: string;
   resolutionNumber?: string;
   designatedApprover?: string;
   version?: string;
@@ -131,6 +134,7 @@ export interface DocumentRecord {
 export interface ExpenseRecord {
   id: string;
   programId: string;
+  budgetId?: string;
   programTitle: string;
   amount: number;
   supplier?: string;

@@ -485,11 +485,13 @@ router.get('/profile', async (req: Request, res: Response): Promise<void> => {
 router.get('/youth-profiles', async (req: Request, res: Response): Promise<void> => {
   try {
     const tenantId = req.query.tenant_id as string | undefined;
+    const includeOfficials = req.query.include_officials === 'true';
 
     let query = supabaseAdmin
       .from('users')
-      .select('*, resident_profile(*)')
-      .eq('role_id', 4);
+      .select('*, resident_profile(*)');
+
+    query = includeOfficials ? query.in('role_id', [3, 4]) : query.eq('role_id', 4);
 
     if (tenantId) {
       query = query.eq('tenant_id', tenantId);
@@ -512,7 +514,21 @@ router.get('/youth-profiles', async (req: Request, res: Response): Promise<void>
         }
 
         const resident = u.resident_profile || {};
+        const registeredRole = u.role_id === 3
+          ? ({
+              'SK_KAGAWAD': 'SK Kagawad',
+              'SK_SECRETARY': 'SK Secretary',
+              'SK_TREASURER': 'SK Treasurer',
+              'SK Kagawad': 'SK Kagawad',
+              'SK Secretary': 'SK Secretary',
+              'SK Treasurer': 'SK Treasurer',
+            } as Record<string, 'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'>)[
+              String(meta.role || meta.registeredRole || '')
+            ] || 'SK Kagawad'
+          : 'Youth Constituent';
+
         return {
+          userId: u.id,
           id: meta.id || resident.digital_youth_id || `SK-2026-${u.id.slice(0, 4)}`,
           name: u.full_name || meta.name || '',
           sex: resident.sex || meta.sex || 'Female',
@@ -538,7 +554,7 @@ router.get('/youth-profiles', async (req: Request, res: Response): Promise<void>
           status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : 'Pending'),
           barangayId: u.tenant_id || meta.barangayId || '',
           dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
-          registeredRole: 'Youth Constituent',
+          registeredRole,
         };
       })
     );
@@ -550,4 +566,3 @@ router.get('/youth-profiles', async (req: Request, res: Response): Promise<void>
 });
 
 export default router;
-

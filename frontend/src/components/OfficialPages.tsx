@@ -103,14 +103,16 @@ interface OfficialPagesProps {
   registrations: Registration[];
   attendance: AttendanceRecord[];
   documents: DocumentRecord[];
+  feedback: FeedbackRecord[];
   expenses: ExpenseRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
   currentUser?: any;
-  onAddProgram: (p: Program) => void;
-  onAddExpense: (e: ExpenseRecord) => void;
+  onAddProgram: (p: Program) => Promise<boolean>;
+  onAddResolution: (resolution: ResolutionRecord) => void;
+  onAddExpense: (e: ExpenseRecord) => Promise<void> | void;
   onAddDocument: (d: DocumentRecord) => void;
-  onRegisterAttendance: (record: AttendanceRecord) => void;
+  onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
 }
 
@@ -121,11 +123,13 @@ export default function OfficialPages({
   registrations,
   attendance,
   documents,
+  feedback,
   expenses,
   currentTenant,
   tenants = [],
   currentUser,
   onAddProgram,
+  onAddResolution,
   onAddExpense,
   onAddDocument,
   onRegisterAttendance,
@@ -150,7 +154,7 @@ export default function OfficialPages({
   const [inventory, setInventory] = useState<any[]>([]);
 
   // Seed Boses ng Kabataan feedback records for SK Kagawad review
-  const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>([]);
+  const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
 
   // Feedback Desk States
   const [feedbackSubTab, setFeedbackSubTab] = useState<'boses' | 'resolutions'>('boses');
@@ -161,25 +165,6 @@ export default function OfficialPages({
   const [feedbackResponseText, setFeedbackResponseText] = useState('');
   const [feedbackStatusChoice, setFeedbackStatusChoice] = useState<'Reviewed' | 'Resolved'>('Reviewed');
 
-  // Seed local attendance records with some checked-in items based on registrations
-  useEffect(() => {
-    if (localAttendance.length === 0) {
-      const initial: AttendanceRecord[] = [];
-      const approvedRegs = registrations.filter(r => r.status === 'Approved');
-      approvedRegs.slice(0, 10).forEach((r, idx) => {
-        initial.push({
-          id: `att-seed-${idx}`,
-          programId: r.programId,
-          participantId: r.participantId,
-          participantName: r.participantName,
-          checkInTime: new Date(Date.now() - idx * 7200000).toISOString(),
-          status: 'Present'
-        });
-      });
-      setLocalAttendance(initial);
-    }
-  }, [registrations]);
-
   // --- SK SECRETARY SPECIFIC STATES & REPOSITORY ---
   const [localDocs, setLocalDocs] = useState<DocumentRecord[]>([]);
 
@@ -187,10 +172,11 @@ export default function OfficialPages({
   const [docStatusFilter, setDocStatusFilter] = useState<string>('All');
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
   const [showViewDocModal, setShowViewDocModal] = useState<boolean>(false);
-  const [showApprovalDocModal, setShowApprovalDocModal] = useState<boolean>(false);
   const [showEditDocModal, setShowEditDocModal] = useState<boolean>(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
-  const [docApprovalNotes, setDocApprovalNotes] = useState<string>('');
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState('');
 
   // Youth Records & Profile Management State
   const [localYouthProfiles, setLocalYouthProfiles] = useState<YouthProfile[]>(youthProfiles || []);
@@ -404,11 +390,16 @@ export default function OfficialPages({
     title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'
   });
   const [expenseForm, setExpenseForm] = useState({
-    programId: programs[0]?.id || 'prog-01', amount: 10000, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
+    programId: programs[0]?.id || 'prog-01', budgetId: '', amount: 10000, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
   });
+  const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
+  const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [expenseSaveError, setExpenseSaveError] = useState('');
   const [resForm, setResForm] = useState({
-    title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon'
+    title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon', endDate: ''
   });
+  const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
     item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 500, location: 'SK Office'
   });
@@ -434,11 +425,67 @@ export default function OfficialPages({
     programTitle?: string;
     timestamp: string;
   } | null>(null);
+  const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
+
+  useEffect(() => {
+    if (!selectedProgId) {
+      setLocalAttendance([]);
+      return;
+    }
+
+    let isMounted = true;
+    kabisigApi.getProgramAttendance(selectedProgId).then((rows) => {
+      if (!isMounted || !rows) return;
+      setLocalAttendance(rows.map((row: any) => {
+        const user = Array.isArray(row.users) ? row.users[0] : row.users;
+        const profile = youthProfiles.find(candidate => candidate.userId === row.user_id);
+        return {
+          id: row.id,
+          programId: row.program_id,
+          participantId: profile?.id || row.user_id,
+          participantName: user?.full_name || profile?.name || 'Youth Constituent',
+          checkInTime: row.checked_in_at,
+          status: 'Present' as const,
+        };
+      }));
+    }).catch((error: any) => console.warn('Could not load program attendance:', error));
+
+    return () => { isMounted = false; };
+  }, [selectedProgId, youthProfiles]);
 
   // Tax withholding calculations (for expense form)
   const [calcVat, setCalcVat] = useState(0);
   const [calcWithholding, setCalcWithholding] = useState(0);
   const [calcNet, setCalcNet] = useState(10000);
+
+  useEffect(() => {
+    if (!currentTenant?.id) {
+      setBudgetOptions([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingBudgets(true);
+    kabisigApi.getBudgets(currentTenant.id).then((budgets) => {
+      if (!isMounted) return;
+      const currentYear = new Date().getFullYear();
+      const currentYearBudgets = budgets.filter((budget) => Number(budget.fiscal_year) === currentYear);
+      setBudgetOptions(currentYearBudgets);
+      setExpenseForm(previous => ({
+        ...previous,
+        budgetId: currentYearBudgets.some(budget => budget.id === previous.budgetId)
+          ? previous.budgetId
+          : currentYearBudgets[0]?.id || '',
+      }));
+      setExpenseSaveError('');
+    }).catch((error: any) => {
+      if (isMounted) setExpenseSaveError(error.message || 'Could not load this barangay\'s budgets.');
+    }).finally(() => {
+      if (isMounted) setIsLoadingBudgets(false);
+    });
+
+    return () => { isMounted = false; };
+  }, [currentTenant?.id]);
 
   useEffect(() => {
     const amt = expenseForm.amount;
@@ -544,8 +591,11 @@ export default function OfficialPages({
   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
 
   // --- ACTIONS HANDLERS ---
-  const handlePublishProgram = () => {
-    if (!progForm.title) return alert('Program Title is required.');
+  const handlePublishProgram = async () => {
+    if (!progForm.title) {
+      alert('Program Title is required.');
+      return;
+    }
     const newP: Program = {
       id: `prog-${Date.now().toString().slice(-3)}`,
       title: progForm.title,
@@ -561,8 +611,10 @@ export default function OfficialPages({
       status: progForm.status,
       registeredCount: 0
     };
-    onAddProgram(newP);
-    setShowProgModal(false);
+    const created = await onAddProgram(newP);
+    if (created) {
+      setShowProgModal(false);
+    }
   };
 
   const getDefaultApproverForCategory = (cat: string): string => {
@@ -583,8 +635,9 @@ export default function OfficialPages({
     }
   };
 
-  const handleUploadDocumentSubmit = () => {
-    if (!docForm.title) return alert('Document Title is required.');
+  const handleUploadDocumentSubmit = async () => {
+    if (!docForm.title.trim()) return setDocumentUploadError('Document title is required.');
+    if (!selectedDocumentFile) return setDocumentUploadError('Select a document file to upload.');
     
     // Auto-generate resolution / tracking code if needed
     const cat = docForm.category || 'Resolutions';
@@ -595,83 +648,56 @@ export default function OfficialPages({
       : `${catCode}-2026-${count.toString().padStart(3, '0')}`;
     const autoResNum = docForm.resolutionNumber?.trim() || defaultResNum;
 
-    const newD: DocumentRecord = {
-      id: `doc-${Date.now().toString().slice(-3)}`,
-      title: docForm.title,
-      category: docForm.category,
-      status: 'Pending',
-      uploadedBy: `${currentRole} Secretariat`,
-      uploadedDate: new Date().toISOString().split('T')[0],
-      fileSize: docForm.fileName ? '2.4 MB' : '1.5 MB',
-      description: docForm.description,
-      resolutionNumber: autoResNum,
-      designatedApprover: docForm.designatedApprover || 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)',
-      version: 'v1.0',
-      history: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          action: 'Document Uploaded & Cataloged',
-          user: `${currentRole} Secretariat`,
-          notes: docForm.description || 'Uploaded to official council repository.'
-        }
-      ]
-    };
+    const documentType = docForm.category === 'Resolutions'
+      ? 'Resolution'
+      : docForm.category === 'Minutes'
+        ? 'Minutes'
+        : docForm.category === 'Reports' || docForm.category === 'Budget' || docForm.category === 'Vouchers'
+          ? 'Financial Report'
+          : 'Other';
 
-    setLocalDocs(prev => [newD, ...prev]);
-    onAddDocument(newD);
-    setShowDocModal(false);
-    setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)' });
-  };
-
-  const handleApproveDocument = (docId: string, notes: string) => {
-    setLocalDocs(prev => prev.map(doc => {
-      if (doc.id === docId) {
-        const updatedHistory = doc.history || [];
-        return {
-          ...doc,
-          status: 'Approved',
-          history: [
-            ...updatedHistory,
-            {
-              date: new Date().toISOString().split('T')[0],
-              action: 'Approved & Signed Off',
-              user: `${currentRole} Official`,
-              notes: notes || 'Document approved and archived in official records.'
-            }
-          ]
-        };
+    setIsUploadingDocument(true);
+    setDocumentUploadError('');
+    try {
+      const result = await kabisigApi.uploadDocument({
+        title: docForm.title.trim(),
+        document_type: documentType,
+        file: selectedDocumentFile,
+      });
+      if (!result.success || !result.data?.id) {
+        throw new Error(result.message || 'Document upload could not be completed.');
       }
-      return doc;
-    }));
-    setShowApprovalDocModal(false);
-    setDocApprovalNotes('');
-    setSelectedDoc(null);
-  };
 
-  const handleRejectDocument = (docId: string, notes: string) => {
-    if (!notes) return alert('Please state the reason for rejection.');
-    setLocalDocs(prev => prev.map(doc => {
-      if (doc.id === docId) {
-        const updatedHistory = doc.history || [];
-        return {
-          ...doc,
-          status: 'Rejected',
-          history: [
-            ...updatedHistory,
-            {
-              date: new Date().toISOString().split('T')[0],
-              action: 'Document Rejected',
-              user: `${currentRole} Official`,
-              notes: notes
-            }
-          ]
-        };
-      }
-      return doc;
-    }));
-    setShowApprovalDocModal(false);
-    setDocApprovalNotes('');
-    setSelectedDoc(null);
+      const saved = result.data;
+      const uploadedDate = saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0];
+      const newDocument: DocumentRecord = {
+        id: saved.id,
+        title: saved.title,
+        category: docForm.category,
+        status: saved.status === 'pending_approval' ? 'Pending' : saved.status,
+        uploadedBy: currentUser?.full_name || `${currentRole} Secretariat`,
+        uploadedDate,
+        fileSize: `${(selectedDocumentFile.size / (1024 * 1024)).toFixed(2)} MB`,
+        description: docForm.description,
+        resolutionNumber: autoResNum,
+        designatedApprover: docForm.designatedApprover,
+        version: 'v1.0',
+        barangayId: saved.tenant_id,
+        fileUrl: saved.file_url,
+        reviewFeedback: saved.feedback || '',
+        created_at: saved.created_at,
+      };
+
+      setLocalDocs(prev => [newDocument, ...prev]);
+      onAddDocument(newDocument);
+      setShowDocModal(false);
+      setSelectedDocumentFile(null);
+      setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)' });
+    } catch (error: any) {
+      setDocumentUploadError(error.message || 'Document upload failed.');
+    } finally {
+      setIsUploadingDocument(false);
+    }
   };
 
   const handleSaveDocEdit = () => {
@@ -829,12 +855,16 @@ export default function OfficialPages({
     printWindow.document.close();
   };
 
-  const handleLogExpenseSubmit = () => {
-    if (!expenseForm.supplier) return alert('Supplier name is required.');
+  const handleLogExpenseSubmit = async () => {
+    if (!expenseForm.supplier.trim()) return setExpenseSaveError('Supplier name is required.');
+    if (!expenseForm.budgetId) return setExpenseSaveError('Select a current-year barangay budget before logging this expense.');
     const selectedP = programs.find(p => p.id === expenseForm.programId);
+    setIsSavingExpense(true);
+    setExpenseSaveError('');
     const newExp: ExpenseRecord = {
       id: `exp-${Date.now().toString().slice(-3)}`,
       programId: expenseForm.programId,
+      budgetId: expenseForm.budgetId,
       programTitle: selectedP?.title || 'General Fund',
       amount: expenseForm.amount,
       supplier: expenseForm.supplier,
@@ -846,25 +876,43 @@ export default function OfficialPages({
       status: 'Approved',
       dateLogged: new Date().toISOString().split('T')[0]
     };
-    onAddExpense(newExp);
-    setShowExpenseModal(false);
+    try {
+      await onAddExpense(newExp);
+      setShowExpenseModal(false);
+    } catch (error: any) {
+      setExpenseSaveError(error.message || 'Expense could not be saved. Please try again.');
+    } finally {
+      setIsSavingExpense(false);
+    }
   };
 
-  const handleDraftResolutionSubmit = () => {
-    if (!resForm.title || !resForm.number) return alert('Please fill in both title and number.');
-    const newRes = {
-      id: `res-${Date.now().toString().slice(-3)}`,
-      title: resForm.title,
-      number: resForm.number,
-      status: 'Pending',
-      author: resForm.author,
-      date: new Date().toISOString().split('T')[0],
-      votesSupport: 0,
-      votesOppose: 0,
-      votesAbstain: 0
-    };
-    setLocalResolutions(prev => [newRes, ...prev]);
-    setShowResModal(false);
+  const handleDraftResolutionSubmit = async () => {
+    if (!resForm.title.trim() || !resForm.number.trim() || !resForm.endDate) {
+      return alert('Please provide a resolution title, number, and voting close date.');
+    }
+
+    setIsSavingResolution(true);
+    try {
+      const startDate = new Date();
+      const endDate = new Date(`${resForm.endDate}T23:59:59.999`);
+      const result = await kabisigApi.createPoll({
+        question: resForm.title.trim(),
+        description: `Resolution Number: ${resForm.number.trim()}\nProposed by: ${resForm.author}`,
+        options: ['Support', 'Oppose'],
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+      });
+      if (!result.success || !result.data) throw new Error(result.message || 'Resolution poll could not be saved.');
+
+      setLocalResolutions(prev => [result.data!, ...prev]);
+      onAddResolution(result.data);
+      setResForm({ title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon', endDate: '' });
+      setShowResModal(false);
+    } catch (error: any) {
+      alert(error.message || 'Resolution poll could not be saved.');
+    } finally {
+      setIsSavingResolution(false);
+    }
   };
 
   const handleRegisterInventorySubmit = () => {
@@ -884,10 +932,20 @@ export default function OfficialPages({
     setShowFeedbackModal(true);
   };
 
-  const handleSaveFeedbackResponse = () => {
+  const handleSaveFeedbackResponse = async () => {
     if (!selectedFeedback) return;
     if (!feedbackResponseText.trim()) {
       alert('Please provide an official response for the youth constituent.');
+      return;
+    }
+    const apiStatus = feedbackStatusChoice === 'Reviewed' ? 'under_review' : 'resolved';
+    const result = await kabisigApi.respondToFeedback(
+      selectedFeedback.id,
+      feedbackResponseText.trim(),
+      apiStatus
+    );
+    if (!result.success) {
+      alert(result.message || 'Official response could not be saved.');
       return;
     }
     setLocalFeedback(prev => prev.map(f => {
@@ -905,7 +963,8 @@ export default function OfficialPages({
     alert('Official response saved and posted to Boses ng Kabataan constituent desk!');
   };
 
-  const handleActualScan = (scannedText: string) => {
+  const handleActualScan = async (scannedText: string) => {
+    if (isRecordingAttendance) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const currentProg = programs.find(p => p.id === selectedProgId);
     const progTitle = currentProg?.title || selectedProgId;
@@ -931,6 +990,17 @@ export default function OfficialPages({
     // 2. Parse Event Pass vs Youth ID Code
     let partId = scannedText;
     let qrProgId = selectedProgId;
+    let scannedUserId = '';
+    let scannedDigitalYouthId = '';
+
+    try {
+      const payload = JSON.parse(scannedText);
+      scannedUserId = payload.user_id || '';
+      scannedDigitalYouthId = payload.digital_youth_id || '';
+      partId = scannedDigitalYouthId || scannedUserId || partId;
+    } catch {
+      if (scannedText.startsWith('KAB-NAGA-')) scannedDigitalYouthId = scannedText;
+    }
 
     if (scannedText.startsWith('KABISIG-QR-')) {
       const qrPayload = scannedText.slice('KABISIG-QR-'.length);
@@ -964,91 +1034,71 @@ export default function OfficialPages({
     }
 
     // 4. Match against Approved Registrations for selected program
+    const youthProf = youthProfiles.find(y =>
+      (scannedUserId && y.userId === scannedUserId) ||
+      (scannedDigitalYouthId && y.id === scannedDigitalYouthId) ||
+      y.id === partId || y.id === scannedText || y.qrCode === scannedText
+    );
     const reg = registrations.find(r => 
       r.programId === selectedProgId && 
-      (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText) && 
+      (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
       r.status === 'Approved'
-    );
-
-    // Also lookup Youth Profile if registered or unregistered
-    const youthProf = youthProfiles.find(y => 
-      y.id === partId || y.id === scannedText || y.qrCode === scannedText || (reg && y.id === reg.participantId)
     );
 
     const youthName = reg?.participantName || youthProf?.name || partId;
     const finalPartId = reg?.participantId || youthProf?.id || partId;
     const purokVal = youthProf?.zone || 'Naga Youth Constituent';
+    // The backend is authoritative for identity, registration, and duplicate check-in validation.
+    const record: AttendanceRecord = {
+      id: '',
+      programId: selectedProgId,
+      participantId: finalPartId,
+      participantName: youthName,
+      checkInTime: '',
+      status: 'Present'
+    };
 
-    if (!reg) {
+    setIsRecordingAttendance(true);
+    try {
+      const savedRecord = await onRegisterAttendance(record, scannedText);
+      setLocalAttendance(prev => [savedRecord, ...prev.filter(item => item.id !== savedRecord.id)]);
       setLastScanDetail({
         rawCode: scannedText,
-        status: 'NOT_REGISTERED',
-        title: 'Registration Not Found',
-        message: youthProf 
-          ? `Constituent ${youthProf.name} (ID: ${youthProf.id}) is verified in KK Directory, but is NOT registered for "${progTitle}".`
-          : `No approved registration or youth profile found for scanned ID code "${partId}".`,
+        status: 'SUCCESS',
+        title: 'Check-In Verified & Logged',
+        message: `Verified! ${savedRecord.participantName} has been marked Present for "${progTitle}".`,
+        participantName: savedRecord.participantName,
+        participantId: savedRecord.participantId,
+        purok: purokVal,
+        programTitle: progTitle,
+        timestamp: new Date(savedRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      });
+      setQrMessage(`SUCCESS: ${savedRecord.participantName} verified and logged Present!`);
+    } catch (error: any) {
+      const message = error.message || 'Attendance could not be recorded.';
+      const isDuplicate = /duplicate check-in|already checked in/i.test(message);
+      setLastScanDetail({
+        rawCode: scannedText,
+        status: isDuplicate ? 'ALREADY_PRESENT' : 'NOT_REGISTERED',
+        title: isDuplicate ? 'Already Present' : 'Attendance Rejected',
+        message,
         participantName: youthName,
         participantId: finalPartId,
         purok: purokVal,
         programTitle: progTitle,
         timestamp: timeStr
       });
-      setQrMessage(`Error: No approved registration found for ${youthName}.`);
-      return;
+      setQrMessage(message);
+    } finally {
+      setIsRecordingAttendance(false);
     }
-
-    // 5. Check if already marked Present
-    const alreadyChecked = localAttendance.some(a => a.programId === selectedProgId && a.participantId === reg.participantId);
-    if (alreadyChecked) {
-      const existingRecord = localAttendance.find(a => a.programId === selectedProgId && a.participantId === reg.participantId);
-      const checkTime = existingRecord ? new Date(existingRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'earlier session';
-
-      setLastScanDetail({
-        rawCode: scannedText,
-        status: 'ALREADY_PRESENT',
-        title: 'Already Present',
-        message: `${reg.participantName} (ID: ${reg.participantId}) was already checked in at ${checkTime}.`,
-        participantName: reg.participantName,
-        participantId: reg.participantId,
-        purok: purokVal,
-        programTitle: progTitle,
-        timestamp: timeStr
-      });
-      setQrMessage(`Refused: ${reg.participantName} is ALREADY marked Present.`);
-      return;
-    }
-
-    // 6. Record New Attendance
-    const record: AttendanceRecord = {
-      id: `att-${Date.now().toString().slice(-3)}`,
-      programId: selectedProgId,
-      participantId: reg.participantId,
-      participantName: reg.participantName,
-      checkInTime: new Date().toISOString(),
-      status: 'Present'
-    };
-    setLocalAttendance(prev => [record, ...prev]);
-    onRegisterAttendance(record);
-
-    setLastScanDetail({
-      rawCode: scannedText,
-      status: 'SUCCESS',
-      title: 'Check-In Verified & Logged',
-      message: `Verified! ${reg.participantName} has been marked Present for "${progTitle}".`,
-      participantName: reg.participantName,
-      participantId: reg.participantId,
-      purok: purokVal,
-      programTitle: progTitle,
-      timestamp: timeStr
-    });
-    setQrMessage(`SUCCESS: ${reg.participantName} verified and logged Present!`);
   };
 
   // Live QR Attendance Simulation Action
   const handleQrScanTrigger = () => {
     setQrScanning(true);
     setQrMessage('Aligning camera framework...');
-    setTimeout(() => {
+    setTimeout(async () => {
       const activeRegs = registrations.filter(r => r.programId === selectedProgId && r.status === 'Approved');
       if (activeRegs.length === 0) {
         setQrMessage('Error: No approved registrations to scan.');
@@ -1056,40 +1106,24 @@ export default function OfficialPages({
         return;
       }
       const rand = activeRegs[Math.floor(Math.random() * activeRegs.length)];
-      const alreadyChecked = localAttendance.some(a => a.programId === selectedProgId && a.participantId === rand.participantId);
-      if (alreadyChecked) {
-        setQrMessage(`Verification Refused: ${rand.participantName} is already Present.`);
+      const resident = youthProfiles.find(profile => profile.id === rand.participantId);
+      if (!resident?.userId) {
+        setQrMessage(`Cannot simulate check-in: ${rand.participantName}'s authenticated ID is unavailable.`);
         setQrScanning(false);
         return;
       }
-      const record: AttendanceRecord = {
-        id: `att-${Date.now().toString().slice(-3)}`,
-        programId: selectedProgId,
-        participantId: rand.participantId,
-        participantName: rand.participantName,
-        checkInTime: new Date().toISOString(),
-        status: 'Present'
-      };
-      setLocalAttendance(prev => [record, ...prev]);
-      onRegisterAttendance(record);
-      setQrMessage(`SUCCESS! QR Code Validated. Present: ${rand.participantName}`);
+      await handleActualScan(JSON.stringify({ user_id: resident.userId }));
       setQrScanning(false);
     }, 1200);
   };
 
-  const handleManualCheckIn = (r: Registration) => {
-    const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
-    if (isPresent) return;
-    const record: AttendanceRecord = {
-      id: `att-${Date.now().toString().slice(-3)}`,
-      programId: selectedProgId,
-      participantId: r.participantId,
-      participantName: r.participantName,
-      checkInTime: new Date().toISOString(),
-      status: 'Present'
-    };
-    setLocalAttendance(prev => [record, ...prev]);
-    onRegisterAttendance(record);
+  const handleManualCheckIn = async (r: Registration) => {
+    const resident = youthProfiles.find(profile => profile.id === r.participantId);
+    if (!resident?.userId) {
+      setQrMessage(`Cannot check in ${r.participantName}: authenticated youth ID is unavailable.`);
+      return;
+    }
+    await handleActualScan(JSON.stringify({ user_id: resident.userId }));
   };
 
   // Rejection handling with reason
@@ -2101,7 +2135,7 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5">
                       <button 
                         onClick={() => {
-                          setExpenseForm({ programId: programs[0]?.id || 'prog-01', amount: 5000, supplier: 'Naga Sports Supplies', taxType: 'VAT', category: 'Supplies' });
+                          setExpenseForm({ programId: programs[0]?.id || 'prog-01', budgetId: budgetOptions[0]?.id || '', amount: 5000, supplier: 'Naga Sports Supplies', taxType: 'VAT', category: 'Supplies' });
                           setShowExpenseModal(true);
                         }}
                         className="px-3.5 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -3038,7 +3072,7 @@ export default function OfficialPages({
                       <p className="text-xs text-slate-400 mt-1">Author, catalog, and track municipal legislative submissions for youth development.</p>
                     </div>
                     <button 
-                      onClick={() => { setResForm({ title: '', number: 'Res. No. 2026-005', author: 'Hon. Ashley Kyla D. Vinzon' }); setShowResModal(true); }}
+                      onClick={() => { setResForm({ title: '', number: 'Res. No. 2026-005', author: 'Hon. Ashley Kyla D. Vinzon', endDate: '' }); setShowResModal(true); }}
                       className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
@@ -4116,16 +4150,6 @@ export default function OfficialPages({
                                 <Eye className="w-4 h-4" />
                               </button>
 
-                              {doc.status === 'Pending' && (
-                                <button 
-                                  onClick={() => { setSelectedDoc(doc); setShowApprovalDocModal(true); }} 
-                                  className="p-1.5 hover:bg-amber-100 rounded text-amber-700 font-bold" 
-                                  title="Review & Sign Off Approval Workflow"
-                                >
-                                  <FileCheck className="w-4 h-4" />
-                                </button>
-                              )}
-
                               <button 
                                 onClick={() => { setSelectedDoc(doc); setShowEditDocModal(true); }} 
                                 className="p-1.5 hover:bg-slate-100 rounded text-slate-600 font-bold" 
@@ -4919,9 +4943,11 @@ export default function OfficialPages({
                     const file = e.target.files?.[0];
                     if (file) {
                       if (file.size > 25 * 1024 * 1024) {
-                        alert('File size exceeds maximum limit of 25MB.');
+                        setDocumentUploadError('File size exceeds maximum limit of 25MB.');
                         return;
                       }
+                      setSelectedDocumentFile(file);
+                      setDocumentUploadError('');
                       setDocForm({ ...docForm, fileName: file.name, title: docForm.title || file.name.replace(/\.[^/.]+$/, "") });
                     }
                   }}
@@ -4933,9 +4959,12 @@ export default function OfficialPages({
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word files supported (Max 25MB)</span>
               </div>
+              {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Submit Document</button>
+                <button disabled={isUploadingDocument} onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isUploadingDocument} onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isUploadingDocument ? 'Uploading...' : 'Submit Document'}
+                </button>
               </div>
             </div>
           </div>
@@ -4970,6 +4999,26 @@ export default function OfficialPages({
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Barangay Budget Allocation</label>
+                <select
+                  value={expenseForm.budgetId}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, budgetId: e.target.value })}
+                  className="w-full p-2 border rounded text-xs"
+                  disabled={isLoadingBudgets || budgetOptions.length === 0}
+                  required
+                >
+                  <option value="">{isLoadingBudgets ? 'Loading current-year budgets...' : 'Select a budget allocation'}</option>
+                  {budgetOptions.map((budget) => (
+                    <option key={budget.id} value={budget.id}>
+                      {budget.category} · FY {budget.fiscal_year} · ₱{Number(budget.remaining_amount).toLocaleString()} remaining
+                    </option>
+                  ))}
+                </select>
+                {budgetOptions.length === 0 && !isLoadingBudgets && (
+                  <p className="mt-1 text-[10px] text-rose-600">No current-year budgets are available for this barangay.</p>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Gross invoice *</label>
@@ -4999,8 +5048,11 @@ export default function OfficialPages({
               </div>
 
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Log Transaction</button>
+                {expenseSaveError && <p role="alert" className="mr-auto self-center text-[10px] text-rose-700">{expenseSaveError}</p>}
+                <button disabled={isSavingExpense} onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingExpense || isLoadingBudgets || budgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isSavingExpense ? 'Saving...' : 'Log Transaction'}
+                </button>
               </div>
             </div>
           </div>
@@ -5030,9 +5082,22 @@ export default function OfficialPages({
                   <input type="text" value={resForm.author} onChange={(e)=>setResForm({...resForm, author: e.target.value})} className="w-full p-2 border rounded text-xs bg-slate-50" readOnly />
                 </div>
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Voting Close Date *</label>
+                <input
+                  type="date"
+                  value={resForm.endDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setResForm({ ...resForm, endDate: e.target.value })}
+                  className="w-full p-2 border rounded text-xs"
+                  required
+                />
+              </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleDraftResolutionSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Submit Draft</button>
+                <button disabled={isSavingResolution} onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingResolution} onClick={handleDraftResolutionSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isSavingResolution ? 'Saving...' : 'Create Voting Poll'}
+                </button>
               </div>
             </div>
           </div>
@@ -5227,52 +5292,6 @@ export default function OfficialPages({
                   <Download className="w-4 h-4" /> Download Official File
                 </button>
                 <button onClick={() => setShowViewDocModal(false)} className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs">Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Document Review & Sign-Off Approval Modal */}
-      {showApprovalDocModal && selectedDoc && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
-            <div className="bg-[#091d64] text-white p-6">
-              <h3 className="font-sans font-bold text-lg">Digital Approval Workflow</h3>
-              <p className="text-xs text-slate-300 mt-1">Review, approve, or reject document with notes.</p>
-            </div>
-            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700">
-              <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                <span className="text-[10px] font-bold text-amber-800 uppercase block mb-1">Awaiting Sign-Off</span>
-                <p className="font-bold text-slate-900 text-xs">{selectedDoc.title}</p>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedDoc.resolutionNumber || selectedDoc.id} • Uploaded by {selectedDoc.uploadedBy}</p>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Audit & Sign-Off Remarks / Notes</label>
-                <textarea 
-                  value={docApprovalNotes} 
-                  onChange={(e) => setDocApprovalNotes(e.target.value)} 
-                  rows={3} 
-                  placeholder="Provide approval notes, council session references, or rejection reasons..." 
-                  className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#091d64] focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button onClick={() => setShowApprovalDocModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
-                <button 
-                  onClick={() => handleRejectDocument(selectedDoc.id, docApprovalNotes)} 
-                  className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-lg text-xs flex items-center gap-1"
-                >
-                  <X className="w-3.5 h-3.5" /> Reject
-                </button>
-                <button 
-                  onClick={() => handleApproveDocument(selectedDoc.id, docApprovalNotes)} 
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1"
-                >
-                  <Check className="w-3.5 h-3.5" /> Approve & Sign Off
-                </button>
               </div>
             </div>
           </div>

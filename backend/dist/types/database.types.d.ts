@@ -146,6 +146,76 @@ export interface DocumentRecord {
     submitter?: User;
     reviewer?: User;
 }
+export interface DocumentApproval {
+    id: string;
+    tenant_id: string;
+    document_id: string;
+    reviewer_id: string | null;
+    status: 'approved' | 'rejected';
+    feedback: string | null;
+    created_at?: string;
+}
+export interface ResolutionVote {
+    id: string;
+    tenant_id: string;
+    poll_id: string;
+    user_id: string;
+    vote_choice: 'Support' | 'Oppose' | 'Abstain';
+    submitted_at?: string;
+}
+export interface ComplianceMonitoring {
+    id: string;
+    tenant_id: string;
+    document_id: string | null;
+    report_type: string;
+    fiscal_year: number;
+    status: 'pending' | 'submitted' | 'approved' | 'rejected' | 'overdue';
+    due_date: string | null;
+    submitted_at: string | null;
+    reviewed_by: string | null;
+    notes: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+export interface SentimentAnalysis {
+    id: string;
+    tenant_id: string;
+    feedback_id: string;
+    sentiment: FeedbackSentiment;
+    score: number;
+    positive_keywords: string[];
+    negative_keywords: string[];
+    analyzed_at?: string;
+}
+export interface Committee {
+    id: string;
+    tenant_id: string;
+    name: string;
+    description: string | null;
+    chairperson_id: string | null;
+    created_by: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+export interface CommitteeAssignment {
+    id: string;
+    tenant_id: string;
+    committee_id: string;
+    user_id: string;
+    position: string;
+    assigned_at?: string;
+}
+export interface Notification {
+    id: string;
+    tenant_id: string;
+    user_id: string;
+    notification_type: string;
+    title: string;
+    message: string;
+    link: string | null;
+    is_read: boolean;
+    created_at?: string;
+}
 export interface FeedbackRecord {
     id: string;
     tenant_id: string;
@@ -165,10 +235,7 @@ export interface Poll {
     tenant_id: string;
     question: string;
     description: string | null;
-    options: {
-        id: string;
-        text: string;
-    }[];
+    options: string[];
     start_date: string;
     end_date: string;
     is_active: boolean;

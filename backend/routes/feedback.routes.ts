@@ -137,6 +137,34 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  const { error: analysisError } = await supabaseAdmin
+    .from('sentiment_analysis')
+    .insert({
+      tenant_id,
+      feedback_id: newFeedback.id,
+      sentiment: sentimentResult.sentiment,
+      score: sentimentResult.score,
+      positive_keywords: sentimentResult.positiveMatches,
+      negative_keywords: sentimentResult.negativeMatches,
+    });
+
+  if (analysisError) {
+    const { error: rollbackError } = await supabaseAdmin
+      .from('feedback')
+      .delete()
+      .eq('id', newFeedback.id);
+
+    const rollbackMessage = rollbackError
+      ? ` Rollback also failed: ${rollbackError.message}`
+      : '';
+    sendError(
+      res,
+      `Failed to persist sentiment analysis: ${analysisError.message}.${rollbackMessage}`,
+      500
+    );
+    return;
+  }
+
   sendCreated(
     res,
     {

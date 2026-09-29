@@ -11,6 +11,7 @@ import analyticsRoutes from './routes/analytics.routes.js';
 import barangayRoutes from './routes/barangay.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import userRoutes from './routes/user.routes.js';
+import pollRoutes from './routes/poll.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
 
@@ -21,7 +22,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middlewares
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '35mb' }));
 
 // Root Endpoint
 app.get('/', (req: Request, res: Response) => {
@@ -42,6 +43,7 @@ app.get('/', (req: Request, res: Response) => {
         feedback: '/api/feedback',
         documents: '/api/documents',
         analytics: '/api/analytics',
+        polls: '/api/polls',
       },
     },
     'KABISIG: API Server'
@@ -58,6 +60,7 @@ app.use('/api/budget', budgetRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/polls', pollRoutes);
 
 // Health Check Routes
 app.get('/api/health', (req: Request, res: Response) => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Building2, 
   Users, 
@@ -82,6 +82,7 @@ import {
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
+import kabisigApi from '../lib/api';
 
 export interface BarangayAdminPagesProps {
   currentBarangay: BarangayTenant;
@@ -96,6 +97,9 @@ export interface BarangayAdminPagesProps {
   resolutions?: any[];
   onApproveYouth: (id: string) => void;
   onRejectYouth: (id: string, reason: string) => void;
+  onApproveDocument: (id: string, notes: string) => Promise<DocumentRecord>;
+  onRejectDocument: (id: string, notes: string) => Promise<DocumentRecord>;
+  onAddDocument: (document: DocumentRecord) => void;
   onCreateProgram: (newProg: Program) => void;
   onLogout: () => void;
 }
@@ -113,6 +117,9 @@ export default function BarangayAdminPages({
   resolutions = [],
   onApproveYouth,
   onRejectYouth,
+  onApproveDocument,
+  onRejectDocument,
+  onAddDocument,
   onCreateProgram,
   onLogout
 }: BarangayAdminPagesProps) {
@@ -263,10 +270,15 @@ export default function BarangayAdminPages({
   const [docStatusFilter, setDocStatusFilter] = useState('All');
   const [inspectDoc, setInspectDoc] = useState<DocumentRecord | null>(null);
   const [showUploadDocModal, setShowUploadDocModal] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState('');
   const [showApproveDocModal, setShowApproveDocModal] = useState(false);
   const [selectedDocForApprove, setSelectedDocForApprove] = useState<DocumentRecord | null>(null);
   const [approvalDecision, setApprovalDecision] = useState<'Approved' | 'Rejected'>('Approved');
   const [approvalNotes, setApprovalNotes] = useState('');
+  const [isReviewingDocument, setIsReviewingDocument] = useState(false);
+  const [documentReviewError, setDocumentReviewError] = useState('');
   const [newDocForm, setNewDocForm] = useState<{
     title: string;
     category: DocumentRecord['category'];
@@ -414,6 +426,30 @@ export default function BarangayAdminPages({
 
   const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
 
+  const handleReviewDocument = async () => {
+    if (!selectedDocForApprove) return;
+    if (approvalDecision === 'Rejected' && approvalNotes.trim().length < 5) {
+      setDocumentReviewError('Enter at least five characters explaining the rejection.');
+      return;
+    }
+
+    setIsReviewingDocument(true);
+    setDocumentReviewError('');
+    try {
+      const reviewed = approvalDecision === 'Approved'
+        ? await onApproveDocument(selectedDocForApprove.id, approvalNotes.trim())
+        : await onRejectDocument(selectedDocForApprove.id, approvalNotes.trim());
+      setLocalDocs(previous => previous.map(doc => doc.id === reviewed.id ? reviewed : doc));
+      setShowApproveDocModal(false);
+      setSelectedDocForApprove(null);
+      setApprovalNotes('');
+    } catch (error: any) {
+      setDocumentReviewError(error.message || 'Document review could not be saved.');
+    } finally {
+      setIsReviewingDocument(false);
+    }
+  };
+
   const fallbackBarangay: BarangayTenant = {
     id: '',
     name: '',
@@ -421,33 +457,93 @@ export default function BarangayAdminPages({
     youthPopulation: 0,
     activePrograms: 0,
     totalBudget: 0,
-    spentBudget: 0,
     allocatedBudget: 0,
+    spentBudget: 0,
     contact: '',
     status: 'Active',
     district: '',
   };
 
-  const isMatchBarangay = (p: YouthProfile) => 
-    p.barangayId === currentBarangay?.id || 
-    p.barangayId === currentBarangay?.name || 
-    (Boolean(p.address && currentBarangay?.name && p.address.toLowerCase().includes(currentBarangay.name.toLowerCase())));
+  const isMatchBarangay = (profile: YouthProfile) =>
+    profile.barangayId === currentBarangay?.id ||
+    profile.barangayId === currentBarangay?.name ||
+    (Boolean(profile.address && currentBarangay?.name && profile.address.toLowerCase().includes(currentBarangay.name.toLowerCase())));
 
-  const pendingRegistrations = youthProfiles.filter(p => p.status === 'Pending' && isMatchBarangay(p));
-  const filteredProfiles = youthProfiles.filter(p => {
-    const matchesBarangay = isMatchBarangay(p);
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          p.zone.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'All' ? true : p.status === filterStatus;
+  const pendingRegistrations = youthProfiles.filter(profile => profile.status === 'Pending' && isMatchBarangay(profile));
+  const filteredProfiles = youthProfiles.filter(profile => {
+    const matchesBarangay = isMatchBarangay(profile);
+    const matchesSearch = profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      profile.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      profile.zone.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'All' ? true : profile.status === filterStatus;
     return matchesBarangay && matchesSearch && matchesStatus;
   });
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
   const intelligentBudget = getBudgetAnalytics(currentBarangay?.totalBudget || 0, programs, expenses);
   const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
+  const budgetAlertSignature = budgetAlerts
+    .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
+    .join('|');
   const complianceIssues = getComplianceIssues(localProfiles, programs, documents, expenses);
   const lowEngagementItems = detectLowEngagement(localProfiles, registrations);
+  const complianceIssueSignature = complianceIssues
+    .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
+    .join('|');
+
+  useEffect(() => {
+    if (!currentBarangay?.id || complianceIssues.length === 0) return;
+
+    const persistIssues = async () => {
+      const results = await Promise.all(
+        complianceIssues.map(issue => kabisigApi.persistComplianceIssue({
+          report_type: issue.code,
+          fiscal_year: new Date().getFullYear(),
+          status: 'pending',
+          notes: `${issue.message} Recommended action: ${issue.action}`,
+        }))
+      );
+
+      const failed = results.find(result => !result.success);
+      if (failed) {
+        const message = failed.message || 'Failed to persist one or more compliance issues.';
+        if (message.includes("Could not find the table 'public.compliance_monitoring'")) {
+          console.warn('Compliance persistence is unavailable until migration 002 is applied in Supabase.');
+        } else {
+          console.error(message);
+        }
+      }
+    };
+
+    void persistIssues();
+  }, [complianceIssueSignature, currentBarangay?.id]);
+
+  useEffect(() => {
+    if (!currentBarangay?.id || budgetAlerts.length === 0) return;
+
+    const persistAlerts = async () => {
+      const results = await Promise.all(
+        budgetAlerts.map(alert => kabisigApi.persistBudgetAlert({
+          alert_code: alert.code,
+          level: alert.level,
+          message: alert.message,
+          link: `/budget?alert=${encodeURIComponent(alert.code)}`,
+        }))
+      );
+
+      const failed = results.find(result => !result.success);
+      if (failed) {
+        const message = failed.message || 'Failed to persist one or more budget alerts.';
+        if (message.includes("Could not find the table 'public.notifications'")) {
+          console.warn('Budget-alert persistence is unavailable until migration 002 is applied in Supabase.');
+        } else {
+          console.error(message);
+        }
+      }
+    };
+
+    void persistAlerts();
+  }, [budgetAlertSignature, currentBarangay?.id]);
 
   const [fbAutoSyncEnabled, setFbAutoSyncEnabled] = useState(true);
   const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
@@ -1587,6 +1683,7 @@ export default function BarangayAdminPages({
                         <th className="px-5 py-3.5">Author / Officer</th>
                         <th className="px-5 py-3.5">Date</th>
                         <th className="px-5 py-3.5 text-center">Approval Status</th>
+                        <th className="px-5 py-3.5 text-right">Review</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
@@ -1610,15 +1707,36 @@ export default function BarangayAdminPages({
                             {doc.uploadedDate}
                           </td>
                           <td className="px-5 py-4 text-center">
-                            <span className="px-2.5 py-0.5 rounded text-[9px] font-black uppercase border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <span className={`px-2.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                              doc.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              doc.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                              'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
                               {doc.status}
                             </span>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            {doc.status === 'Pending' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDocForApprove(doc);
+                                  setApprovalDecision('Approved');
+                                  setApprovalNotes('');
+                                  setDocumentReviewError('');
+                                  setShowApproveDocModal(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#091d64] text-white text-[10px] font-bold hover:bg-[#122878]"
+                              >
+                                <FileCheck className="w-3.5 h-3.5" /> Review
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
                       {localDocs.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center py-8 text-slate-400 font-bold">
+                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold">
                             No documents found in repository.
                           </td>
                         </tr>
@@ -1626,6 +1744,53 @@ export default function BarangayAdminPages({
                     </tbody>
                   </table>
                 </div>
+
+                {showApproveDocModal && selectedDocForApprove && (
+                  <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden">
+                      <div className="bg-[#091d64] text-white p-5">
+                        <h3 className="font-bold text-base">Review Document</h3>
+                        <p className="mt-1 text-xs text-blue-100">{selectedDocForApprove.title}</p>
+                      </div>
+                      <div className="p-5 space-y-4">
+                        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Review decision">
+                          <button
+                            type="button"
+                            onClick={() => setApprovalDecision('Approved')}
+                            className={`rounded-lg border px-3 py-2 text-xs font-bold ${approvalDecision === 'Approved' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-slate-600 border-slate-200'}`}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setApprovalDecision('Rejected')}
+                            className={`rounded-lg border px-3 py-2 text-xs font-bold ${approvalDecision === 'Rejected' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-slate-600 border-slate-200'}`}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block mb-1 text-[10px] font-bold text-slate-500 uppercase">
+                            {approvalDecision === 'Rejected' ? 'Rejection reason (required)' : 'Review notes (optional)'}
+                          </label>
+                          <textarea
+                            value={approvalNotes}
+                            onChange={(event) => setApprovalNotes(event.target.value)}
+                            rows={3}
+                            className="w-full rounded-lg border border-slate-200 p-2.5 text-xs"
+                          />
+                        </div>
+                        {documentReviewError && <p role="alert" className="text-xs text-rose-700">{documentReviewError}</p>}
+                        <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                          <button type="button" disabled={isReviewingDocument} onClick={() => setShowApproveDocModal(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold disabled:opacity-50">Cancel</button>
+                          <button type="button" disabled={isReviewingDocument} onClick={handleReviewDocument} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                            {isReviewingDocument ? 'Saving...' : `Confirm ${approvalDecision}`}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               </div>
             </div>
@@ -1870,31 +2035,49 @@ export default function BarangayAdminPages({
             </div>
 
             <form 
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newDocForm.title.trim()) return;
-                const createdDoc: DocumentRecord = {
-                  id: `DOC-2026-00${localDocs.length + 1}`,
-                  title: newDocForm.title,
-                  category: newDocForm.category,
-                  uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
-                  uploadedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                  fileSize: '1.8 MB',
-                  status: 'Approved',
-                  resolutionNumber: newDocForm.resolutionNumber || `EO-2026-00${localDocs.length + 1}`,
-                  description: newDocForm.description,
-                  designatedApprover: 'Hon. SK Chairperson'
-                };
-                setLocalDocs([createdDoc, ...localDocs]);
-                setShowUploadDocModal(false);
-                setNewDocForm({
-                  title: '',
-                  category: 'Resolutions',
-                  resolutionNumber: '',
-                  description: '',
-                  fileSize: '1.4 MB',
-                  designatedApprover: 'Hon. SK Chairperson'
-                });
+                if (!selectedUploadFile) {
+                  setDocumentUploadError('Select a document file to upload.');
+                  return;
+                }
+                setIsUploadingDocument(true);
+                setDocumentUploadError('');
+                try {
+                  const documentType = newDocForm.category === 'Resolutions' ? 'Resolution' : newDocForm.category === 'Minutes' ? 'Minutes' : newDocForm.category === 'Reports' || newDocForm.category === 'Budget' ? 'Financial Report' : 'Other';
+                  const result = await kabisigApi.uploadDocument({
+                    title: newDocForm.title.trim(),
+                    document_type: documentType,
+                    file: selectedUploadFile,
+                  });
+                  if (!result.success || !result.data?.id) throw new Error(result.message || 'Document upload failed.');
+
+                  const saved = result.data;
+                  const uploaded: DocumentRecord = {
+                    id: saved.id,
+                    title: saved.title,
+                    category: newDocForm.category,
+                    uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
+                    uploadedDate: saved.created_at ? new Date(saved.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+                    fileSize: `${(selectedUploadFile.size / (1024 * 1024)).toFixed(2)} MB`,
+                    status: 'Pending',
+                    resolutionNumber: newDocForm.resolutionNumber || `DOC-${saved.id.slice(0, 8)}`,
+                    description: newDocForm.description,
+                    designatedApprover: 'Hon. SK Chairperson',
+                    barangayId: saved.tenant_id,
+                    fileUrl: saved.file_url,
+                  };
+                  setLocalDocs(previous => [uploaded, ...previous]);
+                  onAddDocument(uploaded);
+                  setShowUploadDocModal(false);
+                  setSelectedUploadFile(null);
+                  setNewDocForm({ title: '', category: 'Resolutions', resolutionNumber: '', description: '', fileSize: '1.4 MB', designatedApprover: 'Hon. SK Chairperson' });
+                } catch (error: any) {
+                  setDocumentUploadError(error.message || 'Document upload failed.');
+                } finally {
+                  setIsUploadingDocument(false);
+                }
               }}
               className="p-6 space-y-4"
             >
@@ -1910,20 +2093,43 @@ export default function BarangayAdminPages({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Document File *</label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  required
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    if (file && file.size > 25 * 1024 * 1024) {
+                      setDocumentUploadError('File size exceeds maximum limit of 25MB.');
+                      setSelectedUploadFile(null);
+                      return;
+                    }
+                    setSelectedUploadFile(file);
+                    setDocumentUploadError('');
+                  }}
+                  className="block w-full text-xs"
+                />
+              </div>
+              {documentUploadError && <p role="alert" className="text-xs text-rose-700">{documentUploadError}</p>}
+              {documentUploadError && <p role="alert" className="text-xs text-rose-700">{documentUploadError}</p>}
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
+                  disabled={isUploadingDocument}
                   onClick={() => setShowUploadDocModal(false)}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  disabled={isUploadingDocument}
+                  className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   <Upload className="w-4 h-4 text-amber-400" />
-                  Upload & Archive
+                  {isUploadingDocument ? 'Uploading...' : 'Upload for Review'}
                 </button>
               </div>
             </form>

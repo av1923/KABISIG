@@ -67,9 +67,9 @@ interface YouthPagesProps {
   registrations: Registration[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
-  onRegisterProgram: (pId: string) => void;
+  onRegisterProgram: (pId: string) => Promise<Registration>;
   onSubmitFeedback: (feed: FeedbackRecord) => void;
-  onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => void;
+  onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => Promise<ResolutionRecord>;
   onUpdateYouthProfile?: (updated: YouthProfile) => void;
   onLogout: () => void;
 }
@@ -100,6 +100,17 @@ export default function YouthPages({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
+  const [registeringProgramId, setRegisteringProgramId] = useState<string | null>(null);
+  const [registrationNotice, setRegistrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [votingResolutionId, setVotingResolutionId] = useState<string | null>(null);
+  const [resolutionVoteNotice, setResolutionVoteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const youthQrPayload = (profile: YouthProfile) => profile.userId
+    ? JSON.stringify({ user_id: profile.userId })
+    : profile.qrCode?.startsWith('KAB-NAGA-')
+      ? profile.qrCode
+      : profile.id;
 
   useEffect(() => {
     if (currentYouth) {
@@ -107,6 +118,28 @@ export default function YouthPages({
       setEditForm(currentYouth);
     }
   }, [currentYouth]);
+
+  useEffect(() => {
+    let isMounted = true;
+    kabisigApi.getMyProgramRegistrations().then((rows) => {
+      if (!isMounted || !rows) return;
+      setLocalRegs(rows.map((row: any) => {
+        const program = Array.isArray(row.program) ? row.program[0] : row.program;
+        return {
+          id: row.id,
+          programId: row.program_id,
+          programTitle: program?.title || 'Program',
+          participantId: currentYouth.id,
+          participantName: currentYouth.name,
+          dateRegistered: row.registered_at?.split('T')[0] || '',
+          status: row.status === 'attended' ? 'Completed' : row.status === 'registered' ? 'Approved' : 'Pending',
+          qrCode: currentYouth.qrCode || `QR-KK-${currentYouth.id}`,
+        };
+      }));
+    }).catch((error: any) => console.warn('Could not restore program registrations:', error));
+
+    return () => { isMounted = false; };
+  }, [currentYouth.id, currentYouth.name, currentYouth.qrCode]);
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,8 +169,8 @@ export default function YouthPages({
 
   // --- RULE-BASED INTELLIGENCE ENGINE COMPUTATIONS ---
   const myDemographics = classifyDemographics(youth);
-  const myEngagement = calculateEngagementScore(youth, registrations, feedback, resolutions);
-  const myRecommendations = recommendPrograms(youth, programs, registrations);
+  const myEngagement = calculateEngagementScore(youth, localRegs, feedback, resolutions);
+  const myRecommendations = recommendPrograms(youth, programs, localRegs);
 
   // Search & Filters
   const [programSearch, setProgramSearch] = useState('');
@@ -154,9 +187,13 @@ export default function YouthPages({
     anonymous: false
   });
 
-  // Local state copy of registrations for dynamic UI experience
-  const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setLocalFeedback(feedback);
+  }, [feedback]);
 
   // Derived arrays
   const myRegistrations = localRegs.filter(r => r.participantId === youth.id);
@@ -207,7 +244,7 @@ export default function YouthPages({
     }
   };
 
-  const handleRegisterProgramClick = (progId: string) => {
+  const handleRegisterProgramClick = async (progId: string) => {
     // Check if already registered
     const alreadyReg = localRegs.some(r => r.programId === progId && r.participantId === currentYouth.id);
     if (alreadyReg) {
@@ -218,62 +255,104 @@ export default function YouthPages({
     const prog = programs.find(p => p.id === progId);
     if (!prog) return;
 
-    onRegisterProgram(progId);
-
-    const newReg: Registration = {
-      id: `reg-${Date.now().toString().slice(-3)}`,
-      programId: progId,
-      programTitle: prog.title,
-      participantId: currentYouth.id,
-      participantName: currentYouth.name,
-      dateRegistered: new Date().toISOString().split('T')[0],
-      status: 'Approved',
-      qrCode: `KABISIG-QR-${progId}-${currentYouth.id}`
-    };
-
-    setLocalRegs([newReg, ...localRegs]);
-    alert(`Successfully registered for "${prog.title}"! Your slot is confirmed.`);
+    setRegisteringProgramId(progId);
+    setRegistrationNotice(null);
+    try {
+      const savedRegistration = await onRegisterProgram(progId);
+      setLocalRegs(previous => [savedRegistration, ...previous.filter(registration => registration.id !== savedRegistration.id)]);
+      setRegistrationNotice({ type: 'success', text: `Successfully registered for "${prog.title}".` });
+      window.setTimeout(() => setRegistrationNotice(null), 4000);
+    } catch (error: any) {
+      setRegistrationNotice({ type: 'error', text: error.message || 'Program registration failed.' });
+    } finally {
+      setRegisteringProgramId(null);
+    }
   };
 
-  const handleFeedbackFormSubmit = (e: React.FormEvent) => {
+  const handleFeedbackFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!feedbackForm.title || !feedbackForm.content) {
-      alert('Please fill out all feedback fields.');
+    if (!feedbackForm.title.trim() || !feedbackForm.content.trim()) {
+      setFeedbackNotice({ type: 'error', text: 'Please fill out all feedback fields.' });
+      return;
+    }
+    if (!currentYouth.barangayId) {
+      setFeedbackNotice({ type: 'error', text: 'Your profile is not linked to a barangay.' });
       return;
     }
 
-    const newFeed: FeedbackRecord = {
-      id: `feed-${Date.now().toString().slice(-3)}`,
-      type: feedbackForm.type,
-      title: feedbackForm.title,
-      content: feedbackForm.content,
-      rating: 5,
-      anonymous: feedbackForm.anonymous,
-      status: 'Pending',
-      dateSubmitted: new Date().toISOString().split('T')[0],
-      submittedBy: feedbackForm.anonymous ? 'Anonymous' : currentYouth.name
-    };
+    setIsSubmittingFeedback(true);
+    setFeedbackNotice(null);
+    try {
+      const result = await kabisigApi.submitFeedback({
+        tenant_id: currentYouth.barangayId,
+        subject: feedbackForm.title.trim(),
+        message: feedbackForm.content.trim(),
+        category: feedbackForm.type,
+        is_anonymous: feedbackForm.anonymous,
+      });
+      const saved = result.data?.feedback;
+      if (!result.success || !saved) throw new Error(result.message || 'Feedback could not be saved.');
 
-    onSubmitFeedback(newFeed);
-    setLocalFeedback([newFeed, ...localFeedback]);
-
-    setFeedbackForm({
-      type: 'Suggestion',
-      title: '',
-      content: '',
-      anonymous: false
-    });
-
-    alert('Your suggestion has been logged. Thank you for your active participation!');
+      const sentiment = result.data?.sentiment_analysis?.sentiment;
+      const newFeed: FeedbackRecord = {
+        id: saved.id,
+        type: saved.category,
+        title: saved.subject,
+        content: saved.message,
+        rating: sentiment === 'positive' ? 5 : sentiment === 'negative' ? 1 : 3,
+        anonymous: saved.is_anonymous,
+        status: 'Pending',
+        dateSubmitted: saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        submittedBy: saved.is_anonymous ? 'Anonymous' : currentYouth.name,
+      };
+      onSubmitFeedback(newFeed);
+      setLocalFeedback(previous => [newFeed, ...previous.filter(item => item.id !== newFeed.id)]);
+      setFeedbackForm({ type: 'Suggestion', title: '', content: '', anonymous: false });
+      setFeedbackNotice({
+        type: 'success',
+        text: `Feedback saved. Sentiment analysis: ${sentiment || 'neutral'}.`,
+      });
+    } catch (error: any) {
+      setFeedbackNotice({ type: 'error', text: error.message || 'Feedback could not be saved.' });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
-  const handleResolutionVote = (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
-    onVoteResolution(resId, voteType);
-    alert(`Thank you! Your vote of "${voteType.toUpperCase()}" has been recorded.`);
+  const handleResolutionVote = async (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
+    if (!currentYouth.userId) {
+      setResolutionVoteNotice({ type: 'error', text: 'Your authenticated youth account could not be verified.' });
+      return;
+    }
+    const resolution = resolutions.find(item => item.id === resId);
+    if (resolution?.votedUsers.includes(currentYouth.userId)) {
+      setResolutionVoteNotice({ type: 'error', text: 'You have already voted in this poll.' });
+      return;
+    }
+
+    setVotingResolutionId(resId);
+    setResolutionVoteNotice(null);
+    try {
+      await onVoteResolution(resId, voteType);
+      setResolutionVoteNotice({ type: 'success', text: 'Your vote was recorded.' });
+      window.setTimeout(() => setResolutionVoteNotice(null), 4000);
+    } catch (error: any) {
+      setResolutionVoteNotice({ type: 'error', text: error.message || 'Your vote could not be recorded.' });
+    } finally {
+      setVotingResolutionId(null);
+    }
   };
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
+      {registrationNotice && (
+        <div
+          role={registrationNotice.type === 'error' ? 'alert' : 'status'}
+          className={`fixed top-4 right-4 z-[70] max-w-sm rounded-lg px-4 py-3 text-xs font-bold shadow-lg ${registrationNotice.type === 'success' ? 'bg-emerald-700 text-white' : 'bg-rose-700 text-white'}`}
+        >
+          {registrationNotice.text}
+        </div>
+      )}
       
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
@@ -546,7 +625,7 @@ export default function YouthPages({
                     </div>
                     
                     <div className="bg-white p-1.5 rounded-lg shadow-inner ring-4 ring-white/5">
-                      <QRCodeSVG value={currentYouth.id} size={52} fgColor="#091d64" />
+                      <QRCodeSVG value={youthQrPayload(currentYouth)} size={52} fgColor="#091d64" />
                     </div>
                   </div>
                 </div>
@@ -677,10 +756,11 @@ export default function YouthPages({
                               {!isRegistered ? (
                                 <button
                                   type="button"
+                                  disabled={registeringProgramId !== null}
                                   onClick={() => handleRegisterProgramClick(rec.program.id)}
-                                  className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors"
+                                  className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors disabled:opacity-60"
                                 >
-                                  Instantly Register &rarr;
+                                  {registeringProgramId === rec.program.id ? <Loader2 className="w-3 h-3 inline animate-spin" /> : 'Instantly Register →'}
                                 </button>
                               ) : (
                                 <span className="text-[10px] text-emerald-600 font-extrabold">Slot Confirmed</span>
@@ -733,10 +813,11 @@ export default function YouthPages({
                     <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
                       <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">120 / 200 registered</span>
                       <button 
+                        disabled={registeringProgramId !== null}
                         onClick={() => handleRegisterProgramClick('prog-01')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
+                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
                       >
-                        Register Now
+                        {registeringProgramId === 'prog-01' ? 'Registering...' : 'Register Now'}
                       </button>
                     </div>
                   </div>
@@ -758,10 +839,11 @@ export default function YouthPages({
                     <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
                       <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">45 / 150 registered</span>
                       <button 
+                        disabled={registeringProgramId !== null}
                         onClick={() => handleRegisterProgramClick('prog-02')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
+                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
                       >
-                        Register Now
+                        {registeringProgramId === 'prog-02' ? 'Registering...' : 'Register Now'}
                       </button>
                     </div>
                   </div>
@@ -783,10 +865,11 @@ export default function YouthPages({
                     <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
                       <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">60 / 100 registered</span>
                       <button 
+                        disabled={registeringProgramId !== null}
                         onClick={() => handleRegisterProgramClick('prog-03')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
+                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
                       >
-                        Register Now
+                        {registeringProgramId === 'prog-03' ? 'Registering...' : 'Register Now'}
                       </button>
                     </div>
                   </div>
@@ -866,7 +949,7 @@ export default function YouthPages({
 
                   {/* QR CODE DISPLAY */}
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col items-center gap-1 shadow-2xs self-center lg:self-start flex-shrink-0">
-                    <QRCodeSVG value={youth.qrCode || youth.id} size={88} fgColor="#091d64" />
+                    <QRCodeSVG value={youthQrPayload(youth)} size={88} fgColor="#091d64" />
                     <span className="text-[9px] font-mono font-bold text-slate-400">Digital ID QR Code</span>
                   </div>
                 </div>
@@ -1105,10 +1188,11 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
+                                disabled={registeringProgramId !== null}
                                 onClick={() => handleRegisterProgramClick(p.id)}
-                                className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm cursor-pointer"
+                                className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm cursor-pointer disabled:opacity-60"
                               >
-                                Join Program
+                                {registeringProgramId === p.id ? 'Registering...' : 'Join Program'}
                               </button>
                             )}
                           </div>
@@ -1163,7 +1247,7 @@ export default function YouthPages({
 
                           <div className="bg-slate-50/60 p-5 flex flex-col items-center justify-center border-l border-slate-100 sm:w-44 text-center gap-1.5">
                             <div className="bg-white p-2 rounded-xl shadow-2xs border border-slate-100">
-                              <QRCodeSVG value={currentYouth.id} size={80} fgColor="#091d64" />
+                              <QRCodeSVG value={youthQrPayload(currentYouth)} size={80} fgColor="#091d64" />
                             </div>
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Youth ID QR Code</span>
                           </div>
@@ -1213,6 +1297,11 @@ export default function YouthPages({
                     <p className="text-xs text-slate-400 mb-6">Submit suggestions, concerns, or inquiries directly to your SK Council. You can choose to remain anonymous.</p>
                     
                     <form onSubmit={handleFeedbackFormSubmit} className="space-y-4">
+                      {feedbackNotice && (
+                        <div role={feedbackNotice.type === 'error' ? 'alert' : 'status'} className={`rounded-lg px-3 py-2 text-xs font-semibold ${feedbackNotice.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                          {feedbackNotice.text}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5">Feedback Category</label>
@@ -1261,8 +1350,8 @@ export default function YouthPages({
                           required
                         />
                       </div>
-                      <button type="submit" className="w-full py-3 bg-[#091d64] text-white font-extrabold rounded-xl text-xs hover:bg-[#122878] transition-all transform active:scale-[0.98] cursor-pointer">
-                        Submit Official Feedback
+                      <button type="submit" disabled={isSubmittingFeedback} className="w-full py-3 bg-[#091d64] text-white font-extrabold rounded-xl text-xs hover:bg-[#122878] transition-all transform active:scale-[0.98] cursor-pointer disabled:opacity-60">
+                        {isSubmittingFeedback ? 'Submitting...' : 'Submit Official Feedback'}
                       </button>
                     </form>
                   </div>
@@ -1303,27 +1392,35 @@ export default function YouthPages({
                     <p className="text-xs text-slate-400 mt-1">Review resolutions formulated by Sangguniang Kabataan and exercise your direct voting eligibility.</p>
                   </div>
 
+                  {resolutionVoteNotice && (
+                    <div role={resolutionVoteNotice.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-lg px-3 py-2 text-xs font-semibold ${resolutionVoteNotice.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                      {resolutionVoteNotice.text}
+                    </div>
+                  )}
+
                   <div className="space-y-4">
                     {resolutions.map(res => (
                       <div key={res.id} className="p-5 border border-slate-100 rounded-xl bg-white space-y-3 shadow-xs">
                         <div className="flex justify-between items-center border-b border-slate-50 pb-2">
                           <span className="text-[10px] font-mono font-bold text-[#091d64] px-2 py-0.5 rounded bg-blue-50 tracking-wider uppercase">{res.resolutionNumber}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Voting Session Open</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Closes {res.validityPeriod.split(' - ')[1] || 'per poll schedule'}</span>
                         </div>
                         <h4 className="font-bold text-slate-800 text-sm mt-2 leading-snug">{res.title}</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium">{res.content}</p>
                         <div className="flex gap-2 justify-end pt-3">
                           <button 
+                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
                             onClick={() => handleResolutionVote(res.id, 'Support')} 
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Support
+                            {votingResolutionId === res.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Support ({res.votesSupport})
                           </button>
                           <button 
+                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
                             onClick={() => handleResolutionVote(res.id, 'Oppose')} 
-                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                           >
-                            <X className="w-3.5 h-3.5" /> Oppose
+                            <X className="w-3.5 h-3.5" /> Oppose ({res.votesOppose})
                           </button>
                         </div>
                       </div>
