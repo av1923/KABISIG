@@ -32,6 +32,13 @@ const UploadDocumentSchema = z.object({
     file_base64: z.string().min(1, 'File data is required'),
 });
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+const ALLOWED_DOCUMENT_TYPES = new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/png',
+]);
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 function getStoragePath(fileUrl) {
     if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
@@ -77,6 +84,13 @@ router.post('/upload', authenticateUser, requireActiveUser, requireRoles('BARANG
         return;
     }
     const { title, document_type, file_name, content_type, file_base64 } = parsed.data;
+    const normalizedContentType = content_type.toLowerCase().split(';')[0]?.trim() || '';
+    const extension = file_name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
+    const allowedExtensions = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']);
+    if (!ALLOWED_DOCUMENT_TYPES.has(normalizedContentType) || !allowedExtensions.has(extension)) {
+        sendError(res, 'Only PDF, Word (.doc/.docx), JPG, and PNG files are allowed.', 415);
+        return;
+    }
     const fileBuffer = Buffer.from(file_base64, 'base64');
     if (!fileBuffer.length || fileBuffer.length > MAX_DOCUMENT_BYTES) {
         sendError(res, 'Document file must be between 1 byte and 25 MB.', 413);
@@ -86,10 +100,14 @@ router.post('/upload', authenticateUser, requireActiveUser, requireRoles('BARANG
     const objectPath = `${tenantId}/${randomUUID()}/${safeFileName}`;
     const storage = supabaseAdmin.storage.from('documents');
     const { error: uploadError } = await storage.upload(objectPath, fileBuffer, {
-        contentType: content_type,
+        contentType: normalizedContentType,
         upsert: false,
     });
     if (uploadError) {
+        if (uploadError.message.toLowerCase().includes('bucket not found')) {
+            sendError(res, 'The Supabase Storage bucket "documents" is not configured. Apply migration 004_create_documents_storage_bucket.sql, then retry the upload.', 503);
+            return;
+        }
         sendError(res, `Failed to upload document to Supabase Storage: ${uploadError.message}`, 502);
         return;
     }

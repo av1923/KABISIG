@@ -40,7 +40,7 @@ import {
 import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
 
 export default function App() {
-  // --- STATEFUL MOCK DATABASE (Multi-Tenant Reactivity) ---
+  // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
   const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>(INITIAL_YOUTH_PROFILES);
@@ -105,7 +105,7 @@ export default function App() {
 
     // Load live programs from database
     kabisigApi.getPrograms().then((progs) => {
-      if (progs && progs.length > 0) {
+      if (progs) {
         const formatted: Program[] = progs.map((p: any) => ({
           id: p.id,
           title: p.title,
@@ -114,9 +114,9 @@ export default function App() {
           endDate: p.end_date ? p.end_date.split('T')[0] : '2026-05-22',
           location: p.location || 'Barangay Hall',
           maxParticipants: p.total_slots || 100,
-          budgetAllocation: p.budgetAllocation || 0,
+          budgetAllocation: Number(p.budget_allocation) || 0,
           spentBudget: 0,
-          aipReference: `AIP-2026-${(p.id || 'PROG').slice(0, 4).toUpperCase()}`,
+          aipReference: p.aip_reference || '',
           category: p.category || 'General',
           status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
           registeredCount: p.program_registrations?.[0]?.count || 0
@@ -191,8 +191,24 @@ export default function App() {
       if (logs) setAuditLogs(logs);
     }).catch(console.warn);
 
-    // Restore authenticated session if token exists
-    const token = kabisigApi.getToken();
+    // Invitation links must never reuse an existing Super Admin/browser session.
+    const inviteParams = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : null;
+    const isChairpersonInvite = inviteParams?.get('invite_email')
+      && inviteParams.get('role') === 'chairperson';
+
+    if (isChairpersonInvite) {
+      kabisigApi.logout();
+      setCurrentUser(null);
+      setCurrentTenant(null);
+      setCurrentYouth(null);
+      setCurrentRole(null);
+      setPublicView('login');
+    }
+
+    // Restore an authenticated session only when this is not an invitation flow.
+    const token = isChairpersonInvite ? null : kabisigApi.getToken();
     if (token) {
       kabisigApi.getCurrentUser().then(user => {
         if (user) {
@@ -222,7 +238,14 @@ export default function App() {
               }
             }
           } else if (roleId === 3) {
-            setCurrentRole('SK Kagawad');
+            const registeredRole = user.user_metadata?.role || user.official_position || user.role;
+            setCurrentRole(
+              registeredRole === 'SK Secretary'
+                ? 'SK Secretary'
+                : registeredRole === 'SK Treasurer'
+                  ? 'SK Treasurer'
+                  : 'SK Kagawad'
+            );
             if (user.tenant_id) {
               const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
               if (bgy) {
@@ -349,7 +372,8 @@ export default function App() {
     }
 
     // Resolve tenant with multi-tenant binding priority
-    let selectedTenant = tenants.find(t => t.id === tenantId);
+    const authoritativeTenantId = userObj?.tenant_id || tenantId;
+    let selectedTenant = tenants.find(t => t.id === authoritativeTenantId);
     if (!selectedTenant && emailOrName) {
       const emailLower = emailOrName.trim().toLowerCase();
       // Match by youth/official profile binding
@@ -470,19 +494,6 @@ export default function App() {
       };
       setAuditLogs(prev => [newLog, ...prev]);
     } else {
-      // Create a pending Katipunan Registration request automatically mapped to this youth
-      const newReg: Registration = {
-        id: `reg-${Date.now().toString().slice(-3)}`,
-        programId: 'prog-01',
-        programTitle: 'SK Barangay Youth Leadership Academy',
-        participantId: boundProfile.id,
-        participantName: boundProfile.name,
-        status: 'Pending',
-        dateRegistered: new Date().toISOString().split('T')[0],
-        qrCode: `QR-KK-${boundProfile.id}`
-      };
-      setRegistrations(prev => [newReg, ...prev]);
-
       // Keep the newly registered account signed out until it is approved.
     }
   };
@@ -614,6 +625,7 @@ export default function App() {
       start_date: new Date(newP.startDate).toISOString(),
       end_date: new Date(newP.endDate).toISOString(),
       total_slots: newP.maxParticipants || 50,
+      budget_allocation: newP.budgetAllocation || 0,
       status: 'upcoming',
       tenant_id: currentTenant?.id
     });
@@ -629,6 +641,7 @@ export default function App() {
       id: savedProgram.id,
       registeredCount: 0,
     };
+
     setPrograms(prev => [persistedProgram, ...prev]);
 
     // Also log a public announcement about the new program automatically!
@@ -644,6 +657,36 @@ export default function App() {
       attachments: ['AIP-Initiative-Flyer.pdf']
     };
     setAnnouncements(prev => [newAnn, ...prev]);
+    return true;
+  };
+
+  const handleUpdateProgram = async (program: Program): Promise<boolean> => {
+    const result = await kabisigApi.updateProgram(program.id, {
+      title: program.title,
+      description: program.description,
+      category: program.category,
+      location: program.location,
+      start_date: new Date(program.startDate).toISOString(),
+      end_date: new Date(program.endDate).toISOString(),
+      total_slots: program.maxParticipants,
+      budget_allocation: program.budgetAllocation,
+      status: program.status.toLowerCase() === 'published' ? 'upcoming' : program.status.toLowerCase(),
+    });
+    if (!result.success) {
+      alert(result.message || 'Program could not be updated.');
+      return false;
+    }
+    setPrograms(previous => previous.map(item => item.id === program.id ? program : item));
+    return true;
+  };
+
+  const handleDeleteProgram = async (programId: string): Promise<boolean> => {
+    const result = await kabisigApi.deleteProgram(programId);
+    if (!result.success) {
+      alert(result.message || 'Program could not be deleted.');
+      return false;
+    }
+    setPrograms(previous => previous.filter(item => item.id !== programId));
     return true;
   };
 
@@ -938,6 +981,8 @@ export default function App() {
             }}
             onAddDocument={(document) => setDocuments(prev => [document, ...prev.filter(item => item.id !== document.id)])}
             onCreateProgram={handleCreateProgram}
+            onUpdateProgram={handleUpdateProgram}
+            onDeleteProgram={handleDeleteProgram}
             onLogout={handleLogout}
           />
         )
@@ -953,6 +998,7 @@ export default function App() {
           attendance={[]} // Simulated log tracking inside the view
           documents={documents}
           feedback={feedback}
+          resolutions={resolutions}
           expenses={expenses}
           currentTenant={currentTenant}
           tenants={tenants}
@@ -975,13 +1021,17 @@ export default function App() {
           
           feedback={feedback}
           resolutions={resolutions}
+          tenants={tenants}
           onSubmitFeedback={(feed) => setFeedback(prev => [feed, ...prev])}
           onVoteResolution={handleVoteResolution}
           onRegisterProgram={handleRegisterProgram}
           onUpdateYouthProfile={(updated) => {
             setCurrentYouth(updated);
-            setYouthProfiles(prev => prev.map(p => p.id === updated.id ? updated : p));
-            kabisigApi.updateProfile(updated).catch(console.warn);
+            setYouthProfiles(prev => prev.map(p =>
+              p.id === updated.id || (updated.userId && p.userId === updated.userId) || p.email.toLowerCase() === updated.email.toLowerCase()
+                ? updated
+                : p
+            ));
             if (typeof window !== 'undefined') {
               localStorage.setItem('kabisig_current_youth', JSON.stringify(updated));
             }

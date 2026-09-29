@@ -135,6 +135,7 @@ class KabisigApiClient {
   async completeProfile(data: {
     full_name: string;
     phone?: string;
+    profile_pic?: string;
     birthdate: string;
     sex: string;
     address: string;
@@ -207,6 +208,7 @@ class KabisigApiClient {
     full_name: string;
     barangay_id: string;
     phone?: string;
+    profile_pic?: string;
     birthdate: string;
     sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address: string;
@@ -345,6 +347,10 @@ class KabisigApiClient {
     });
   }
 
+  async deleteProgram(id: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request(`/programs/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   // --- DOCUMENTS ---
   async getDocuments(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/documents?tenant_id=${tenantId}` : '/documents';
@@ -385,6 +391,21 @@ class KabisigApiClient {
     document_type: string;
     file: File;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    const allowedTypes = new Set([
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+    ]);
+    const allowedExtensions = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']);
+    const extension = payload.file.name.toLowerCase().split('.').pop() || '';
+    if (payload.file.size < 1 || payload.file.size > 25 * 1024 * 1024) {
+      return { success: false, message: 'Files must be between 1 byte and 25 MB.' };
+    }
+    if (!allowedTypes.has(payload.file.type) || !allowedExtensions.has(extension)) {
+      return { success: false, message: 'Only PDF, Word (.doc/.docx), JPG, and PNG files are allowed.' };
+    }
     const bytes = new Uint8Array(await payload.file.arrayBuffer());
     let binary = '';
     const chunkSize = 0x8000;

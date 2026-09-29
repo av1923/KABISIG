@@ -483,7 +483,7 @@ export const NAGA_BARANGAYS: BarangayTenant[] = [
   }
 ];
 
-// Clean state: all mock data cleared for actual input starting from SK Federation President
+// User-generated records start empty and are populated from the backend.
 export const INITIAL_PROGRAMS: Program[] = [];
 export const INITIAL_YOUTH_PROFILES: YouthProfile[] = [];
 export const INITIAL_REGISTRATIONS: Registration[] = [];
@@ -492,13 +492,4 @@ export const INITIAL_RESOLUTIONS: ResolutionRecord[] = [];
 export const INITIAL_EXPENSES: ExpenseRecord[] = [];
 export const INITIAL_DOCUMENTS: DocumentRecord[] = [];
 export const INITIAL_ANNOUNCEMENTS: AnnouncementRecord[] = [];
-export const INITIAL_AUDIT_LOGS: SystemAuditLog[] = [
-  {
-    id: 'log-001',
-    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    user: 'SK Federation President',
-    role: 'Super Admin',
-    action: 'SYSTEM_INITIALIZATION',
-    details: 'System initialized. 27 Naga City barangays permanently provisioned in registry.'
-  }
-];
+export const INITIAL_AUDIT_LOGS: SystemAuditLog[] = [];

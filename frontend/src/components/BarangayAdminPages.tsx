@@ -101,6 +101,8 @@ export interface BarangayAdminPagesProps {
   onRejectDocument: (id: string, notes: string) => Promise<DocumentRecord>;
   onAddDocument: (document: DocumentRecord) => void;
   onCreateProgram: (newProg: Program) => void;
+  onUpdateProgram: (program: Program) => Promise<boolean>;
+  onDeleteProgram: (programId: string) => Promise<boolean>;
   onLogout: () => void;
 }
 
@@ -121,6 +123,8 @@ export default function BarangayAdminPages({
   onRejectDocument,
   onAddDocument,
   onCreateProgram,
+  onUpdateProgram,
+  onDeleteProgram,
   onLogout
 }: BarangayAdminPagesProps) {
   const [activeMenu, setActiveMenu] = useState<
@@ -136,6 +140,15 @@ export default function BarangayAdminPages({
       alert('Please allow popups for this website to export the PDF report.');
       return;
     }
+    const reportProgramRows = programs.length > 0
+      ? programs.map(program => {
+          const allocated = Number(program.budgetAllocation) || 0;
+          const spent = expenses.filter(expense => expense.programId === program.id)
+            .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || Number(program.spentBudget) || 0;
+          const rate = allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0';
+          return `<tr><td><strong>${program.title}</strong><br><span style="color:#64748b">${program.category}</span></td><td>${program.aipReference || 'Not provided'}</td><td class="text-right">₱${allocated.toLocaleString()}</td><td class="text-right">₱${spent.toLocaleString()}</td><td class="text-right">${rate}%</td><td class="text-center"><span class="badge">${program.status}</span></td></tr>`;
+        }).join('')
+      : '<tr><td colspan="6" class="text-center">No program records available.</td></tr>';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -181,30 +194,7 @@ export default function BarangayAdminPages({
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong>Sports & Active Citizenship</strong></td>
-              <td>AIP-2026-SPT-01</td>
-              <td class="text-right">₱180,000</td>
-              <td class="text-right">₱152,000</td>
-              <td class="text-right">84.4%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
-            <tr>
-              <td><strong>Educational Assistance & Scholarships</strong></td>
-              <td>AIP-2026-EDU-02</td>
-              <td class="text-right">₱220,000</td>
-              <td class="text-right">₱195,000</td>
-              <td class="text-right">88.6%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
-            <tr>
-              <td><strong>Health, Nutrition & Anti-Drug Advocacy</strong></td>
-              <td>AIP-2026-HLT-03</td>
-              <td class="text-right">₱140,000</td>
-              <td class="text-right">₱110,000</td>
-              <td class="text-right">78.5%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
+            ${reportProgramRows}
           </tbody>
         </table>
 
@@ -220,22 +210,7 @@ export default function BarangayAdminPages({
           </thead>
           <tbody>
             <tr>
-              <td>Annual Barangay Youth Development Plan (ABYIP 2026)</td>
-              <td>Q1 2026</td>
-              <td>January 15, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
-            </tr>
-            <tr>
-              <td>Quarterly Session Minutes & Enacted Resolutions</td>
-              <td>Q2 2026</td>
-              <td>June 30, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
-            </tr>
-            <tr>
-              <td>Disbursement Vouchers & 5% VAT Tax Withholding Ledger</td>
-              <td>Q2 2026</td>
-              <td>July 10, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
+              <td colspan="4" class="text-center">No compliance transmittal records available.</td>
             </tr>
           </tbody>
         </table>
@@ -260,7 +235,7 @@ export default function BarangayAdminPages({
     printWindow.document.close();
   };
 
-  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('Pending');
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -408,16 +383,19 @@ export default function BarangayAdminPages({
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectField, setShowRejectField] = useState(false);
 
-  const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(true);
+  const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(false);
   const [progListFilter, setProgListFilter] = useState<'List' | 'Calendar'>('List');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [newProgForm, setNewProgForm] = useState({
     title: '',
     description: '',
-    startDate: '2026-05-20',
-    endDate: '2026-05-22',
-    location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
-    maxParticipants: 100,
-    budgetAllocation: 50000,
+    category: 'Sports Development' as Program['category'],
+    startDate: '',
+    endDate: '',
+    location: '',
+    maxParticipants: 0,
+    budgetAllocation: 0,
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
   });
 
@@ -480,7 +458,8 @@ export default function BarangayAdminPages({
   });
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
-  const intelligentBudget = getBudgetAnalytics(currentBarangay?.totalBudget || 0, programs, expenses);
+  const programAllocatedBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+  const intelligentBudget = getBudgetAnalytics(programAllocatedBudget, programs, expenses);
   const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
   const budgetAlertSignature = budgetAlerts
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
@@ -599,7 +578,7 @@ export default function BarangayAdminPages({
   ];
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const totalBgyBudget = currentBarangay?.totalBudget || 0;
+  const totalBgyBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
   const monthlyAlloc = totalBgyBudget > 0 ? Math.round(totalBgyBudget / 12) : 0;
   const budgetVsActualMonthlyData = months.map((month, idx) => {
     const monthExpenses = expenses.filter(e => {
@@ -614,7 +593,7 @@ export default function BarangayAdminPages({
   });
 
   const progColors = ['#091d64', '#2563eb', '#60a5fa', '#93c5fd', '#94a3b8', '#cbd5e1'];
-  const totalAllocBudget = currentBarangay?.totalBudget || (programs.reduce((sum, p) => sum + (p.budgetAllocation || 0), 0) || 1);
+  const totalAllocBudget = programAllocatedBudget;
   const budgetAllocationByProgramData = programs.length > 0 ? programs.map((p, idx) => {
     const alloc = p.budgetAllocation || 0;
     const pct = totalAllocBudget > 0 ? ((alloc / totalAllocBudget) * 100).toFixed(1) : '0';
@@ -649,7 +628,7 @@ export default function BarangayAdminPages({
     }
 
     const createdProg: Program = {
-      id: `prog-${Date.now().toString().slice(-3)}`,
+      id: editingProgram?.id || `prog-${Date.now().toString().slice(-3)}`,
       title: newProgForm.title,
       description: newProgForm.description,
       startDate: newProgForm.startDate,
@@ -659,23 +638,68 @@ export default function BarangayAdminPages({
       budgetAllocation: newProgForm.budgetAllocation,
       spentBudget: 0,
       aipReference: `AIP-2026-${(currentBarangay?.name || 'SAN').slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`,
-      category: 'Sports Development',
+      category: newProgForm.category,
       status: newProgForm.status,
       registeredCount: 0
     };
 
-    onCreateProgram(createdProg);
+    if (editingProgram) {
+      void onUpdateProgram(createdProg).then(success => {
+        if (success) {
+          setEditingProgram(null);
+          setShowCreateProgDrawer(false);
+        }
+      });
+    } else {
+      onCreateProgram(createdProg);
+    }
     
     setNewProgForm({
       title: '',
       description: '',
-      startDate: '2026-05-20',
-      endDate: '2026-05-22',
-      location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
-      maxParticipants: 100,
-      budgetAllocation: 50000,
+      category: 'Sports Development',
+      startDate: '',
+      endDate: '',
+      location: '',
+      maxParticipants: 0,
+      budgetAllocation: 0,
       status: 'Upcoming'
     });
+  };
+
+  const calendarStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+  const calendarDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+  const calendarOffset = calendarStart.getDay();
+  const calendarCells = Array.from({ length: Math.ceil((calendarOffset + calendarDays) / 7) * 7 }, (_, index) => {
+    const day = index - calendarOffset + 1;
+    return day > 0 && day <= calendarDays ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day) : null;
+  });
+  const programsForDay = (day: Date) => programs.filter(program => {
+    const start = new Date(program.startDate);
+    const end = new Date(program.endDate || program.startDate);
+    const current = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    return current >= new Date(start.getFullYear(), start.getMonth(), start.getDate())
+      && current <= new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  });
+  const openProgramEditor = (program?: Program) => {
+    if (!program) {
+      setEditingProgram(null);
+      setNewProgForm(previous => ({ ...previous, title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0 }));
+    } else {
+      setEditingProgram(program);
+      setNewProgForm({
+        title: program.title,
+        description: program.description,
+        category: program.category,
+        startDate: program.startDate,
+        endDate: program.endDate,
+        location: program.location,
+        maxParticipants: program.maxParticipants,
+        budgetAllocation: program.budgetAllocation,
+        status: program.status,
+      });
+    }
+    setShowCreateProgDrawer(true);
   };
 
   return (
@@ -1435,7 +1459,7 @@ export default function BarangayAdminPages({
                   </div>
                   
                   <button 
-                    onClick={() => setShowCreateProgDrawer(true)}
+                    onClick={() => openProgramEditor()}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -1446,7 +1470,46 @@ export default function BarangayAdminPages({
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4">
-                  {programs.map(p => (
+                  {progListFilter === 'Calendar' ? (
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h4 className="font-extrabold text-[#091d64]">AIP Localized Program Timeline</h4>
+                          <p className="text-[11px] text-slate-400">Click a program to edit it. Changes are saved to the shared program record.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">‹</button>
+                          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">
+                            {calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">›</button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 border-l border-t border-slate-200">
+                        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+                          <div key={day} className="bg-[#091d64] text-white text-center text-[10px] font-black py-2 border-r border-b border-[#091d64]">{day}</div>
+                        ))}
+                        {calendarCells.map((day, index) => (
+                          <div key={`${day?.toISOString() || 'empty'}-${index}`} className={`min-h-[112px] border-r border-b border-slate-200 p-1.5 ${day ? 'bg-white' : 'bg-slate-50'}`}>
+                            {day && <span className="text-[10px] font-bold text-slate-500">{day.getDate()}</span>}
+                            <div className="space-y-1 mt-1">
+                              {day && programsForDay(day).map(program => (
+                                <button
+                                  type="button"
+                                  key={program.id}
+                                  onClick={() => openProgramEditor(program)}
+                                  className="w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white bg-blue-600 hover:bg-blue-700 truncate"
+                                  title={`${program.title} · ${program.category}`}
+                                >
+                                  {program.title}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : programs.map(p => (
                     <div key={p.id} className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5 flex flex-col md:flex-row gap-5 items-start justify-between">
                       <div className="flex gap-4 items-start">
                         <div className="w-20 h-20 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
@@ -1477,6 +1540,10 @@ export default function BarangayAdminPages({
                           <span className="text-[10px] text-slate-400 block font-bold">Registrations</span>
                           <span className="text-xs font-extrabold text-slate-800 block mt-0.5">{p.registeredCount || 0} / {p.maxParticipants || 100}</span>
                         </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => openProgramEditor(p)} className="px-2 py-1 border rounded text-[10px] font-bold">Edit</button>
+                          <button type="button" onClick={() => { if (window.confirm(`Delete "${p.title}"?`)) void onDeleteProgram(p.id); }} className="px-2 py-1 border border-red-200 text-red-600 rounded text-[10px] font-bold">Delete</button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1490,7 +1557,7 @@ export default function BarangayAdminPages({
                 {showCreateProgDrawer && (
                   <div className="bg-white rounded-xl border border-slate-100 p-6 shadow-xs h-fit sticky top-6">
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
-                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Create New Program</h4>
+                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">{editingProgram ? 'Edit Program' : 'Create New Program'}</h4>
                       <button 
                         onClick={() => setShowCreateProgDrawer(false)}
                         className="p-1 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
@@ -1533,6 +1600,22 @@ export default function BarangayAdminPages({
                             className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
                           />
                         </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Program Category</label>
+                          <select
+                            value={newProgForm.category}
+                            onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })}
+                            className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
+                          >
+                            <option>Health & Nutrition</option>
+                            <option>Education & Scholarship</option>
+                            <option>Sports Development</option>
+                            <option>Livelihood & Skills</option>
+                            <option>Peace & Security</option>
+                            <option>Environmental Protection</option>
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">End Date</label>
                           <input 
@@ -1570,7 +1653,7 @@ export default function BarangayAdminPages({
                           type="submit"
                           className="flex-1 py-2 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold cursor-pointer"
                         >
-                          Create Program
+                          {editingProgram ? 'Save Changes' : 'Create Program'}
                         </button>
                       </div>
                     </form>
@@ -1589,20 +1672,13 @@ export default function BarangayAdminPages({
                   <p className="text-xs text-slate-400 mt-1">Track and monitor the utilization of the SK Federation budget.</p>
                 </div>
                 
-                <button 
-                  onClick={() => generatePDFReport('COA Annual Budget Audit Report')}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs cursor-pointer"
-                >
-                  <FileText className="w-4 h-4" />
-                  Generate COA Report
-                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Budget</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {(currentBarangay?.totalBudget || 0).toLocaleString()}</h4>
+                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {totalAllocBudget.toLocaleString()}</h4>
                     <p className="text-[9px] text-slate-400 font-semibold mt-0.5">FY {new Date().getFullYear()} Budget</p>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
@@ -1625,7 +1701,7 @@ export default function BarangayAdminPages({
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Remaining</span>
                     <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.remaining.toLocaleString()}</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{(currentBarangay?.totalBudget || 0) > 0 ? ((intelligentBudget.remaining / (currentBarangay?.totalBudget || 1)) * 100).toFixed(1) : '0'}% Available</p>
+                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{totalAllocBudget > 0 ? ((intelligentBudget.remaining / totalAllocBudget) * 100).toFixed(1) : '0'}% Available</p>
                   </div>
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
                     <DollarSign className="w-5 h-5" />
@@ -1944,6 +2020,30 @@ export default function BarangayAdminPages({
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Address</span>
                   <span className="text-slate-800 block">{inspectProfile.address} ({inspectProfile.zone})</span>
                 </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Contact & email</span>
+                  <span className="text-slate-800 block">{inspectProfile.mobile || 'Not provided'} · {inspectProfile.email || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Education</span>
+                  <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'}{inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment & scholarship</span>
+                  <span className="text-slate-800 block">{inspectProfile.employmentStatus || inspectProfile.employment || 'Not provided'} · {inspectProfile.scholarStatus || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Youth sector</span>
+                  <span className="text-slate-800 block">{inspectProfile.youthSector || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Guardian</span>
+                  <span className="text-slate-800 block">{inspectProfile.guardianName || 'Not provided'}{inspectProfile.guardianContact ? ` · ${inspectProfile.guardianContact}` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Registration status</span>
+                  <span className="text-slate-800 block">{inspectProfile.status} · Registered {inspectProfile.dateRegistered || 'date unavailable'}</span>
+                </div>
               </div>
 
               {showRejectField && (
@@ -2097,12 +2197,17 @@ export default function BarangayAdminPages({
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Document File *</label>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                   required
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     if (file && file.size > 25 * 1024 * 1024) {
                       setDocumentUploadError('File size exceeds maximum limit of 25MB.');
+                      setSelectedUploadFile(null);
+                      return;
+                    }
+                    if (file && !['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'].includes(file.type)) {
+                      setDocumentUploadError('Only PDF, Word, JPG, and PNG files are allowed.');
                       setSelectedUploadFile(null);
                       return;
                     }

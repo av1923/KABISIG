@@ -16,6 +16,7 @@ const CreateProgramSchema = z.object({
   start_date: z.string().datetime({ message: 'Valid ISO start date required' }),
   end_date: z.string().datetime({ message: 'Valid ISO end date required' }),
   total_slots: z.number().int().min(1, 'Total slots must be at least 1').default(50),
+  budget_allocation: z.number().min(0).default(0),
   status: z.enum(['draft', 'upcoming', 'ongoing', 'completed', 'cancelled']).default('upcoming'),
 });
 

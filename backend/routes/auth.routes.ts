@@ -103,6 +103,7 @@ const RegisterYouthSchema = z.object({
   full_name: z.string().min(2, 'Full name is required'),
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   phone: z.string().optional(),
+  profile_pic: z.string().max(2_000_000).optional(),
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD'),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   address: z.string().min(3, 'Address is required'),
@@ -145,6 +146,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     full_name,
     barangay_id,
     phone,
+    profile_pic,
     birthdate,
     sex,
     address,
@@ -184,12 +186,38 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     return;
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const { data: existingUser, error: existingUserError } = await supabaseAdmin
+    .from('users')
+    .select('id, status, role_id, tenant_id')
+    .ilike('email', normalizedEmail)
+    .maybeSingle();
+
+  if (existingUserError) {
+    console.error('Failed to check existing youth user record:', existingUserError);
+    sendError(res, 'Unable to verify whether this email is already registered. Please try again.', 500);
+    return;
+  }
+
+  if (existingUser) {
+    const statusMessage = existingUser.status === 'pending'
+      ? 'This email already has a pending registration. Please wait for approval or use the existing account.'
+      : existingUser.status === 'rejected'
+        ? 'This email has a rejected registration. Please contact the barangay administrator before registering again.'
+        : 'This email is already registered. Please sign in or use a different email address.';
+    sendError(res, statusMessage, 409, {
+      code: 'EMAIL_ALREADY_REGISTERED',
+      status: existingUser.status,
+    });
+    return;
+  }
+
   // 3. Create Supabase Auth Account
   const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
+    email: normalizedEmail,
     password,
     options: {
-      data: { full_name, barangay_id, tenant_id: barangay_id },
+      data: { full_name, barangay_id, tenant_id: barangay_id, profilePic: profile_pic || '' },
     },
   });
 
@@ -207,7 +235,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       tenant_id: barangay_id,
       role_id: ROLE_IDS.YOUTH_CONSTITUENT, // Integer ID (4)
       full_name,
-      email,
+      email: normalizedEmail,
       phone: phone || null,
       status: 'pending',
     },
@@ -217,6 +245,15 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     console.error('Users Table Insert Error:', userError);
     // Rollback auth account if public insert fails
     await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (userError.code === '23505' && userError.message.includes('users_email_key')) {
+      sendError(
+        res,
+        'This email is already registered. Please sign in or use a different email address.',
+        409,
+        { code: 'EMAIL_ALREADY_REGISTERED' }
+      );
+      return;
+    }
     sendError(res, `Failed to initialize user record: ${userError.message}`, 500);
     return;
   }

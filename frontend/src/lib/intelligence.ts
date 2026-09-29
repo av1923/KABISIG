@@ -574,8 +574,6 @@ export function getMostRequestedProgramTrends(feedbacks: FeedbackRecord[]): Arra
         requests++;
       }
     }
-    // Add realistic base demand from demographic registry if feedback count is small
-    const totalRequests = requests > 0 ? requests + 12 : Math.floor(Math.random() * 8) + 14;
-    return { program: cat.program, requests: totalRequests, icon: cat.icon };
+    return { program: cat.program, requests, icon: cat.icon };
   }).sort((a, b) => b.requests - a.requests);
 }

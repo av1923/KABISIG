@@ -49,8 +49,10 @@ import {
   YouthProfile, 
   Registration, 
   FeedbackRecord, 
-  ResolutionRecord 
+  ResolutionRecord,
+  BarangayTenant
 } from '../types';
+import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import { 
   classifyDemographics, 
   calculateEngagementScore, 
@@ -67,6 +69,8 @@ interface YouthPagesProps {
   registrations: Registration[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
+  currentTenant?: BarangayTenant | null;
+  tenants?: BarangayTenant[];
   onRegisterProgram: (pId: string) => Promise<Registration>;
   onSubmitFeedback: (feed: FeedbackRecord) => void;
   onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => Promise<ResolutionRecord>;
@@ -80,12 +84,18 @@ export default function YouthPages({
   registrations,
   feedback,
   resolutions,
+  currentTenant,
+  tenants = [],
   onRegisterProgram,
   onSubmitFeedback,
   onVoteResolution,
   onUpdateYouthProfile,
   onLogout
 }: YouthPagesProps) {
+  const resolvedTenant = currentTenant?.id === currentYouth.barangayId
+    ? currentTenant
+    : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
+  const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
@@ -222,7 +232,7 @@ export default function YouthPages({
       // Persist profile to Supabase PostgreSQL database via backend API
       const res = await kabisigApi.updateProfile(updatedProfile);
       if (!res.success) {
-        console.warn('Database save warning:', res.message);
+        throw new Error(res.message || 'The profile could not be saved.');
       }
 
       setYouth(updatedProfile);
@@ -233,12 +243,7 @@ export default function YouthPages({
       alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
-      setYouth(updatedProfile);
-      if (onUpdateYouthProfile) {
-        onUpdateYouthProfile(updatedProfile);
-      }
-      setIsEditModalOpen(false);
-      alert(`Your Katipunan ng Kabataan Profile has been updated!\n\nNote: Backend database sync returned: ${err.message || 'Network notice'}`);
+      alert(`Your profile was not saved: ${err.message || 'Backend database sync failed.'}`);
     } finally {
       setIsSavingProfile(false);
     }
@@ -568,16 +573,18 @@ export default function YouthPages({
                   <div className="flex justify-between items-start z-10">
                     <div className="flex items-center gap-3">
                       <div className="relative w-11 h-11 rounded-full bg-white p-0.5 border-2 border-amber-400 shadow-md flex items-center justify-center overflow-hidden flex-shrink-0">
-                        <div className="w-full h-full rounded-full overflow-hidden">
+                        {barangayLogo ? (
+                          <img src={barangayLogo} alt={`${resolvedTenant?.name || 'Barangay'} official seal`} className="w-full h-full object-contain" />
+                        ) : (
                           <KabisigLogo className="w-28" />
-                        </div>
+                        )}
                       </div>
                       <div>
                         <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 inline-block mb-1">
                           Barangay Official Seal
                         </span>
                         <h4 className="font-sans font-black text-white text-sm tracking-tight leading-none uppercase">
-                          BARANGAY {currentYouth.address?.includes('Barangay') ? currentYouth.address.split('Barangay')[1]?.split(',')[0]?.trim() : 'BALATAS'}
+                          BARANGAY {resolvedTenant?.name || 'UNASSIGNED'}
                         </h4>
                         <span className="text-[8px] text-slate-300 block font-mono font-bold mt-1 uppercase tracking-[0.15em] opacity-90">
                           Katipunan ng Kabataan Registry • Naga City
@@ -640,8 +647,8 @@ export default function YouthPages({
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Barangay Youth</span>
-                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">2,150</h4>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Naga City Census</p>
+                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">—</h4>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Live registry count unavailable</p>
                     </div>
                   </div>
 
@@ -652,7 +659,9 @@ export default function YouthPages({
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Ongoing Programs</span>
-                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">12</h4>
+                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">
+                        {programs.filter(program => program.status === 'Upcoming' || program.status === 'Ongoing').length}
+                      </h4>
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">Available for Registration</p>
                     </div>
                   </div>
@@ -795,85 +804,44 @@ export default function YouthPages({
                 </div>
 
                 <div className="space-y-4 divide-y divide-slate-50">
-                  
-                  {/* Item 1: Sports Fest */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
-                        <ClipboardList className="w-5 h-5" />
+                  {programs
+                    .filter(program => program.status === 'Upcoming' || program.status === 'Ongoing')
+                    .slice(0, 3)
+                    .map(program => (
+                      <div key={program.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
+                        <div className="flex gap-4 items-start">
+                          <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
+                            <ClipboardList className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-sm text-slate-800">{program.title}</h5>
+                            <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                              {program.startDate || 'Date to be announced'}{program.endDate ? ` - ${program.endDate}` : ''}
+                            </span>
+                            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                              {program.description || 'Program details will be announced by the Sangguniang Kabataan.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
+                          <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">
+                            {program.registeredCount || 0} / {program.maxParticipants || 0} registered
+                          </span>
+                          <button
+                            disabled={registeringProgramId !== null}
+                            onClick={() => handleRegisterProgramClick(program.id)}
+                            className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
+                          >
+                            {registeringProgramId === program.id ? 'Registering...' : 'Register Now'}
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Kabataan Sports Fest 2025</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">May 20, 2025 - May 22, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          A 3-day sports festival that promotes camaraderie and athletic teamwork.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">120 / 200 registered</span>
-                      <button 
-                        disabled={registeringProgramId !== null}
-                        onClick={() => handleRegisterProgramClick('prog-01')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
-                      >
-                        {registeringProgramId === 'prog-01' ? 'Registering...' : 'Register Now'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Item 2: Leadership Summit */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 gap-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0">
-                        <Award className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Youth Leadership Summit</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Jun 10, 2025 - Jun 11, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          Empowering the next generation of youth leaders in Barangay Pacol.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">45 / 150 registered</span>
-                      <button 
-                        disabled={registeringProgramId !== null}
-                        onClick={() => handleRegisterProgramClick('prog-02')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
-                      >
-                        {registeringProgramId === 'prog-02' ? 'Registering...' : 'Register Now'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Item 3: Digital Literacy */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 gap-4 border-none">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                        <BookOpen className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Digital Literacy Training</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Jul 05, 2025 - Jul 06, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          Practical training sessions on cloud storage, cyber security, and productivity software.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">60 / 100 registered</span>
-                      <button 
-                        disabled={registeringProgramId !== null}
-                        onClick={() => handleRegisterProgramClick('prog-03')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
-                      >
-                        {registeringProgramId === 'prog-03' ? 'Registering...' : 'Register Now'}
-                      </button>
-                    </div>
-                  </div>
-
+                    ))}
+                  {programs.filter(program => program.status === 'Upcoming' || program.status === 'Ongoing').length === 0 && (
+                    <p className="py-6 text-center text-xs text-slate-400 font-semibold">
+                      No upcoming programs have been published for your Barangay yet.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1490,7 +1458,9 @@ export default function YouthPages({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Demographic Zone</span>
-                        <span className="text-slate-800 font-bold block">{currentYouth.zone} (Verified Barangay Balatas Resident)</span>
+                        <span className="text-slate-800 font-bold block">
+                          {currentYouth.zone} (Verified {resolvedTenant?.name || 'Barangay'} Resident)
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Voter Registration State</span>

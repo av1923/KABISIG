@@ -104,6 +104,7 @@ interface OfficialPagesProps {
   attendance: AttendanceRecord[];
   documents: DocumentRecord[];
   feedback: FeedbackRecord[];
+  resolutions: ResolutionRecord[];
   expenses: ExpenseRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
@@ -124,6 +125,7 @@ export default function OfficialPages({
   attendance,
   documents,
   feedback,
+  resolutions,
   expenses,
   currentTenant,
   tenants = [],
@@ -148,12 +150,11 @@ export default function OfficialPages({
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
-  // --- LOCAL PERSISTENT STATES TO SEED WORKING DATA REPLICANTS ---
+  // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
-  const [localResolutions, setLocalResolutions] = useState<any[]>([]);
+  const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
   const [inventory, setInventory] = useState<any[]>([]);
 
-  // Seed Boses ng Kabataan feedback records for SK Kagawad review
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
 
   // Feedback Desk States
@@ -166,7 +167,7 @@ export default function OfficialPages({
   const [feedbackStatusChoice, setFeedbackStatusChoice] = useState<'Reviewed' | 'Resolved'>('Reviewed');
 
   // --- SK SECRETARY SPECIFIC STATES & REPOSITORY ---
-  const [localDocs, setLocalDocs] = useState<DocumentRecord[]>([]);
+  const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
 
   const [docCategoryFilter, setDocCategoryFilter] = useState<string>('All');
   const [docStatusFilter, setDocStatusFilter] = useState<string>('All');
@@ -182,9 +183,7 @@ export default function OfficialPages({
   const [localYouthProfiles, setLocalYouthProfiles] = useState<YouthProfile[]>(youthProfiles || []);
 
   useEffect(() => {
-    if (youthProfiles && youthProfiles.length > 0) {
-      setLocalYouthProfiles(youthProfiles);
-    }
+    setLocalYouthProfiles(youthProfiles || []);
   }, [youthProfiles]);
 
   const [secYouthTab, setSecYouthTab] = useState<'verified' | 'pending'>('verified');
@@ -211,17 +210,16 @@ export default function OfficialPages({
 
   // Sync documents prop to localDocs
   useEffect(() => {
-    if (documents && documents.length > 0) {
-      setLocalDocs(prev => {
-        const existingIds = new Set(prev.map(d => d.id));
-        const newDocs = documents.filter(d => !existingIds.has(d.id));
-        if (newDocs.length > 0) {
-          return [...newDocs, ...prev];
-        }
-        return prev;
-      });
-    }
+    setLocalDocs(documents || []);
   }, [documents]);
+
+  useEffect(() => {
+    setLocalFeedback(feedback || []);
+  }, [feedback]);
+
+  useEffect(() => {
+    setLocalResolutions(resolutions || []);
+  }, [resolutions]);
 
   // --- MODALS STATE ---
   const [showProgModal, setShowProgModal] = useState(false);
@@ -231,6 +229,13 @@ export default function OfficialPages({
       alert('Please allow popups for this website to export the PDF report.');
       return;
     }
+
+    const totalYouth = localYouthProfiles.filter(profile => profile.status === 'Approved').length;
+    const activeResolutions = localResolutions.filter(resolution => resolution.status === 'Voting Open' || resolution.status === 'Approved').length;
+    const totalAttendance = localAttendance.length;
+    const totalAllocated = programs.reduce((sum, program) => sum + (program.budgetAllocation || 0), 0);
+    const totalSpent = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    const utilization = totalAllocated > 0 ? ((totalSpent / totalAllocated) * 100).toFixed(1) : '0.0';
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -285,44 +290,12 @@ export default function OfficialPages({
           </thead>
           <tbody>
             <tr>
-              <td><strong>Education & Scholarship</strong></td>
-              <td>AIP-2026-EDU-01</td>
-              <td class="text-right">₱180,000</td>
-              <td class="text-right">₱142,500</td>
-              <td class="text-right"><strong>79.2%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Sports Development</strong></td>
-              <td>AIP-2026-SPT-02</td>
-              <td class="text-right">₱150,000</td>
-              <td class="text-right">₱128,000</td>
-              <td class="text-right"><strong>85.3%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Health & Nutrition</strong></td>
-              <td>AIP-2026-HLT-03</td>
-              <td class="text-right">₱120,000</td>
-              <td class="text-right">₱95,000</td>
-              <td class="text-right"><strong>79.1%</strong></td>
-              <td class="text-center"><span class="badge badge-warning">Pending Voucher</span></td>
-            </tr>
-            <tr>
-              <td><strong>Environmental Protection</strong></td>
-              <td>AIP-2026-ENV-04</td>
-              <td class="text-right">₱90,000</td>
-              <td class="text-right">₱45,000</td>
-              <td class="text-right"><strong>50.0%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Livelihood & Skills</strong></td>
-              <td>AIP-2026-LIV-05</td>
-              <td class="text-right">₱100,000</td>
-              <td class="text-right">₱78,000</td>
-              <td class="text-right"><strong>78.0%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
+              <td><strong>All published programs</strong></td>
+              <td>${programs.length} records</td>
+              <td class="text-right">₱${totalAllocated.toLocaleString()}</td>
+              <td class="text-right">₱${totalSpent.toLocaleString()}</td>
+              <td class="text-right"><strong>${utilization}%</strong></td>
+              <td class="text-center"><span class="badge">${programs.length > 0 ? 'Recorded' : 'No records'}</span></td>
             </tr>
           </tbody>
         </table>
@@ -332,12 +305,12 @@ export default function OfficialPages({
           <div class="card">
             <h4>Program & Resolution Alignment</h4>
             <p><strong>CBYDP Alignment:</strong> Fully compliant with 5-Year Development Plan.</p>
-            <p><strong>Active Resolutions:</strong> 12 resolutions authored & approved.</p>
+            <p><strong>Active Resolutions:</strong> ${activeResolutions} records.</p>
           </div>
           <div class="card">
             <h4>Meeting Attendance & Quorum</h4>
-            <p><strong>Attendance Ratio:</strong> 98.5% across all 12 sessions.</p>
-            <p><strong>Mandatory Trainings:</strong> 100% council participation.</p>
+            <p><strong>Attendance Records:</strong> ${totalAttendance} records.</p>
+            <p><strong>Mandatory Trainings:</strong> No training records available.</p>
           </div>
         </div>
 
@@ -345,21 +318,21 @@ export default function OfficialPages({
         <div class="grid-2">
           <div class="card">
             <h4>Youth Population (Aged 15–30)</h4>
-            <p><strong>Total Registered:</strong> 1,420 Residents</p>
-            <p><strong>15-17 yrs:</strong> 380 &bull; <strong>18-24 yrs:</strong> 710 &bull; <strong>25-30 yrs:</strong> 330</p>
+            <p><strong>Total Verified:</strong> ${totalYouth} Residents</p>
+            <p>Age distribution is calculated from verified profiles when available.</p>
           </div>
           <div class="card">
             <h4>Educational & Scholarship Grantees</h4>
-            <p><strong>Senior High / College:</strong> 1,100 Youth</p>
-            <p><strong>Active Scholarship Grantees:</strong> 145 Beneficiaries</p>
+            <p><strong>Senior High / College:</strong> ${localYouthProfiles.filter(profile => profile.educationalLevel?.includes('High School') || profile.educationalLevel?.includes('College')).length} Youth</p>
+            <p><strong>Active Scholarship Grantees:</strong> ${localYouthProfiles.filter(profile => profile.scholarStatus === 'Scholar').length} Beneficiaries</p>
           </div>
         </div>
 
         <div class="footer">
           <p>Certified Accurate and Compliant by:</p>
           <div class="sign">
-            HON. NANA BARROSA<br>
-            <span style="font-weight: normal; color: #64748b;">SK Treasurer, Barangay ${currentTenant?.name || 'Barangay'}</span>
+            ${currentUser?.full_name || 'Authorized SK Official'}<br>
+            <span style="font-weight: normal; color: #64748b;">${profileConfig[currentRole]?.title || 'SK Official'}, Barangay ${currentTenant?.name || 'Barangay'}</span>
           </div>
         </div>
 
@@ -384,24 +357,24 @@ export default function OfficialPages({
 
   // Form states
   const [progForm, setProgForm] = useState({
-    title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 45000, aipReference: 'AIP-2026-BAL-', category: (currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship') as any, status: 'Published' as any
+    title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: (currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship') as any, status: 'Published' as any
   });
   const [docForm, setDocForm] = useState({
-    title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'
+    title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
   });
   const [expenseForm, setExpenseForm] = useState({
-    programId: programs[0]?.id || 'prog-01', budgetId: '', amount: 10000, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
+    programId: programs[0]?.id || '', budgetId: '', amount: 0, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
   });
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
   const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [expenseSaveError, setExpenseSaveError] = useState('');
   const [resForm, setResForm] = useState({
-    title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon', endDate: ''
+    title: '', number: '', author: '', endDate: ''
   });
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
-    item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 500, location: 'SK Office'
+    item: '', category: 'Sports Equipment', quantity: 0, condition: 'Good', cost: 0, location: ''
   });
 
   // Rejection Reason state for Secretary validations
@@ -409,7 +382,7 @@ export default function OfficialPages({
   const [rejectReason, setRejectReason] = useState('');
 
   // Attendance scanner simulation states
-  const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || 'prog-01');
+  const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
@@ -571,22 +544,22 @@ export default function OfficialPages({
 
   const profileConfig: Partial<Record<UserRole, { name: string; title: string; avatar?: string }>> = {
     'SK Kagawad': {
-      name: 'Hon. Ashley Kyla D. Vinzon',
-      title: 'SK Kagawad - Environment Committee Chair',
+      name: currentUser?.full_name || 'SK Kagawad',
+      title: 'SK Kagawad',
     },
     'SK Secretary': {
-      name: 'Hon. David James Ignacio',
-      title: 'SK Secretary - Council Secretariat',
+      name: currentUser?.full_name || 'SK Secretary',
+      title: 'SK Secretary',
     },
     'SK Treasurer': {
-      name: 'Hon. Nana Barrosa',
-      title: 'SK Treasurer - Chief Finance Officer',
+      name: currentUser?.full_name || 'SK Treasurer',
+      title: 'SK Treasurer',
     }
   };
 
   // --- STATS COMPUTATIONS ---
   const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalBarangayBudget = 450000;
+  const totalBarangayBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
 
@@ -621,13 +594,13 @@ export default function OfficialPages({
     switch (cat) {
       case 'Resolutions':
       case 'Budget':
-        return 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)';
+        return currentTenant?.chairperson || 'SK Chairperson';
       case 'Minutes':
       case 'Meeting Minutes':
       case 'Communications':
         return 'Council Secretariat / SK Secretary';
       case 'Vouchers':
-        return 'Hon. Francis O. Martinez (SK Treasurer)';
+        return currentUser?.full_name || 'SK Treasurer';
       case 'Reports':
         return 'DILG Local Government Officer';
       default:
@@ -644,7 +617,7 @@ export default function OfficialPages({
     const catCode = cat === 'Resolutions' ? 'RES' : cat.slice(0, 3).toUpperCase();
     const count = localDocs.filter(d => d.category === cat).length + 1;
     const defaultResNum = cat === 'Resolutions'
-      ? `Res. No. 2026-${count.toString().padStart(3, '0')}`
+      ? `Res. No. ${new Date().getFullYear()}-${count.toString().padStart(3, '0')}`
       : `${catCode}-2026-${count.toString().padStart(3, '0')}`;
     const autoResNum = docForm.resolutionNumber?.trim() || defaultResNum;
 
@@ -692,7 +665,7 @@ export default function OfficialPages({
       onAddDocument(newDocument);
       setShowDocModal(false);
       setSelectedDocumentFile(null);
-      setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)' });
+      setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: currentTenant?.chairperson || '' });
     } catch (error: any) {
       setDocumentUploadError(error.message || 'Document upload failed.');
     } finally {
@@ -789,7 +762,7 @@ export default function OfficialPages({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `SK_Treasurer_Financial_Report_${currentTenant?.name || 'San_Francisco'}_2026.csv`);
+    link.setAttribute("download", `SK_Treasurer_Financial_Report_${currentTenant?.name || 'Barangay'}_${new Date().getFullYear()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -831,18 +804,18 @@ export default function OfficialPages({
         <div class="meta-bar">
           <span><strong>Report Title:</strong> ${title}</span>
           <span><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          <span><strong>Prepared By:</strong> Hon. David James Ignacio (SK Secretary)</span>
+          <span><strong>Prepared By:</strong> ${currentUser?.full_name || 'Authorized SK Official'} (${currentRole || 'SK Official'})</span>
         </div>
         ${reportHtml}
         <div class="footer-sig">
           <div class="sig-box">
             <p>Prepared & Certified Correct:</p>
-            <div class="sig-line">HON. DAVID JAMES IGNACIO</div>
-            <p style="font-size:10px; color:#64748b; margin-top:2px;">SK Secretary</p>
+            <div class="sig-line">${currentUser?.full_name || 'Authorized SK Official'}</div>
+            <p style="font-size:10px; color:#64748b; margin-top:2px;">${currentRole || 'SK Official'}</p>
           </div>
           <div class="sig-box">
             <p>Attested & Approved:</p>
-            <div class="sig-line">HON. ZALDY D. BRAGAIS JR.</div>
+            <div class="sig-line">${currentTenant?.chairperson || 'SK Chairperson'}</div>
             <p style="font-size:10px; color:#64748b; margin-top:2px;">SK Chairperson</p>
           </div>
         </div>
@@ -906,7 +879,7 @@ export default function OfficialPages({
 
       setLocalResolutions(prev => [result.data!, ...prev]);
       onAddResolution(result.data);
-      setResForm({ title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon', endDate: '' });
+      setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' });
       setShowResModal(false);
     } catch (error: any) {
       alert(error.message || 'Resolution poll could not be saved.');
@@ -1489,11 +1462,11 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">10% SK Allocation</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">FY 2026</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
+                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
                         <h3 className="text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Youth Allocation</p>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
                       </div>
                     </div>
 
@@ -1575,8 +1548,8 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">10% SK Allocation</span>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">FY 2026</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
+                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
                         <h3 className="text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{remainingCash.toLocaleString()} Cash Balance</p>
@@ -1625,8 +1598,8 @@ export default function OfficialPages({
                             description: '',
                             category: 'Resolutions',
                             fileName: '',
-                            resolutionNumber: `Res. No. 2026-00${localResolutions.length + 1}`,
-                            designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'
+                            resolutionNumber: `Res. No. ${new Date().getFullYear()}-${String(localResolutions.length + 1).padStart(3, '0')}`,
+                            designatedApprover: currentTenant?.chairperson || ''
                           });
                           setShowDocModal(true);
                         }}
@@ -1678,9 +1651,9 @@ export default function OfficialPages({
                               <Pie 
                                 data={[
                                   { name: 'Council Resolutions', value: localDocs.filter(d=>d.category==='Resolutions').length || 6, color: '#091d64' },
-                                  { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length || 4, color: '#2563eb' },
-                                  { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length || 4, color: '#10b981' },
-                                  { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length || 4, color: '#f59e0b' }
+                                  { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length, color: '#2563eb' },
+                                  { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length, color: '#10b981' },
+                                  { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length, color: '#f59e0b' }
                                 ]}
                                 dataKey="value"
                                 cx="50%"
@@ -1710,9 +1683,9 @@ export default function OfficialPages({
                         <div className="space-y-2.5">
                           {(() => {
                             const resCount = localDocs.filter(d=>d.category==='Resolutions').length || 6;
-                            const minCount = localDocs.filter(d=>d.category==='Minutes').length || 4;
-                            const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length || 4;
-                            const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length || 4;
+                            const minCount = localDocs.filter(d=>d.category==='Minutes').length;
+                            const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length;
+                            const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length;
                             const total = localDocs.length || 1;
 
                             return [
@@ -1972,7 +1945,7 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5">
                       <button 
                         onClick={() => {
-                          setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: 'Sports & Active Citizenship', status: 'Published' });
+                          setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: 'Sports Development', status: 'Published' });
                           setShowProgModal(true);
                         }}
                         className="px-3.5 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -2015,7 +1988,7 @@ export default function OfficialPages({
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={programs.slice(0, 5).map(p => ({
                             name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
-                            registered: p.registeredCount || 45,
+                            registered: p.registeredCount || 0,
                             capacity: p.maxParticipants || 100
                           }))} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
                             <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
@@ -2124,9 +2097,9 @@ export default function OfficialPages({
                         <span className="px-2.5 py-0.5 bg-emerald-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
                           Financial Management & COA Audit Console
                         </span>
-                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY 2026 Budget</span>
+                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY {new Date().getFullYear()} Budget</span>
                       </div>
-                      <h3 className="text-xl font-bold font-sans tracking-tight">10% SK Allocation, Tax Withholding & Public Ledger</h3>
+                      <h3 className="text-xl font-bold font-sans tracking-tight">Program Allocations, Tax Withholding & Public Ledger</h3>
                       <p className="text-xs text-emerald-100 leading-relaxed">
                         Log disbursement vouchers, compute automated 5% VAT / 1% EWT tax withholdings, track liquidation timelines, and publish COA reports.
                       </p>
@@ -2135,7 +2108,7 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5">
                       <button 
                         onClick={() => {
-                          setExpenseForm({ programId: programs[0]?.id || 'prog-01', budgetId: budgetOptions[0]?.id || '', amount: 5000, supplier: 'Naga Sports Supplies', taxType: 'VAT', category: 'Supplies' });
+                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: budgetOptions[0]?.id || '', amount: 0, supplier: '', taxType: 'VAT', category: 'Supplies' });
                           setShowExpenseModal(true);
                         }}
                         className="px-3.5 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -2143,7 +2116,10 @@ export default function OfficialPages({
                         <Plus className="w-4 h-4 text-slate-950" /> Log Disbursement
                       </button>
                       <button 
-                        onClick={() => setActiveMenu('finances')}
+                        onClick={() => {
+                          setActiveMenu('reports');
+                          setReportModuleCategory('financial');
+                        }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
                       >
                         <Coins className="w-4 h-4 text-amber-300" /> Manage Liquidations
@@ -2378,7 +2354,7 @@ export default function OfficialPages({
                 </div>
                 <button 
                   onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship', status: 'Published' });
+                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship', status: 'Published' });
                     setShowProgModal(true);
                   }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
@@ -2521,7 +2497,7 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1 tracking-wider">Verification Date</label>
-                  <input type="date" defaultValue="2026-07-08" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]" />
+                  <input type="date" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]" />
                 </div>
               </div>
 
@@ -3072,7 +3048,7 @@ export default function OfficialPages({
                       <p className="text-xs text-slate-400 mt-1">Author, catalog, and track municipal legislative submissions for youth development.</p>
                     </div>
                     <button 
-                      onClick={() => { setResForm({ title: '', number: 'Res. No. 2026-005', author: 'Hon. Ashley Kyla D. Vinzon', endDate: '' }); setShowResModal(true); }}
+                      onClick={() => { setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' }); setShowResModal(true); }}
                       className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
@@ -3223,16 +3199,12 @@ export default function OfficialPages({
                         const sportsStats = getSectorStats('Sports Development');
                         const healthStats = getSectorStats('Health & Nutrition');
 
-                        const sreCategories = [
-                          { name: 'Education & Scholarship Programs', cat: 'Education & Scholarship', aip: 'AIP-2026-EDU-01' },
-                          { name: 'Sports & Youth Recreation', cat: 'Sports Development', aip: 'AIP-2026-SPT-02' },
-                          { name: 'Health, Nutrition & Anti-Drug Advocacy', cat: 'Health & Nutrition', aip: 'AIP-2026-HLT-03' },
-                          { name: 'Environmental Protection & Climate Action', cat: 'Environmental Protection', aip: 'AIP-2026-ENV-04' },
-                          { name: 'Livelihood, Skills & Entrepreneurship', cat: 'Livelihood & Skills', aip: 'AIP-2026-LIV-05' },
-                        ].map(c => {
-                          const stats = getSectorStats(c.cat);
+                        const sreCategories = Array.from(new Set(programs.map(program => program.category))).map(cat => {
+                          const stats = getSectorStats(cat);
                           return {
-                            ...c,
+                            name: cat,
+                            cat,
+                            aip: programs.find(program => program.category === cat)?.aipReference || '',
                             alloc: stats.alloc,
                             disb: stats.disb,
                             rem: Math.max(0, stats.alloc - stats.disb),
@@ -3913,7 +3885,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 text-right font-mono text-slate-700">₱{p.budgetAllocation.toLocaleString()}</td>
                                 <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{(p.spentBudget || p.budgetAllocation * 0.85).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'AIP-2026'}</span>
+                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'No AIP reference'}</span>
                                 </td>
                               </tr>
                             ))}
@@ -3934,7 +3906,7 @@ export default function OfficialPages({
                         <div className="grid md:grid-cols-2 gap-4 text-xs">
                           <div className="p-3 bg-white rounded-lg border border-slate-200/60 space-y-1">
                             <span className="font-bold text-slate-800 block">Section 14 (a): Masterlist & Database</span>
-                            <p className="text-slate-500 text-[11px]">Updated master list of Katipunan ng Kabataan members maintained in digital vault with 1,420 registered residents.</p>
+                            <p className="text-slate-500 text-[11px]">Updated master list of Katipunan ng Kabataan members maintained in the digital registry with {localYouthProfiles.length} registered residents.</p>
                           </div>
                           <div className="p-3 bg-white rounded-lg border border-slate-200/60 space-y-1">
                             <span className="font-bold text-slate-800 block">Section 14 (b): Public Information & Posting</span>
@@ -3980,7 +3952,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 text-center"><span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-black text-[9px]">100% Present</span></td>
                                 <td className="px-5 py-3 font-mono text-slate-500">{min.uploadedDate}</td>
                                 <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">Hon. Clara B. Samson (SK Secretary)</span>
+                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">{currentUser?.full_name || 'SK Secretary'}</span>
                                 </td>
                               </tr>
                             ))}
@@ -4442,7 +4414,7 @@ export default function OfficialPages({
                 </div>
                 <button 
                   onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: 'Education & Scholarship', status: 'Published' });
+                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: 'Education & Scholarship', status: 'Published' });
                     setShowProgModal(true);
                   }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
@@ -4559,7 +4531,7 @@ export default function OfficialPages({
                           const isOver = spent > p.budgetAllocation && p.budgetAllocation > 0;
                           return (
                             <tr key={p.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'AIP-2026'}</td>
+                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'No AIP reference'}</td>
                               <td className="px-5 py-4 font-bold text-slate-800">{p.title}</td>
                               <td className="px-5 py-4"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span></td>
                               <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">₱{p.budgetAllocation.toLocaleString()}</td>
@@ -4921,8 +4893,8 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select value={docForm.designatedApprover} onChange={(e)=>setDocForm({...docForm, designatedApprover: e.target.value})} className="w-full p-2 border rounded text-xs font-semibold text-[#091d64]">
-                  <option value="Hon. Zaldy D. Bragais Jr. (SK Chairperson)">1. Hon. Zaldy D. Bragais Jr. (SK Chairperson / Barangay Admin)</option>
-                  <option value="Hon. Francis O. Martinez (SK Treasurer)">2. Hon. Francis O. Martinez (SK Treasurer)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
@@ -4938,7 +4910,7 @@ export default function OfficialPages({
               <div className="border-2 border-dashed border-slate-200 rounded-lg p-5 text-center bg-slate-50 relative cursor-pointer hover:bg-slate-100 transition-colors">
                 <input 
                   type="file" 
-                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -5352,12 +5324,12 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select 
-                  value={selectedDoc.designatedApprover || 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'} 
+                  value={selectedDoc.designatedApprover || currentTenant?.chairperson || 'SK Chairperson'} 
                   onChange={(e) => setSelectedDoc({ ...selectedDoc, designatedApprover: e.target.value })} 
                   className="w-full p-2 border border-slate-200 rounded text-xs font-semibold text-[#091d64]"
                 >
-                  <option value="Hon. Zaldy D. Bragais Jr. (SK Chairperson)">1. Hon. Zaldy D. Bragais Jr. (SK Chairperson / Barangay Admin)</option>
-                  <option value="Hon. Francis O. Martinez (SK Treasurer)">2. Hon. Francis O. Martinez (SK Treasurer)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
@@ -5549,8 +5521,8 @@ export default function OfficialPages({
                 </div>
                 <div className="p-4 bg-violet-50/60 border border-violet-100 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-violet-800 uppercase block">Zones Covered</span>
-                  <h4 className="text-2xl font-black text-violet-900">4 Zones</h4>
-                  <span className="text-[10px] text-slate-400 block">100% Purok Coverage</span>
+                  <h4 className="text-2xl font-black text-violet-900">{new Set(localYouthProfiles.map(profile => profile.zone).filter(Boolean)).size}</h4>
+                  <span className="text-[10px] text-slate-400 block">Registered zones</span>
                 </div>
               </div>
 
@@ -5606,7 +5578,7 @@ export default function OfficialPages({
                   <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
                     <span className="text-[10px] text-slate-400 font-bold uppercase block">Vocational / Out-of-School</span>
                     <span className="text-lg font-bold text-slate-800 block mt-1">
-                      {localYouthProfiles.filter(y => y.educationalLevel?.includes('Vocational') || y.educationalLevel?.includes('OSY')).length || 12}
+                      {localYouthProfiles.filter(y => y.educationalLevel?.includes('Vocational') || y.educationalLevel?.includes('OSY')).length}
                     </span>
                   </div>
                 </div>

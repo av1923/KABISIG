@@ -128,15 +128,15 @@ router.post('/', async (req, res) => {
         negative_keywords: sentimentResult.negativeMatches,
     });
     if (analysisError) {
-        const { error: rollbackError } = await supabaseAdmin
-            .from('feedback')
-            .delete()
-            .eq('id', newFeedback.id);
-        const rollbackMessage = rollbackError
-            ? ` Rollback also failed: ${rollbackError.message}`
-            : '';
-        sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}.${rollbackMessage}`, 500);
-        return;
+        const missingSentimentTable = analysisError.code === '42P01'
+            || analysisError.message.toLowerCase().includes('sentiment_analysis')
+            || analysisError.message.toLowerCase().includes('schema cache');
+        if (!missingSentimentTable) {
+            console.error('Failed to persist sentiment analysis:', analysisError);
+            sendError(res, `Feedback was saved, but sentiment analysis could not be persisted: ${analysisError.message}`, 502);
+            return;
+        }
+        console.warn('Feedback saved without sentiment_analysis record because the optional table is unavailable:', analysisError.message);
     }
     sendCreated(res, {
         feedback: newFeedback,
