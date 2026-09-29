@@ -23,6 +23,7 @@ function toResolutionRecord(poll: any): ResolutionRecord {
 
 class KabisigApiClient {
   private token: string | null = null;
+  private invalidating = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -56,7 +57,7 @@ class KabisigApiClient {
 
     const token = this.getToken();
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = "Bearer " + token;
     }
 
     try {
@@ -65,7 +66,15 @@ class KabisigApiClient {
         headers,
       });
 
-      const json = await response.json();
+      const json = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        this.setToken(null);
+        if (!this.invalidating && typeof window !== 'undefined') {
+          this.invalidating = true;
+          window.dispatchEvent(new CustomEvent('kabisig:auth-invalid'));
+          window.setTimeout(() => { this.invalidating = false; }, 0);
+        }
+      }
       if (!response.ok) {
         return {
           success: false,
@@ -263,6 +272,17 @@ class KabisigApiClient {
     return res.success ? res.data : null;
   }
 
+  async getAnnouncements(tenantId?: string): Promise<any[]> {
+    const url = tenantId ? `/announcements?tenant_id=${encodeURIComponent(tenantId)}` : '/announcements';
+    const res = await this.request<any[]>(url, { method: 'GET' });
+    if (!res.success) throw new Error(res.message || 'Announcements could not be loaded.');
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async createAnnouncement(payload: { title: string; content: string; category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event'; status?: 'draft' | 'published' }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/announcements', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
   logout() {
     this.request('/auth/logout', { method: 'POST' }).catch(() => {});
     this.setToken(null);
@@ -290,6 +310,11 @@ class KabisigApiClient {
 
   async getMyProgramRegistrations(): Promise<any[] | null> {
     const res = await this.request<any[]>('/programs/registrations/mine', { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : null;
+  }
+
+  async getProgramRegistrations(programId: string): Promise<any[] | null> {
+    const res = await this.request<any[]>(`/programs/${encodeURIComponent(programId)}/registrations`, { method: 'GET' });
     return res.success && Array.isArray(res.data) ? res.data : null;
   }
 

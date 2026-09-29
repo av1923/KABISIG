@@ -265,9 +265,12 @@ export default function SuperAdminPages({
       logo: modalForm.logo
     };
 
-    if (modalForm.totalBudget !== null && Number.isFinite(modalForm.totalBudget) && modalForm.totalBudget >= 0) {
-      payload.totalBudget = modalForm.totalBudget;
-      payload.allocatedBudget = modalForm.totalBudget;
+    // Empty is an explicit clear operation; never use Number('') (which is 0)
+    // as a way to distinguish an untouched field from a deleted allocation.
+    const totalBudget = modalForm.totalBudget === null ? 0 : Number(modalForm.totalBudget);
+    if (Number.isFinite(totalBudget) && totalBudget >= 0) {
+      payload.totalBudget = totalBudget;
+      payload.allocatedBudget = totalBudget;
     }
 
     setIsSaving(true);
@@ -1607,7 +1610,7 @@ export default function SuperAdminPages({
                     placeholder="Enter AIP budget"
                     className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-[#091d64] focus:outline-none bg-slate-50"
                   />
-                  <p className="text-[10px] text-slate-400 mt-0.5">Leave blank to keep the current allocation. Enter 0 only to explicitly clear it.</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Clear the field to delete the allocation, or enter 0 to save an explicit zero.</p>
                 </div>
               </div>
 
@@ -1685,4 +1688,3 @@ export default function SuperAdminPages({
     </div>
   );
 }
-

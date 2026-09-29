@@ -58,11 +58,26 @@ export default function App() {
   const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
+  const [authReady, setAuthReady] = useState(false);
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('login');
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
+  useEffect(() => {
+    const invalidateSession = () => {
+      kabisigApi.logout();
+      setCurrentUser(null);
+      setCurrentRole(null);
+      setCurrentTenant(null);
+      setCurrentYouth(null);
+      setCurrentEmail('');
+      setPublicView('login');
+    };
+    window.addEventListener('kabisig:auth-invalid', invalidateSession);
+    return () => window.removeEventListener('kabisig:auth-invalid', invalidateSession);
+  }, []);
+
   useEffect(() => {
     kabisigApi.getBarangays().then((data) => {
       if (data && data.length > 0) {
@@ -98,7 +113,9 @@ export default function App() {
                 });
               }
             }
-          }).catch(console.warn);
+          }).catch(console.warn).finally(() => setAuthReady(true));
+        } else {
+          setAuthReady(true);
         }
       }
     }).catch(console.warn);
@@ -113,11 +130,11 @@ export default function App() {
           startDate: p.start_date ? p.start_date.split('T')[0] : '2026-05-20',
           endDate: p.end_date ? p.end_date.split('T')[0] : '2026-05-22',
           location: p.location || 'Barangay Hall',
-          maxParticipants: p.total_slots || 100,
+          maxParticipants: Number(p.total_slots) || 0,
           budgetAllocation: Number(p.budget_allocation) || 0,
           spentBudget: 0,
           aipReference: p.aip_reference || '',
-          category: p.category || 'General',
+          category: p.category || 'Environmental Protection',
           status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
           registeredCount: p.program_registrations?.[0]?.count || 0
         }));
@@ -149,7 +166,7 @@ export default function App() {
 
     // Load live expenses from database
     kabisigApi.getExpenses().then((exps) => {
-      if (exps && exps.length > 0) {
+      if (exps) {
         const formatted: ExpenseRecord[] = exps.map((e: any) => ({
           id: e.id,
           programId: e.program_id || '',
@@ -170,7 +187,7 @@ export default function App() {
 
     // Load live feedback from database
     kabisigApi.getFeedback().then((feeds) => {
-      if (feeds && feeds.length > 0) {
+      if (feeds) {
         const formatted: FeedbackRecord[] = feeds.map((f: any) => ({
           id: f.id,
           type: f.category || 'General',
@@ -178,10 +195,10 @@ export default function App() {
           content: f.message,
           rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
           anonymous: f.is_anonymous || false,
-          status: f.status === 'resolved' ? 'Resolved' : 'Pending',
+          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
           dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
           submittedBy: f.users?.full_name || 'Anonymous Youth',
-          response: f.admin_response || ''
+          response: f.response || ''
         }));
         setFeedback(formatted);
       }
@@ -190,6 +207,21 @@ export default function App() {
     kabisigApi.getAuditLogs().then((logs) => {
       if (logs) setAuditLogs(logs);
     }).catch(console.warn);
+
+    (kabisigApi.getToken() ? kabisigApi.getAnnouncements() : Promise.resolve([])).then((rows) => {
+      if (rows.length) {
+        setAnnouncements(rows.map((a: any): AnnouncementRecord => ({
+          id: a.id,
+          title: a.title,
+          content: a.content,
+          author: a.author?.full_name || 'SK Official',
+          barangay: a.tenant_id || 'Barangay',
+          datePosted: (a.published_at || a.created_at || '').split('T')[0],
+          category: a.category,
+          attachments: [],
+        })));
+      }
+    }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
 
     // Invitation links must never reuse an existing Super Admin/browser session.
     const inviteParams = typeof window !== 'undefined'
@@ -624,8 +656,9 @@ export default function App() {
       location: newP.location || `Barangay ${currentTenant?.name || 'Hall'}`,
       start_date: new Date(newP.startDate).toISOString(),
       end_date: new Date(newP.endDate).toISOString(),
-      total_slots: newP.maxParticipants || 50,
+      total_slots: newP.maxParticipants,
       budget_allocation: newP.budgetAllocation || 0,
+      aip_reference: newP.aipReference || undefined,
       status: 'upcoming',
       tenant_id: currentTenant?.id
     });
@@ -670,6 +703,7 @@ export default function App() {
       end_date: new Date(program.endDate).toISOString(),
       total_slots: program.maxParticipants,
       budget_allocation: program.budgetAllocation,
+      aip_reference: program.aipReference || undefined,
       status: program.status.toLowerCase() === 'published' ? 'upcoming' : program.status.toLowerCase(),
     });
     if (!result.success) {
@@ -832,7 +866,10 @@ export default function App() {
     <div className="min-h-screen flex flex-col relative bg-slate-50">
       
       {/* 1. PUBLIC LANDING / LOGIN / SIGN-UP VIEW */}
-      {currentRole === null && (
+      {!authReady && (
+        <div className="flex-1 flex items-center justify-center text-slate-500 font-semibold">Checking your session…</div>
+      )}
+      {authReady && currentRole === null && (
         <PublicPages 
           barangays={tenants}
           programs={programs}
@@ -983,6 +1020,7 @@ export default function App() {
             onCreateProgram={handleCreateProgram}
             onUpdateProgram={handleUpdateProgram}
             onDeleteProgram={handleDeleteProgram}
+            onAnnouncementsChanged={(updatedAnnouncements) => setAnnouncements(updatedAnnouncements)}
             onLogout={handleLogout}
           />
         )
@@ -1000,6 +1038,7 @@ export default function App() {
           feedback={feedback}
           resolutions={resolutions}
           expenses={expenses}
+          announcements={announcements}
           currentTenant={currentTenant}
           tenants={tenants}
           currentUser={currentUser}

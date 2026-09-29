@@ -13,6 +13,7 @@ const CreateProgramSchema = z.object({
     end_date: z.string().datetime({ message: 'Valid ISO end date required' }),
     total_slots: z.number().int().min(1, 'Total slots must be at least 1').default(50),
     budget_allocation: z.number().min(0).default(0),
+    aip_reference: z.string().trim().max(100).optional(),
     status: z.enum(['draft', 'upcoming', 'ongoing', 'completed', 'cancelled']).default('upcoming'),
 });
 const UpdateProgramSchema = CreateProgramSchema.partial();
@@ -94,6 +95,34 @@ router.get('/:id', authenticateUser, async (req, res) => {
         is_full: totalRegistered >= program.total_slots,
         my_registration: userReg || null,
     }, 'Program details retrieved.');
+});
+router.get('/:id/registrations', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), async (req, res) => {
+    const programId = String(req.params.id || '');
+    const user = req.user;
+    const { data: program, error: programError } = await supabaseAdmin
+        .from('program')
+        .select('id, tenant_id')
+        .eq('id', programId)
+        .single();
+    if (programError || !program) {
+        sendError(res, 'Program not found.', 404);
+        return;
+    }
+    if (!canAccessTenant(user, program.tenant_id)) {
+        sendError(res, 'Forbidden: You cannot view registrations for another Barangay.', 403);
+        return;
+    }
+    const { data, error } = await supabaseAdmin
+        .from('program_registrations')
+        .select('id, program_id, user_id, tenant_id, status, registered_at, users(full_name, email)')
+        .eq('program_id', programId)
+        .neq('status', 'cancelled')
+        .order('registered_at', { ascending: true });
+    if (error) {
+        sendError(res, `Failed to retrieve program registrations: ${error.message}`, 500);
+        return;
+    }
+    sendSuccess(res, data || [], 'Program registrations retrieved successfully.');
 });
 router.post('/', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), async (req, res) => {
     const parseResult = CreateProgramSchema.safeParse(req.body);

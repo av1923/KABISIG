@@ -353,7 +353,7 @@ router.patch(
     }
 
     const approvalFeedback = parsed.data.feedback?.trim() || null;
-    const { data: approval, error: approvalError } = await supabaseAdmin
+    const { error: approvalError } = await supabaseAdmin
       .from('document_approvals')
       .insert({
         tenant_id: existing.tenant_id,
@@ -365,10 +365,9 @@ router.patch(
       .select()
       .single();
 
-    if (approvalError) {
-      sendError(res, `Failed to record document approval: ${approvalError.message}`, 500);
-      return;
-    }
+    // The approval history table is additive. A stale Supabase schema cache
+    // must not prevent the authoritative document status update.
+    if (approvalError) console.warn('Document approval history unavailable; continuing with status update:', approvalError.message);
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('documents')
@@ -383,7 +382,6 @@ router.patch(
       .single();
 
     if (updateError) {
-      await supabaseAdmin.from('document_approvals').delete().eq('id', approval.id);
       sendError(res, `Failed to approve document: ${updateError.message}`, 500);
       return;
     }
@@ -435,7 +433,7 @@ router.patch(
       return;
     }
 
-    const { data: approval, error: approvalError } = await supabaseAdmin
+    const { error: approvalError } = await supabaseAdmin
       .from('document_approvals')
       .insert({
         tenant_id: existing.tenant_id,
@@ -447,10 +445,7 @@ router.patch(
       .select('id')
       .single();
 
-    if (approvalError) {
-      sendError(res, `Failed to record document rejection: ${approvalError.message}`, 500);
-      return;
-    }
+    if (approvalError) console.warn('Document rejection history unavailable; continuing with status update:', approvalError.message);
 
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('documents')
@@ -465,7 +460,6 @@ router.patch(
       .single();
 
     if (updateError) {
-      await supabaseAdmin.from('document_approvals').delete().eq('id', approval.id);
       sendError(res, `Failed to reject document: ${updateError.message}`, 500);
       return;
     }

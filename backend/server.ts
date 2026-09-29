@@ -12,6 +12,7 @@ import barangayRoutes from './routes/barangay.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import userRoutes from './routes/user.routes.js';
 import pollRoutes from './routes/poll.routes.js';
+import announcementRoutes from './routes/announcement.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
 
@@ -61,6 +62,7 @@ app.use('/api/feedback', feedbackRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/polls', pollRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // Health Check Routes
 app.get('/api/health', (req: Request, res: Response) => {

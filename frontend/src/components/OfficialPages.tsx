@@ -42,6 +42,7 @@ import {
   BarChart3,
   Settings,
   Coins,
+  Megaphone,
   MessageSquare,
   Star,
   HeartHandshake,
@@ -81,7 +82,8 @@ import {
   FeedbackRecord,
   ResolutionRecord,
   UserRole,
-  BarangayTenant
+  BarangayTenant,
+  AnnouncementRecord
 } from '../types';
 import { 
   analyzeFeedbackSentiment, 
@@ -106,6 +108,7 @@ interface OfficialPagesProps {
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
   expenses: ExpenseRecord[];
+  announcements?: AnnouncementRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
   currentUser?: any;
@@ -127,6 +130,7 @@ export default function OfficialPages({
   feedback,
   resolutions,
   expenses,
+  announcements = [],
   currentTenant,
   tenants = [],
   currentUser,
@@ -383,6 +387,7 @@ export default function OfficialPages({
 
   // Attendance scanner simulation states
   const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
+  const [selectedProgramRegistrations, setSelectedProgramRegistrations] = useState<Registration[]>([]);
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
@@ -425,6 +430,32 @@ export default function OfficialPages({
 
     return () => { isMounted = false; };
   }, [selectedProgId, youthProfiles]);
+
+  useEffect(() => {
+    if (!selectedProgId) {
+      setSelectedProgramRegistrations([]);
+      return;
+    }
+    let isMounted = true;
+    kabisigApi.getProgramRegistrations(selectedProgId).then((rows) => {
+      if (!isMounted || !rows) return;
+      setSelectedProgramRegistrations(rows.map((row: any) => {
+        const user = Array.isArray(row.users) ? row.users[0] : row.users;
+        const profile = youthProfiles.find(candidate => candidate.userId === row.user_id);
+        return {
+          id: row.id,
+          programId: row.program_id,
+          programTitle: programs.find(program => program.id === row.program_id)?.title || '',
+          participantId: profile?.id || row.user_id,
+          participantName: user?.full_name || profile?.name || 'Youth Constituent',
+          dateRegistered: row.registered_at || '',
+          status: row.status === 'attended' ? 'Completed' : 'Approved',
+          qrCode: profile?.qrCode || '',
+        };
+      }));
+    }).catch((error: any) => setQrMessage(error.message || 'Could not load registrations for this program.'));
+    return () => { isMounted = false; };
+  }, [selectedProgId, programs, youthProfiles]);
 
   // Tax withholding calculations (for expense form)
   const [calcVat, setCalcVat] = useState(0);
@@ -1012,7 +1043,7 @@ export default function OfficialPages({
       (scannedDigitalYouthId && y.id === scannedDigitalYouthId) ||
       y.id === partId || y.id === scannedText || y.qrCode === scannedText
     );
-    const reg = registrations.find(r => 
+    const reg = selectedProgramRegistrations.find(r =>
       r.programId === selectedProgId && 
       (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
       r.status === 'Approved'
@@ -1169,7 +1200,7 @@ export default function OfficialPages({
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                <ProfileAvatar name={profileConfig[currentRole]?.name} src={profileConfig[currentRole]?.avatar} className="w-10 h-10 rounded-full border-2 border-amber-400" />
+                <ProfileAvatar name={profileConfig[currentRole]?.name} className="w-10 h-10 rounded-full border-2 border-amber-400" />
                 <div>
                   <h4 className="text-xs font-bold text-white">{profileConfig[currentRole]?.name}</h4>
                   <p className="text-[10px] text-slate-300">{profileConfig[currentRole]?.title}</p>
@@ -1319,7 +1350,6 @@ export default function OfficialPages({
             <UserMenu 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
-              avatarUrl={profileConfig[currentRole]?.avatar}
               onLogout={onLogout}
             />
           </div>
@@ -1331,6 +1361,29 @@ export default function OfficialPages({
           {/* ==================== SCREEN 1: DASHBOARD (Unified role-based screen) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in duration-200">
+              <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-5 text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#091d64]">Barangay Announcements</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">Published notices from the SK Chairperson for this barangay.</p>
+                  </div>
+                  <Megaphone className="h-5 w-5 text-[#091d64]" />
+                </div>
+                {announcements.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {announcements.slice(0, 4).map(announcement => (
+                      <article key={announcement.id} className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">{announcement.category}</p>
+                        <h4 className="mt-1 text-xs font-extrabold text-slate-800">{announcement.title}</h4>
+                        <p className="mt-1 line-clamp-3 text-[11px] text-slate-600">{announcement.content}</p>
+                        <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white/70 p-4 text-center text-xs font-semibold text-slate-400">No published announcements yet.</p>
+                )}
+              </section>
               
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
@@ -1879,7 +1932,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">In-School Students</span>
                         <h4 className="text-xl font-black text-[#091d64]">
-                          {youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length || 8}
+                          {youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length}
                         </h4>
                         <span className="text-[9px] font-bold text-blue-700 bg-blue-100/60 px-1.5 py-0.2 rounded inline-block">72% of Total</span>
                       </div>
@@ -1887,7 +1940,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-amber-100 bg-amber-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Out-of-School Youth</span>
                         <h4 className="text-xl font-black text-amber-600">
-                          {youthProfiles.filter(y => y.employmentStatus === 'Unemployed' && !y.school).length || 2}
+                          {youthProfiles.filter(y => y.employmentStatus === 'Unemployed' && !y.school).length}
                         </h4>
                         <span className="text-[9px] font-bold text-amber-700 bg-amber-100/60 px-1.5 py-0.2 rounded inline-block">Priority Outreach</span>
                       </div>
@@ -1895,7 +1948,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Scholars</span>
                         <h4 className="text-xl font-black text-emerald-600">
-                          {youthProfiles.filter(y => y.scholarStatus === 'Scholar' || y.scholarStatus === 'Yes').length || 3}
+                          {youthProfiles.filter(y => y.scholarStatus === 'Scholar' || y.scholarStatus === 'Yes').length}
                         </h4>
                         <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/60 px-1.5 py-0.2 rounded inline-block">Barangay Grantees</span>
                       </div>
@@ -1903,7 +1956,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Employed Youth</span>
                         <h4 className="text-xl font-black text-indigo-600">
-                          {youthProfiles.filter(y => y.employmentStatus === 'Employed').length || 2}
+                          {youthProfiles.filter(y => y.employmentStatus === 'Employed').length}
                         </h4>
                         <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100/60 px-1.5 py-0.2 rounded inline-block">Labor Force</span>
                       </div>
@@ -1979,8 +2032,8 @@ export default function OfficialPages({
                           </h4>
                           <p className="text-xs text-slate-400 mt-0.5">Real-time registration counts against maximum target participant limits.</p>
                         </div>
-                        <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded">
-                          88.5% Avg Attendance
+                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded">
+                          Live program data
                         </span>
                       </div>
 
@@ -1988,7 +2041,7 @@ export default function OfficialPages({
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={programs.slice(0, 5).map(p => ({
                             name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
-                            registered: p.registeredCount || 0,
+                            registered: p.registeredCount || registrations.filter(r => r.programId === p.id).length,
                             capacity: p.maxParticipants || 100
                           }))} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
                             <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
@@ -2003,23 +2056,7 @@ export default function OfficialPages({
                         </ResponsiveContainer>
                       </div>
 
-                      {/* AYDP 8 Centers of Participation Quick Grid */}
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2.5">Active Committee Focus Areas (RA 10742 Standard)</span>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {[
-                            { label: 'Health & Anti-Drug', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', count: '3 Events' },
-                            { label: 'Education & OSY', color: 'bg-blue-50 text-blue-800 border-blue-200', count: '4 Events' },
-                            { label: 'Sports & Active Citizens', color: 'bg-amber-50 text-amber-800 border-amber-200', count: '5 Events' },
-                            { label: 'Environment & Climate', color: 'bg-teal-50 text-teal-800 border-teal-200', count: '2 Events' },
-                          ].map((c, idx) => (
-                            <div key={idx} className={`p-2.5 rounded-lg border ${c.color} text-xs flex justify-between items-center`}>
-                              <span className="font-bold truncate">{c.label}</span>
-                              <span className="text-[10px] font-mono font-bold bg-white/80 px-1.5 py-0.5 rounded">{c.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">Committee activity summaries will appear when live program records are available.</div>
                     </div>
 
                     {/* Right Col: Intelligent Features (Smart Schedule Conflict & Low Engagement Alerts) */}
@@ -2506,7 +2543,7 @@ export default function OfficialPages({
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
                   <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">Registered</span>
                   <span className="text-xl font-black text-[#091d64] block mt-1">
-                    {registrations.filter(r => r.programId === selectedProgId).length || 5}
+                    {selectedProgramRegistrations.length}
                   </span>
                 </div>
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
@@ -2518,16 +2555,16 @@ export default function OfficialPages({
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
                   <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block text-rose-500">Absentees</span>
                   <span className="text-xl font-black text-rose-500 block mt-1">
-                    {Math.max(0, (registrations.filter(r => r.programId === selectedProgId).length || 5) - localAttendance.filter(a => a.programId === selectedProgId).length)}
+                    {Math.max(0, selectedProgramRegistrations.length - localAttendance.filter(a => a.programId === selectedProgId).length)}
                   </span>
                 </div>
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-[#091d64] shadow-md text-white">
                   <span className="text-[9px] font-extrabold text-white/70 uppercase tracking-widest block">Yield Rate</span>
                   <span className="text-xl font-black text-amber-400 block mt-1">
                     {(() => {
-                      const reg = registrations.filter(r => r.programId === selectedProgId).length || 5;
+                      const reg = selectedProgramRegistrations.length;
                       const pres = localAttendance.filter(a => a.programId === selectedProgId).length;
-                      return ((pres / reg) * 100).toFixed(0);
+                      return reg > 0 ? ((pres / reg) * 100).toFixed(0) : '0';
                     })()}%
                   </span>
                 </div>
@@ -2662,12 +2699,12 @@ export default function OfficialPages({
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-bold text-slate-800">Quick-Tap Registered Youth</span>
                         <span className="text-[10px] font-bold text-slate-400">
-                          {registrations.filter(r => r.programId === selectedProgId).length} Registered
+                          {selectedProgramRegistrations.length} Registered
                         </span>
                       </div>
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                        {registrations.filter(r => r.programId === selectedProgId).map(r => {
+                        {selectedProgramRegistrations.map(r => {
                           const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
                           return (
                             <div 
@@ -2711,7 +2748,7 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
-                      {registrations.filter(r => r.programId === selectedProgId).map(r => {
+                      {selectedProgramRegistrations.map(r => {
                         const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
@@ -3324,13 +3361,7 @@ export default function OfficialPages({
                         );
                       })()}
 
-                      <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-5 h-5 text-[#091d64]" />
-                          <span className="text-slate-700 font-medium">Certified true and correct in accordance with standard SK accounting guidelines:</span>
-                        </div>
-                        <span className="font-bold text-[#091d64]">HON. FRANCIS O. MARTINEZ • SK Treasurer</span>
-                      </div>
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">Certification details will appear after live budget records are available.</div>
                     </div>
                   )}
 
@@ -3425,7 +3456,7 @@ export default function OfficialPages({
                             {treasurerProgramsBudget.length === 0 ? (
                               <tr>
                                 <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
-                                  No program budget records available. Create a program to track disbursements.
+                                  No program budget records available. Select a program created by an authorized official to track disbursements.
                                 </td>
                               </tr>
                             ) : (
@@ -3670,7 +3701,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${(p.spentBudget || p.budgetAllocation * 0.85).toLocaleString()}</td></tr>`).join('')}
+                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -3854,13 +3885,13 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Youth Beneficiaries Reached</span>
-                          <h4 className="text-xl font-black text-emerald-700">1,240 Participants</h4>
-                          <p className="text-[11px] text-slate-500">88.5% average event engagement rate across 4 zones.</p>
+                          <h4 className="text-xl font-black text-emerald-700">{programs.reduce((sum, program) => sum + (program.registeredCount || registrations.filter(registration => registration.programId === program.id).length), 0).toLocaleString()} Participants</h4>
+                          <p className="text-[11px] text-slate-500">Based on registered participants in live programs.</p>
                         </div>
                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-violet-700 uppercase">Fund Disbursement Rate</span>
-                          <h4 className="text-xl font-black text-violet-700">81.4% Disbursed</h4>
-                          <p className="text-[11px] text-slate-500">All expenses backed by SK Treasurer liquidation vouchers.</p>
+                          <h4 className="text-xl font-black text-violet-700">{(() => { const allocated = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0); const spent = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); return `${allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0'}% Disbursed`; })()}</h4>
+                          <p className="text-[11px] text-slate-500">Calculated from recorded program expenses.</p>
                         </div>
                       </div>
 
@@ -3883,7 +3914,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-600">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64]">{p.registeredCount} / {p.maxParticipants}</td>
                                 <td className="px-5 py-3 text-right font-mono text-slate-700">₱{p.budgetAllocation.toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{(p.spentBudget || p.budgetAllocation * 0.85).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'No AIP reference'}</span>
                                 </td>
@@ -4412,16 +4443,6 @@ export default function OfficialPages({
                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
                   <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
                 </div>
-                <button 
-                  onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: 'Education & Scholarship', status: 'Published' });
-                    setShowProgModal(true);
-                  }}
-                  className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Program Allocation
-                </button>
               </div>
 
               {/* Tally boxes - Refined Premium Design */}
@@ -4520,7 +4541,7 @@ export default function OfficialPages({
                       {programs.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
-                            No program budget allocations registered. Click "Create Program Allocation" to allocate funds.
+                            No program budget allocations registered. Allocations will appear when a real program budget is approved.
                           </td>
                         </tr>
                       ) : (
@@ -4671,7 +4692,7 @@ export default function OfficialPages({
 
               <div className="grid md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 p-6 border border-slate-100 rounded-xl flex flex-col items-center justify-center space-y-4">
-                  <ProfileAvatar name={profileConfig[currentRole]?.name} src={profileConfig[currentRole]?.avatar} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
+                  <ProfileAvatar name={profileConfig[currentRole]?.name} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
                   <button className="px-3 py-1.5 bg-[#eff6ff] hover:bg-[#dbeafe] text-[#091d64] text-xs font-bold rounded-lg flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5" /> Upload Avatar
                   </button>
@@ -4785,7 +4806,7 @@ export default function OfficialPages({
 
       {/* --- REUSABLE MODALS --- */}
       {/* 1. Create Program Modal (Kagawad) */}
-      {showProgModal && (
+      {showProgModal && currentRole !== 'SK Treasurer' && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">

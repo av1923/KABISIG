@@ -66,7 +66,7 @@ import {
   Cell, 
   Legend
 } from 'recharts';
-import { BarangayTenant, Program, YouthProfile, DocumentRecord, SystemAuditLog } from '../types';
+import { AnnouncementRecord, BarangayTenant, Program, YouthProfile, DocumentRecord, SystemAuditLog } from '../types';
 import ProfileAvatar from './ProfileAvatar';
 import { 
   classifyDemographics, 
@@ -103,6 +103,7 @@ export interface BarangayAdminPagesProps {
   onCreateProgram: (newProg: Program) => void;
   onUpdateProgram: (program: Program) => Promise<boolean>;
   onDeleteProgram: (programId: string) => Promise<boolean>;
+  onAnnouncementsChanged?: (announcements: AnnouncementRecord[]) => void;
   onLogout: () => void;
 }
 
@@ -125,6 +126,7 @@ export default function BarangayAdminPages({
   onCreateProgram,
   onUpdateProgram,
   onDeleteProgram,
+  onAnnouncementsChanged,
   onLogout
 }: BarangayAdminPagesProps) {
   const [activeMenu, setActiveMenu] = useState<
@@ -395,7 +397,8 @@ export default function BarangayAdminPages({
     endDate: '',
     location: '',
     maxParticipants: 0,
-    budgetAllocation: 0,
+    budgetAllocation: null as number | null,
+    aipReference: '',
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
   });
 
@@ -471,7 +474,7 @@ export default function BarangayAdminPages({
     .join('|');
 
   useEffect(() => {
-    if (!currentBarangay?.id || complianceIssues.length === 0) return;
+    if (!currentBarangay?.id || !currentUser?.id || !kabisigApi.getToken() || complianceIssues.length === 0) return;
 
     const persistIssues = async () => {
       const results = await Promise.all(
@@ -495,10 +498,10 @@ export default function BarangayAdminPages({
     };
 
     void persistIssues();
-  }, [complianceIssueSignature, currentBarangay?.id]);
+  }, [complianceIssueSignature, currentBarangay?.id, currentUser?.id]);
 
   useEffect(() => {
-    if (!currentBarangay?.id || budgetAlerts.length === 0) return;
+    if (!currentBarangay?.id || !currentUser?.id || !kabisigApi.getToken() || budgetAlerts.length === 0) return;
 
     const persistAlerts = async () => {
       const results = await Promise.all(
@@ -522,10 +525,12 @@ export default function BarangayAdminPages({
     };
 
     void persistAlerts();
-  }, [budgetAlertSignature, currentBarangay?.id]);
+  }, [budgetAlertSignature, currentBarangay?.id, currentUser?.id]);
 
   const [fbAutoSyncEnabled, setFbAutoSyncEnabled] = useState(true);
   const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
+  const [announcementError, setAnnouncementError] = useState('');
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
 
   const [annTitle, setAnnTitle] = useState('');
   const [annCategory, setAnnCategory] = useState('Advisory');
@@ -533,32 +538,61 @@ export default function BarangayAdminPages({
   const [annTarget, setAnnTarget] = useState('All Zones');
   const [annPostToFb, setAnnPostToFb] = useState(true);
 
-  const handlePublishAnnouncement = (e: React.FormEvent) => {
+  const mapAnnouncement = (announcement: any): AnnouncementRecord => ({
+    id: announcement.id,
+    title: announcement.title,
+    content: announcement.content,
+    author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
+    barangay: currentBarangay?.name || 'Barangay',
+    datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
+    category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
+    attachments: [],
+  });
+
+  const refreshAnnouncements = async () => {
+    if (!currentBarangay?.id || !kabisigApi.getToken()) return;
+    setIsLoadingAnnouncements(true);
+    setAnnouncementError('');
+    try {
+      const rows = await kabisigApi.getAnnouncements(currentBarangay.id);
+      const mapped = rows.map(mapAnnouncement);
+      setAnnouncementsList(mapped);
+      onAnnouncementsChanged?.(mapped);
+    } catch (error: any) {
+      const message = error?.message || 'Announcements could not be loaded.';
+      setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
+        ? 'Announcements are unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
+        : message);
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAnnouncements();
+  }, [currentBarangay?.id]);
+
+  const handlePublishAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annContent.trim()) return;
-
-    const newAnn = {
-      id: `ann-${Date.now().toString().slice(-4)}`,
-      title: annTitle,
-      category: annCategory,
-      content: annContent,
-      targetPurok: annTarget,
-      author: currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson'),
-      datePublished: new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      postStatus: 'Published',
-      fbSyncStatus: (annPostToFb && fbAutoSyncEnabled) ? 'Synced' : 'Draft',
-      fbPostId: (annPostToFb && fbAutoSyncEnabled) ? `fb_post_${Math.floor(10000000000 + Math.random() * 90000000000)}` : 'N/A',
-      socialReach: { views: 1, reactions: 0, shares: 0 }
-    };
-
-    setAnnouncementsList([newAnn, ...announcementsList]);
+    setAnnouncementError('');
+    const apiCategory: AnnouncementRecord['category'] = annCategory === 'Advisory' ? 'Notice' : annCategory as AnnouncementRecord['category'];
+    const result = await kabisigApi.createAnnouncement({
+      title: annTitle.trim(),
+      content: `${annContent.trim()}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
+      category: apiCategory,
+      status: 'published',
+    });
+    if (!result.success || !result.data) {
+      const message = result.message || 'Announcement could not be saved.';
+      setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
+        ? 'Announcement publishing is unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
+        : message);
+      return;
+    }
     setAnnTitle('');
     setAnnContent('');
-    alert(
-      annPostToFb && fbAutoSyncEnabled
-        ? 'Announcement published and successfully auto-synced to the Official SK Facebook Page!'
-        : 'Announcement published on KABISIG Constituent Portal!'
-    );
+    await refreshAnnouncements();
   };
 
   const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
@@ -579,22 +613,31 @@ export default function BarangayAdminPages({
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const totalBgyBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
-  const monthlyAlloc = totalBgyBudget > 0 ? Math.round(totalBgyBudget / 12) : 0;
+  const budgetPrograms = programs.filter(program => budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter);
   const budgetVsActualMonthlyData = months.map((month, idx) => {
     const monthExpenses = expenses.filter(e => {
       const d = e.date || e.created_at || e.expense_date ? new Date(e.date || e.created_at || e.expense_date) : null;
-      return d && d.getMonth() === idx;
+      return d && d.getFullYear() === Number(budgetYear) && d.getMonth() === idx
+        && (budgetProgramFilter === 'All Programs' || e.programId === budgetProgramFilter);
     }).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0);
     return {
       month,
-      budget: monthlyAlloc,
+      budget: budgetPrograms.reduce((sum, program) => {
+        const start = new Date(program.startDate);
+        const end = new Date(program.endDate || program.startDate);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start.getFullYear() !== Number(budgetYear)) return sum;
+        const monthCount = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1);
+        return idx >= start.getMonth() && idx <= end.getMonth()
+          ? sum + (Number(program.budgetAllocation) || 0) / monthCount
+          : sum;
+      }, 0),
       spent: monthExpenses
     };
   });
 
   const progColors = ['#091d64', '#2563eb', '#60a5fa', '#93c5fd', '#94a3b8', '#cbd5e1'];
   const totalAllocBudget = programAllocatedBudget;
-  const budgetAllocationByProgramData = programs.length > 0 ? programs.map((p, idx) => {
+  const budgetAllocationByProgramData = budgetPrograms.length > 0 ? budgetPrograms.map((p, idx) => {
     const alloc = p.budgetAllocation || 0;
     const pct = totalAllocBudget > 0 ? ((alloc / totalAllocBudget) * 100).toFixed(1) : '0';
     return {
@@ -607,7 +650,7 @@ export default function BarangayAdminPages({
     { name: 'Unallocated', value: totalBgyBudget, color: '#091d64', percentage: '100%' }
   ];
 
-  const budgetUtilizationTable = programs.map(p => {
+  const budgetUtilizationTable = budgetPrograms.map(p => {
     const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0) || p.spentBudget || 0;
     const remaining = Math.max(0, (p.budgetAllocation || 0) - spent);
     const rate = p.budgetAllocation > 0 ? Number(((spent / p.budgetAllocation) * 100).toFixed(1)) : 0;
@@ -635,9 +678,9 @@ export default function BarangayAdminPages({
       endDate: newProgForm.endDate,
       location: newProgForm.location,
       maxParticipants: newProgForm.maxParticipants,
-      budgetAllocation: newProgForm.budgetAllocation,
+      budgetAllocation: newProgForm.budgetAllocation ?? 0,
       spentBudget: 0,
-      aipReference: `AIP-2026-${(currentBarangay?.name || 'SAN').slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`,
+      aipReference: newProgForm.aipReference.trim(),
       category: newProgForm.category,
       status: newProgForm.status,
       registeredCount: 0
@@ -662,7 +705,8 @@ export default function BarangayAdminPages({
       endDate: '',
       location: '',
       maxParticipants: 0,
-      budgetAllocation: 0,
+      budgetAllocation: null,
+      aipReference: '',
       status: 'Upcoming'
     });
   };
@@ -684,7 +728,7 @@ export default function BarangayAdminPages({
   const openProgramEditor = (program?: Program) => {
     if (!program) {
       setEditingProgram(null);
-      setNewProgForm(previous => ({ ...previous, title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0 }));
+      setNewProgForm(previous => ({ ...previous, title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: null }));
     } else {
       setEditingProgram(program);
       setNewProgForm({
@@ -695,7 +739,8 @@ export default function BarangayAdminPages({
         endDate: program.endDate,
         location: program.location,
         maxParticipants: program.maxParticipants,
-        budgetAllocation: program.budgetAllocation,
+        budgetAllocation: Number(program.budgetAllocation) || 0,
+        aipReference: program.aipReference || '',
         status: program.status,
       });
     }
@@ -1633,12 +1678,31 @@ export default function BarangayAdminPages({
                           <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₱</span>
                           <input 
                             type="number" 
-                            value={newProgForm.budgetAllocation}
-                            onChange={(e) => setNewProgForm({...newProgForm, budgetAllocation: parseInt(e.target.value) || 0})}
+                            value={newProgForm.budgetAllocation ?? ''}
+                            onChange={(e) => setNewProgForm({
+                              ...newProgForm,
+                              budgetAllocation: e.target.value === '' ? null : Number(e.target.value)
+                            })}
                             placeholder="Enter budget amount"
                             className="w-full border border-slate-200 rounded-lg pl-7 pr-3 p-2 text-xs focus:outline-none font-bold"
                           />
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</label>
+                          <input type="text" required value={newProgForm.location} onChange={(e) => setNewProgForm({ ...newProgForm, location: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Total slots</label>
+                          <input type="number" min="1" required value={newProgForm.maxParticipants || ''} onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">AIP reference code</label>
+                        <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono" />
                       </div>
 
                       <div className="flex gap-2 pt-2 border-t">
@@ -1665,60 +1729,78 @@ export default function BarangayAdminPages({
 
           {/* 4. BUDGET MANAGEMENT */}
           {activeMenu === 'budget' && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col gap-4">
                 <div>
-                  <h3 className="text-xl font-extrabold text-[#091d64]">Budget Monitoring</h3>
-                  <p className="text-xs text-slate-400 mt-1">Track and monitor the utilization of the SK Federation budget.</p>
+                  <h3 className="text-xl font-extrabold text-[#091d64]">Budget Management</h3>
+                  <p className="text-xs text-slate-400 mt-1">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                 </div>
-                
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Budget</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {totalAllocBudget.toLocaleString()}</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">FY {new Date().getFullYear()} Budget</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <Briefcase className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Spent</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.spent.toLocaleString()}</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Live Disbursed</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <Coins className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Remaining</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.remaining.toLocaleString()}</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{totalAllocBudget > 0 ? ((intelligentBudget.remaining / totalAllocBudget) * 100).toFixed(1) : '0'}% Available</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <DollarSign className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Utilization Rate</span>
-                    <h4 className="text-xl font-extrabold text-[#091d64] mt-1">{intelligentBudget.utilizationRate.toFixed(1)}%</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{intelligentBudget.consumptionTrend}</p>
-                  </div>
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
+                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
+                    <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
+                      {[...new Set([new Date().getFullYear(), ...programs.map(program => new Date(program.startDate).getFullYear()).filter(Boolean)])].sort().reverse().map(year => <option key={year}>{year}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
+                    <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-52 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
+                      <option>All Programs</option>
+                      {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Reset filters</button>
                 </div>
               </div>
+
+              {(() => {
+                const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+                const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
+                const filteredRemaining = Math.max(0, filteredAllocated - filteredSpent);
+                const filteredRate = filteredAllocated > 0 ? (filteredSpent / filteredAllocated) * 100 : 0;
+                const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
+                return (
+                  <>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ['Total allocated', filteredAllocated, Briefcase, 'text-blue-600 bg-blue-50'],
+                        ['Total spent', filteredSpent, Coins, 'text-amber-600 bg-amber-50'],
+                        ['Remaining balance', filteredRemaining, DollarSign, 'text-emerald-600 bg-emerald-50'],
+                      ].map(([label, value, Icon, iconClass]) => (
+                        <div key={String(label)} className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                          <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{String(label)}</span><span className={`rounded-lg p-2 ${iconClass}`}><Icon className="h-4 w-4" /></span></div>
+                          <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{Number(value).toLocaleString()}</p>
+                        </div>
+                      ))}
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                        <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Utilization rate</span><span className="rounded-lg bg-violet-50 p-2 text-violet-600"><TrendingUp className="h-4 w-4" /></span></div>
+                        <p className="mt-3 text-2xl font-extrabold text-[#091d64]">{filteredRate.toFixed(1)}%</p>
+                        <p className="mt-1 text-[10px] font-semibold text-slate-400">{filteredAllocated ? 'Based on recorded expenses' : 'No allocation recorded'}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-3">
+                        <h4 className="text-sm font-extrabold text-slate-800">Monthly budget vs actual</h4>
+                        <p className="mb-4 text-[10px] text-slate-400">Actual expenses are grouped by expense date.</p>
+                        {budgetPrograms.length || expenses.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={budgetVsActualMonthlyData}><XAxis dataKey="month" fontSize={10} /><YAxis fontSize={10} tickFormatter={value => `₱${Number(value) / 1000}k`} /><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /><Legend /><Bar dataKey="budget" name="Budget" fill="#bfdbfe" radius={[4, 4, 0, 0]} /><Bar dataKey="spent" name="Actual" fill="#091d64" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No budget or expense records for this view.</div>}
+                      </div>
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-2">
+                        <h4 className="text-sm font-extrabold text-slate-800">Program allocation</h4>
+                        <p className="mb-2 text-[10px] text-slate-400">Share of the selected allocation.</p>
+                        {budgetAllocationByProgramData.some(item => item.value > 0) ? <><ResponsiveContainer width="100%" height={190}><PieChart><Pie data={budgetAllocationByProgramData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{budgetAllocationByProgramData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /></PieChart></ResponsiveContainer><div className="space-y-2">{budgetAllocationByProgramData.slice(0, 6).map(item => <div key={item.name} className="flex items-center justify-between text-[10px] font-semibold text-slate-600"><span className="flex min-w-0 items-center gap-2"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /> <span className="truncate">{item.name}</span></span><span>{item.percentage}</span></div>)}</div></> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No program allocations recorded.</div>}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                      <h4 className="mb-4 text-sm font-extrabold text-slate-800">Utilization by program</h4>
+                      {budgetUtilizationTable.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3">Program</th><th className="px-3 py-3 text-right">Allocated</th><th className="px-3 py-3 text-right">Actual</th><th className="px-3 py-3 text-right">Remaining</th><th className="px-3 py-3 text-right">Utilization</th></tr></thead><tbody className="divide-y divide-slate-50">{budgetUtilizationTable.map(row => <tr key={row.program}><td className="px-3 py-3 font-bold text-slate-700">{row.program}</td><td className="px-3 py-3 text-right">₱{row.allocated.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.spent.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.remaining.toLocaleString()}</td><td className={`px-3 py-3 text-right font-bold ${row.rate > 100 ? 'text-rose-600' : 'text-slate-700'}`}>{row.rate.toFixed(1)}%</td></tr>)}</tbody></table></div> : <div className="py-10 text-center text-xs font-semibold text-slate-400">No programs available for this filter.</div>}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-5"><h4 className="flex items-center gap-2 text-sm font-extrabold text-rose-800"><AlertTriangle className="h-4 w-4" /> Overspending alerts</h4>{overspent.length ? <ul className="mt-3 space-y-2 text-xs font-semibold text-rose-700">{overspent.map(row => <li key={row.program} className="flex justify-between gap-3"><span>{row.program}</span><span>₱{(row.spent - row.allocated).toLocaleString()} over</span></li>)}</ul> : <p className="mt-3 text-xs font-semibold text-slate-500">No overspending detected in the selected programs.</p>}</div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -1930,7 +2012,30 @@ export default function BarangayAdminPages({
                   >
                     Publish Announcement
                   </button>
+                  {announcementError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{announcementError}</p>}
                 </form>
+                <div className="border-t border-slate-100 pt-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Published portal announcements</h5>
+                    <button type="button" onClick={() => void refreshAnnouncements()} className="text-[10px] font-bold text-[#091d64] hover:underline">{isLoadingAnnouncements ? 'Refreshing...' : 'Refresh'}</button>
+                  </div>
+                  {announcementsList.length ? (
+                    <div className="space-y-2">
+                      {announcementsList.map((announcement: AnnouncementRecord) => (
+                        <article key={announcement.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <h6 className="text-xs font-extrabold text-slate-800">{announcement.title}</h6>
+                            <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                          </div>
+                          <p className="mt-1 whitespace-pre-line text-[11px] font-medium text-slate-600">{announcement.content}</p>
+                          <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted} · {announcement.author}</p>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-5 text-center text-xs font-semibold text-slate-400">{isLoadingAnnouncements ? 'Loading announcements...' : 'No persisted announcements found.'}</p>
+                  )}
+                </div>
               </div>
             </div>
           )}

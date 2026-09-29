@@ -1,20 +1,11 @@
 import React from 'react';
+import { User } from 'lucide-react';
 
 interface ProfileAvatarProps {
   name?: string;
   src?: string;
   className?: string;
   alt?: string;
-}
-
-function getInitials(name = 'User') {
-  return name
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'U';
 }
 
 export default function ProfileAvatar({ name, src, className = 'h-10 w-10', alt }: ProfileAvatarProps) {
@@ -26,9 +17,9 @@ export default function ProfileAvatar({ name, src, className = 'h-10 w-10', alt 
     <div
       role="img"
       aria-label={alt || `${name || 'User'} profile placeholder`}
-      className={`${className} flex items-center justify-center bg-[#091d64] font-extrabold text-white`}
+      className={`${className} flex items-center justify-center bg-slate-100 text-slate-500`}
     >
-      {getInitials(name)}
+      <User className="h-1/2 w-1/2" aria-hidden="true" />
     </div>
   );
 }

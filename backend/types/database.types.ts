@@ -89,6 +89,8 @@ export interface Program {
   start_date: string;
   end_date: string;
   total_slots: number;
+  budget_allocation?: number;
+  aip_reference?: string | null;
   status: ProgramStatus;
   created_by: string | null;
   created_at?: string;
