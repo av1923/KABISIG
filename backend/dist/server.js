@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin.routes.js';
 import userRoutes from './routes/user.routes.js';
 import pollRoutes from './routes/poll.routes.js';
 import announcementRoutes from './routes/announcement.routes.js';
+import socialRoutes from './routes/social.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
 dotenv.config({ path: '.env.local' });
@@ -38,6 +39,7 @@ app.get('/', (req, res) => {
             documents: '/api/documents',
             analytics: '/api/analytics',
             polls: '/api/polls',
+            socialFacebookPublish: '/api/social/facebook/publish',
         },
     }, 'KABISIG: API Server');
 });
@@ -53,6 +55,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/polls', pollRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/social', socialRoutes);
 // Health Check Routes
 app.get('/api/health', (req, res) => {
     sendSuccess(res, {

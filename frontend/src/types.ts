@@ -203,4 +203,7 @@ export interface AnnouncementRecord {
   datePosted: string;
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   attachments?: string[];
+  facebookPostUrl?: string;
+  facebookPostId?: string;
+  facebookPostedAt?: string;
 }

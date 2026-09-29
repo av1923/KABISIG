@@ -49,7 +49,7 @@ class KabisigApiClient {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any }> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -80,6 +80,7 @@ class KabisigApiClient {
           success: false,
           message: json.message || `Request failed with status ${response.status}`,
           error: json.error || json.details || null,
+          details: json.details,
         };
       }
 
@@ -281,6 +282,13 @@ class KabisigApiClient {
 
   async createAnnouncement(payload: { title: string; content: string; category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event'; status?: 'draft' | 'published' }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request('/announcements', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async publishAnnouncementToFacebook(announcementId: string): Promise<{ success: boolean; data?: { id: string; post_id: string; post_url: string; posted_at: string; persisted: true }; message?: string; details?: { graph?: { code?: number; type?: string; message?: string } } }> {
+    return await this.request('/social/facebook/publish', {
+      method: 'POST',
+      body: JSON.stringify({ announcement_id: announcementId }),
+    });
   }
 
   logout() {

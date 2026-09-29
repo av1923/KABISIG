@@ -533,10 +533,13 @@ export default function BarangayAdminPages({
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
 
   const [annTitle, setAnnTitle] = useState('');
-  const [annCategory, setAnnCategory] = useState('Advisory');
+  const [annCategory, setAnnCategory] = useState('Notice');
   const [annContent, setAnnContent] = useState('');
   const [annTarget, setAnnTarget] = useState('All Zones');
-  const [annPostToFb, setAnnPostToFb] = useState(true);
+  const [annPostToFb, setAnnPostToFb] = useState(false);
+  const [announcementSuccess, setAnnouncementSuccess] = useState('');
+  const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
+  const [facebookPosts, setFacebookPosts] = useState<Record<string, { post_id: string; post_url: string; posted_at: string }>>({});
 
   const mapAnnouncement = (announcement: any): AnnouncementRecord => ({
     id: announcement.id,
@@ -547,6 +550,9 @@ export default function BarangayAdminPages({
     datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
     category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
     attachments: [],
+    facebookPostUrl: facebookPosts[announcement.id]?.post_url,
+    facebookPostId: facebookPosts[announcement.id]?.post_id,
+    facebookPostedAt: facebookPosts[announcement.id]?.posted_at,
   });
 
   const refreshAnnouncements = async () => {
@@ -574,25 +580,46 @@ export default function BarangayAdminPages({
 
   const handlePublishAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!annTitle.trim() || !annContent.trim()) return;
+    if (!annTitle.trim() || !annContent.trim() || isSubmittingAnnouncement) return;
+    setIsSubmittingAnnouncement(true);
     setAnnouncementError('');
-    const apiCategory: AnnouncementRecord['category'] = annCategory === 'Advisory' ? 'Notice' : annCategory as AnnouncementRecord['category'];
-    const result = await kabisigApi.createAnnouncement({
-      title: annTitle.trim(),
-      content: `${annContent.trim()}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
-      category: apiCategory,
-      status: 'published',
-    });
-    if (!result.success || !result.data) {
-      const message = result.message || 'Announcement could not be saved.';
-      setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
-        ? 'Announcement publishing is unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
-        : message);
-      return;
+    setAnnouncementSuccess('');
+    try {
+      const apiCategory: AnnouncementRecord['category'] = annCategory === 'Advisory' ? 'Notice' : annCategory as AnnouncementRecord['category'];
+      const result = await kabisigApi.createAnnouncement({
+        title: annTitle.trim(),
+        content: `${annContent.trim()}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
+        category: apiCategory,
+        status: 'published',
+      });
+      if (!result.success || !result.data) {
+        const message = result.message || 'Announcement could not be saved.';
+        setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
+          ? 'Announcement publishing is unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
+          : message);
+        return;
+      }
+      setAnnTitle('');
+      setAnnContent('');
+      if (annPostToFb) {
+        const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
+        if (!facebookResult.success || !facebookResult.data) {
+          const graphError = facebookResult.details?.graph;
+          const reason = graphError
+            ? `Facebook Graph error (code: ${graphError.code ?? 'unknown'}, type: ${graphError.type || 'unknown'}, message: ${graphError.message || facebookResult.message || 'Unknown Facebook error.'})`
+            : facebookResult.message || 'Unknown Facebook error.';
+          setAnnouncementError(`Announcement saved to portal, but Facebook publishing failed: ${reason}`);
+        } else {
+          setFacebookPosts(previous => ({ ...previous, [result.data.id]: facebookResult.data! }));
+          setAnnouncementSuccess('Announcement published to portal and Facebook.');
+        }
+      } else {
+        setAnnouncementSuccess('Announcement published to the portal.');
+      }
+      await refreshAnnouncements();
+    } finally {
+      setIsSubmittingAnnouncement(false);
     }
-    setAnnTitle('');
-    setAnnContent('');
-    await refreshAnnouncements();
   };
 
   const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
@@ -1978,11 +2005,19 @@ export default function BarangayAdminPages({
           {/* 7. ANNOUNCEMENTS */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6 text-left animate-in fade-in duration-200">
-              <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-2xs space-y-4">
-                <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-[#091d64]" />
-                  Compose Advisory / Announcement
-                </h4>
+              <div className="flex flex-col gap-4 rounded-2xl bg-gradient-to-r from-[#091d64] to-blue-700 p-5 text-white shadow-md sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <Facebook className="mt-0.5 h-6 w-6" />
+                  <div><h3 className="text-base font-black">Facebook Integration</h3><p className="text-xs text-blue-100">Publish portal announcements to your official Facebook page.</p></div>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-bold">
+                  <span className="rounded-full bg-emerald-400/20 px-3 py-1.5 text-emerald-100"><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-300" />Connected &amp; Active</span>
+                  <label className="flex items-center gap-2"><span>Auto-Sync</span><input type="checkbox" checked={fbAutoSyncEnabled} onChange={e => setFbAutoSyncEnabled(e.target.checked)} className="h-4 w-4 rounded border-white/40 text-blue-700" /></label>
+                </div>
+              </div>
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,.85fr)]">
+              <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+                <h4 className="mb-5 flex items-center gap-2 text-sm font-black text-slate-800"><Megaphone className="h-4 w-4 text-[#091d64]" />Compose Announcement</h4>
                 <form onSubmit={handlePublishAnnouncement} className="space-y-4 text-xs font-semibold">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Announcement Title *</label>
@@ -1995,6 +2030,10 @@ export default function BarangayAdminPages({
                       required
                     />
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Category</label><select value={annCategory} onChange={e => setAnnCategory(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>Notice</option><option>Opportunity</option><option>Emergency</option><option>Event</option></select></div>
+                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Target audience</label><select value={annTarget} onChange={e => setAnnTarget(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>All Zones</option><option>Zone 1</option><option>Zone 2</option><option>Zone 3</option></select></div>
+                  </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Body Content *</label>
                     <textarea 
@@ -2006,17 +2045,34 @@ export default function BarangayAdminPages({
                       required
                     />
                   </div>
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={annPostToFb}
+                      onChange={(e) => setAnnPostToFb(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                    />
+                    Also publish to Facebook
+                    <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
+                  </label>
                   <button 
                     type="submit"
-                    className="py-2.5 px-5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs cursor-pointer shadow-xs"
+                    disabled={isSubmittingAnnouncement}
+                    className="py-2.5 px-5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs cursor-pointer shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Publish Announcement
+                    {isSubmittingAnnouncement ? 'Publishing...' : 'Publish Announcement'}
                   </button>
+                  {announcementSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{announcementSuccess}</p>}
                   {announcementError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{announcementError}</p>}
                 </form>
-                <div className="border-t border-slate-100 pt-4">
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  {[['Total Published', String(announcementsList.length), Megaphone, 'Persisted portal posts'], ['Facebook Reach', 'No data', Users, 'No synced metrics'], ['Social Engagement', 'No data', Share2, 'No synced metrics']].map(([label, value, Icon, note]: any) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"><Icon className="mb-3 h-4 w-4 text-blue-600" /><p className="text-xl font-black text-[#091d64]">{value}</p><p className="mt-1 text-[10px] font-bold uppercase text-slate-400">{label}</p><p className="mt-1 text-[9px] font-medium text-slate-400">{note}</p></div>)}
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">
-                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Published portal announcements</h5>
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Active broadcasts</h5>
                     <button type="button" onClick={() => void refreshAnnouncements()} className="text-[10px] font-bold text-[#091d64] hover:underline">{isLoadingAnnouncements ? 'Refreshing...' : 'Refresh'}</button>
                   </div>
                   {announcementsList.length ? (
@@ -2029,6 +2085,7 @@ export default function BarangayAdminPages({
                           </div>
                           <p className="mt-1 whitespace-pre-line text-[11px] font-medium text-slate-600">{announcement.content}</p>
                           <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted} · {announcement.author}</p>
+                          {(facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl) && <a href={facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:underline"><Facebook className="h-3 w-3" />View Facebook post</a>}
                         </article>
                       ))}
                     </div>
@@ -2036,6 +2093,7 @@ export default function BarangayAdminPages({
                     <p className="py-5 text-center text-xs font-semibold text-slate-400">{isLoadingAnnouncements ? 'Loading announcements...' : 'No persisted announcements found.'}</p>
                   )}
                 </div>
+              </div>
               </div>
             </div>
           )}
