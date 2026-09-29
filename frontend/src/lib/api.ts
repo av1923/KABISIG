@@ -284,6 +284,20 @@ class KabisigApiClient {
     return await this.request('/announcements', { method: 'POST', body: JSON.stringify(payload) });
   }
 
+  async updateAnnouncement(id: string, payload: Partial<{ title: string; content: string; category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event'; status: 'draft' | 'published' }>) {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteAnnouncement(id: string) {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async getSocialMetrics(): Promise<{ hasMetrics: boolean; reach: number | null; engagement: number | null }> {
+    const res = await this.request<{ hasMetrics: boolean; reach: number | null; engagement: number | null }>('/social/metrics', { method: 'GET' });
+    if (!res.success || !res.data) throw new Error(res.message || 'Social metrics could not be loaded.');
+    return res.data;
+  }
+
   async publishAnnouncementToFacebook(announcementId: string): Promise<{ success: boolean; data?: { id: string; post_id: string; post_url: string; posted_at: string; persisted: true }; message?: string; details?: { graph?: { code?: number; type?: string; message?: string } } }> {
     return await this.request('/social/facebook/publish', {
       method: 'POST',

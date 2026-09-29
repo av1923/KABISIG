@@ -527,7 +527,6 @@ export default function BarangayAdminPages({
     void persistAlerts();
   }, [budgetAlertSignature, currentBarangay?.id, currentUser?.id]);
 
-  const [fbAutoSyncEnabled, setFbAutoSyncEnabled] = useState(true);
   const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
   const [announcementError, setAnnouncementError] = useState('');
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
@@ -535,6 +534,14 @@ export default function BarangayAdminPages({
   const [annTitle, setAnnTitle] = useState('');
   const [annCategory, setAnnCategory] = useState('Notice');
   const [annContent, setAnnContent] = useState('');
+  const [annWhat, setAnnWhat] = useState('');
+  const [annWhere, setAnnWhere] = useState('');
+  const [annWhen, setAnnWhen] = useState('');
+  const [annHashtags, setAnnHashtags] = useState('');
+  const [annImage, setAnnImage] = useState<File | null>(null);
+  const [annImagePreview, setAnnImagePreview] = useState('');
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
+  const [socialMetrics, setSocialMetrics] = useState<{ hasMetrics: boolean; reach: number | null; engagement: number | null }>({ hasMetrics: false, reach: null, engagement: null });
   const [annTarget, setAnnTarget] = useState('All Zones');
   const [annPostToFb, setAnnPostToFb] = useState(false);
   const [announcementSuccess, setAnnouncementSuccess] = useState('');
@@ -561,7 +568,7 @@ export default function BarangayAdminPages({
     setAnnouncementError('');
     try {
       const rows = await kabisigApi.getAnnouncements(currentBarangay.id);
-      const mapped = rows.map(mapAnnouncement);
+      const mapped = rows.filter((row: any) => row.status === 'published').map(mapAnnouncement);
       setAnnouncementsList(mapped);
       onAnnouncementsChanged?.(mapped);
     } catch (error: any) {
@@ -576,6 +583,7 @@ export default function BarangayAdminPages({
 
   useEffect(() => {
     void refreshAnnouncements();
+    kabisigApi.getSocialMetrics().then(setSocialMetrics).catch(error => setAnnouncementError(error?.message || 'Social metrics could not be loaded.'));
   }, [currentBarangay?.id]);
 
   const handlePublishAnnouncement = async (e: React.FormEvent) => {
@@ -586,9 +594,12 @@ export default function BarangayAdminPages({
     setAnnouncementSuccess('');
     try {
       const apiCategory: AnnouncementRecord['category'] = annCategory === 'Advisory' ? 'Notice' : annCategory as AnnouncementRecord['category'];
-      const result = await kabisigApi.createAnnouncement({
+      const composedContent = [`What: ${annWhat.trim() || 'N/A'}`, `Where: ${annWhere.trim() || 'N/A'}`, `When: ${annWhen.trim() || 'N/A'}`, '', annContent.trim(), '', annHashtags.trim() ? `Hashtags: ${annHashtags.trim()}` : ''].filter((line, index, all) => line || (index > 0 && all[index - 1])).join('\n');
+      const result = editingAnnouncementId
+        ? await kabisigApi.updateAnnouncement(editingAnnouncementId, { title: annTitle.trim(), content: composedContent, category: apiCategory, status: 'published' })
+        : await kabisigApi.createAnnouncement({
         title: annTitle.trim(),
-        content: `${annContent.trim()}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
+        content: `${composedContent}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
         category: apiCategory,
         status: 'published',
       });
@@ -601,6 +612,7 @@ export default function BarangayAdminPages({
       }
       setAnnTitle('');
       setAnnContent('');
+      setAnnWhat(''); setAnnWhere(''); setAnnWhen(''); setAnnHashtags(''); setEditingAnnouncementId(null); setAnnImage(null); setAnnImagePreview('');
       if (annPostToFb) {
         const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
         if (!facebookResult.success || !facebookResult.data) {
@@ -620,6 +632,26 @@ export default function BarangayAdminPages({
     } finally {
       setIsSubmittingAnnouncement(false);
     }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    setAnnouncementError('');
+    const result = await kabisigApi.deleteAnnouncement(id);
+    if (!result.success) { setAnnouncementError(result.message || 'Announcement could not be deleted.'); return; }
+    await refreshAnnouncements();
+  };
+
+  const beginEditAnnouncement = (announcement: any) => {
+    setEditingAnnouncementId(announcement.id);
+    setAnnTitle(announcement.title);
+    const content = String(announcement.content || '');
+    const field = (name: string) => content.match(new RegExp(`^${name}:\\s*(.*)$`, 'mi'))?.[1] || '';
+    setAnnWhat(field('What'));
+    setAnnWhere(field('Where'));
+    setAnnWhen(field('When'));
+    setAnnHashtags(field('Hashtags'));
+    setAnnContent(content.replace(/^What:.*\nWhere:.*\nWhen:.*\n\n?/mi, '').replace(/\n\nHashtags:.*$/mi, '').trim());
+    setAnnCategory(announcement.category);
   };
 
   const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
@@ -2005,16 +2037,6 @@ export default function BarangayAdminPages({
           {/* 7. ANNOUNCEMENTS */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6 text-left animate-in fade-in duration-200">
-              <div className="flex flex-col gap-4 rounded-2xl bg-gradient-to-r from-[#091d64] to-blue-700 p-5 text-white shadow-md sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <Facebook className="mt-0.5 h-6 w-6" />
-                  <div><h3 className="text-base font-black">Facebook Integration</h3><p className="text-xs text-blue-100">Publish portal announcements to your official Facebook page.</p></div>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-bold">
-                  <span className="rounded-full bg-emerald-400/20 px-3 py-1.5 text-emerald-100"><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-300" />Connected &amp; Active</span>
-                  <label className="flex items-center gap-2"><span>Auto-Sync</span><input type="checkbox" checked={fbAutoSyncEnabled} onChange={e => setFbAutoSyncEnabled(e.target.checked)} className="h-4 w-4 rounded border-white/40 text-blue-700" /></label>
-                </div>
-              </div>
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,.85fr)]">
               <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
                 <h4 className="mb-5 flex items-center gap-2 text-sm font-black text-slate-800"><Megaphone className="h-4 w-4 text-[#091d64]" />Compose Announcement</h4>
@@ -2030,9 +2052,8 @@ export default function BarangayAdminPages({
                       required
                     />
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Category</label><select value={annCategory} onChange={e => setAnnCategory(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>Notice</option><option>Opportunity</option><option>Emergency</option><option>Event</option></select></div>
-                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Target audience</label><select value={annTarget} onChange={e => setAnnTarget(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>All Zones</option><option>Zone 1</option><option>Zone 2</option><option>Zone 3</option></select></div>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    {([['What', annWhat, setAnnWhat], ['Where', annWhere, setAnnWhere], ['When', annWhen, setAnnWhen]] as const).map(([label, value, setter]) => <div key={label}><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">{label}</label><input value={value} onChange={e => setter(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" /></div>)}
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Body Content *</label>
@@ -2044,6 +2065,16 @@ export default function BarangayAdminPages({
                       className="w-full p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#091d64] bg-slate-50 focus:bg-white"
                       required
                     />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hashtags</label>
+                    <input value={annHashtags} onChange={e => setAnnHashtags(e.target.value)} placeholder="#SK #Barangay" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Pubmat image (JPG or PNG only)</label>
+                    <input type="file" accept="image/jpeg,image/png" onChange={e => { const file = e.target.files?.[0] || null; if (file && !['image/jpeg', 'image/png'].includes(file.type)) { setAnnouncementError('Only JPG and PNG images are supported.'); return; } setAnnImage(file); setAnnImagePreview(file ? URL.createObjectURL(file) : ''); }} className="w-full text-xs" />
+                    {annImagePreview && <img src={annImagePreview} alt="Pubmat preview" className="mt-2 max-h-32 rounded-lg object-contain" />}
+                    <p className="mt-1 text-[10px] text-slate-400">Preview only; announcement media is not persisted by the current schema.</p>
                   </div>
                   <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
                     <input
@@ -2060,7 +2091,7 @@ export default function BarangayAdminPages({
                     disabled={isSubmittingAnnouncement}
                     className="py-2.5 px-5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs cursor-pointer shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isSubmittingAnnouncement ? 'Publishing...' : 'Publish Announcement'}
+                    {isSubmittingAnnouncement ? 'Saving...' : editingAnnouncementId ? 'Update Announcement' : 'Publish Announcement'}
                   </button>
                   {announcementSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{announcementSuccess}</p>}
                   {announcementError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{announcementError}</p>}
@@ -2068,7 +2099,7 @@ export default function BarangayAdminPages({
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3">
-                  {[['Total Published', String(announcementsList.length), Megaphone, 'Persisted portal posts'], ['Facebook Reach', 'No data', Users, 'No synced metrics'], ['Social Engagement', 'No data', Share2, 'No synced metrics']].map(([label, value, Icon, note]: any) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"><Icon className="mb-3 h-4 w-4 text-blue-600" /><p className="text-xl font-black text-[#091d64]">{value}</p><p className="mt-1 text-[10px] font-bold uppercase text-slate-400">{label}</p><p className="mt-1 text-[9px] font-medium text-slate-400">{note}</p></div>)}
+                  {[['Total Published', String(announcementsList.filter(a => a.status === 'published').length), Megaphone, 'Persisted portal posts'], ['Facebook Reach', socialMetrics.hasMetrics ? String(socialMetrics.reach) : 'No synced metrics', Users, socialMetrics.hasMetrics ? 'Persisted Facebook metrics' : 'No synced metrics'], ['Social Engagement', socialMetrics.hasMetrics ? String(socialMetrics.engagement) : 'No synced metrics', Share2, socialMetrics.hasMetrics ? 'Likes + comments + shares' : 'No synced metrics']].map(([label, value, Icon, note]: any) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"><Icon className="mb-3 h-4 w-4 text-blue-600" /><p className="text-xl font-black text-[#091d64]">{value}</p><p className="mt-1 text-[10px] font-bold uppercase text-slate-400">{label}</p><p className="mt-1 text-[9px] font-medium text-slate-400">{note}</p></div>)}
                 </div>
                 <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">
@@ -2085,6 +2116,7 @@ export default function BarangayAdminPages({
                           </div>
                           <p className="mt-1 whitespace-pre-line text-[11px] font-medium text-slate-600">{announcement.content}</p>
                           <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted} · {announcement.author}</p>
+                          <div className="mt-2 flex gap-3"><button type="button" onClick={() => beginEditAnnouncement(announcement)} className="text-[10px] font-bold text-blue-700 hover:underline">Edit</button><button type="button" onClick={() => void handleDeleteAnnouncement(announcement.id)} className="text-[10px] font-bold text-rose-700 hover:underline">Delete</button></div>
                           {(facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl) && <a href={facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:underline"><Facebook className="h-3 w-3" />View Facebook post</a>}
                         </article>
                       ))}
