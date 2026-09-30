@@ -18,3 +18,5 @@ ON CONFLICT (id) DO UPDATE
 SET public = false,
     file_size_limit = EXCLUDED.file_size_limit,
     allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+NOTIFY pgrst, 'reload schema';

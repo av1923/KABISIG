@@ -27,10 +27,17 @@ router.get('/', optionalAuthenticateUser, async (req, res) => {
         .from('program')
         .select('*, barangay(name), program_registrations(count)', { count: 'exact' });
     if (user && user.role !== 'SUPER_ADMIN') {
+        if (!user.tenant_id) {
+            sendError(res, 'User has no assigned Barangay tenant.', 403);
+            return;
+        }
         query = query.eq('tenant_id', user.tenant_id);
     }
     else if (tenant_id && typeof tenant_id === 'string') {
         query = query.eq('tenant_id', tenant_id);
+    }
+    else if (!user) {
+        query = query.in('status', ['upcoming', 'ongoing', 'completed']);
     }
     if (category && typeof category === 'string') {
         query = query.eq('category', category);

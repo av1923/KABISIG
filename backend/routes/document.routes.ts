@@ -176,9 +176,15 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     .select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)');
 
   if (user && user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
     query = query.eq('tenant_id', user.tenant_id);
-  } else if (tenant_id && typeof tenant_id === 'string') {
+  } else if (user?.role === 'SUPER_ADMIN' && tenant_id && typeof tenant_id === 'string') {
     query = query.eq('tenant_id', tenant_id);
+  } else if (!user) {
+    query = query.eq('status', 'approved');
   }
 
   if (status && typeof status === 'string') {

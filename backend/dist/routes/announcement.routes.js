@@ -10,7 +10,9 @@ const announcementFields = {
     content: z.string().trim().min(1).max(10000),
     what: z.string().trim().max(2000).optional(),
     where: z.string().trim().max(1000).optional(),
+    where_text: z.string().trim().max(1000).optional(),
     when: z.string().trim().max(500).optional(),
+    event_when: z.string().trim().max(500).optional(),
     hashtags: z.string().trim().max(1000).optional(),
     category: z.enum(['Opportunity', 'Notice', 'Emergency', 'Event']),
     status: z.enum(['draft', 'published']),
@@ -29,10 +31,12 @@ const MAX_PUBMAT_BYTES = 10 * 1024 * 1024;
 const PUBMAT_BUCKET = 'announcement-pubmats';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 function missingTable(error) {
-    return error?.code === '42P01' || /schema cache|does not exist/i.test(error?.message || '');
+    return error?.code === '42P01'
+        || error?.code === 'PGRST205'
+        || /relation ["']?(?:public\.)?announcement["']? does not exist/i.test(error?.message || '');
 }
 function missingAnnouncementDetails(error) {
-    return /column .*?(what|where_text|event_when|hashtags|image_path).*?does not exist|could not find the .*?(what|where_text|event_when|hashtags|image_path).*?column/i.test(error?.message || '');
+    return /column .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?does not exist|could not find the .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?column/i.test(error?.message || '');
 }
 function safeFileName(fileName) {
     return fileName.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') || 'announcement-pubmat';
@@ -137,11 +141,12 @@ router.post('/', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADM
         sendError(res, upload.error, upload.error.startsWith('Upload a valid') ? 415 : 502);
         return;
     }
-    const { image: _image, when, ...fields } = parsed.data;
+    const { image: _image, where, where_text, when, event_when, ...fields } = parsed.data;
     const status = fields.status;
     const { data, error } = await supabaseAdmin.from('announcement').insert({
         ...fields,
-        event_when: when || null,
+        where_text: where_text ?? where ?? null,
+        event_when: event_when ?? when ?? null,
         image_path: upload.path || null,
         tenant_id: user.tenant_id,
         author_id: user.id,
@@ -198,10 +203,14 @@ router.patch('/:id', authenticateUser, requireActiveUser, requireRoles('BARANGAY
         sendError(res, upload.error, upload.error.startsWith('Upload a valid') ? 415 : 502);
         return;
     }
-    const { image: _image, when, ...fields } = parsed.data;
+    const { image: _image, where, where_text, when, event_when, ...fields } = parsed.data;
     const changes = { ...fields, updated_at: new Date().toISOString() };
-    if (when !== undefined)
-        changes.event_when = when || null;
+    if (where !== undefined || where_text !== undefined) {
+        changes.where_text = where_text ?? where ?? null;
+    }
+    if (when !== undefined || event_when !== undefined) {
+        changes.event_when = event_when ?? when ?? null;
+    }
     if (upload.path)
         changes.image_path = upload.path;
     if (fields.status) {
@@ -219,7 +228,12 @@ router.patch('/:id', authenticateUser, requireActiveUser, requireRoles('BARANGAY
             if (cleanupError)
                 console.error('Failed to clean up pubmat after announcement update failed:', cleanupError);
         }
-        sendError(res, error?.message || 'Announcement could not be updated.', 500);
+        const configurationError = missingTable(error)
+            ? 'Announcements are not configured. Apply migration 003_add_announcements.sql.'
+            : missingAnnouncementDetails(error)
+                ? 'Structured announcements are not configured. Apply migration 008_add_announcement_details.sql.'
+                : null;
+        sendError(res, configurationError || error?.message || 'Announcement could not be updated.', configurationError ? 503 : 500);
         return;
     }
     const signed = await signPubmat(data);

@@ -90,6 +90,9 @@ export interface BarangayAdminPagesProps {
   currentUser?: any;
   programs: Program[];
   youthProfiles: YouthProfile[];
+  youthProfilesLoading: boolean;
+  youthProfilesError: string | null;
+  onRetryYouthProfiles: () => void;
   documents: DocumentRecord[];
   auditLogs?: SystemAuditLog[];
   registrations?: any[];
@@ -113,6 +116,9 @@ export default function BarangayAdminPages({
   currentUser,
   programs = [],
   youthProfiles = [],
+  youthProfilesLoading = false,
+  youthProfilesError = null,
+  onRetryYouthProfiles,
   documents = [],
   auditLogs = [],
   registrations = [],
@@ -546,6 +552,103 @@ export default function BarangayAdminPages({
   const [announcementSuccess, setAnnouncementSuccess] = useState('');
   const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
   const [facebookPosts, setFacebookPosts] = useState<Record<string, { post_id: string; post_url: string; posted_at: string }>>({});
+  const [facebookIntegration, setFacebookIntegration] = useState<{
+    id: string;
+    page_id: string;
+    page_name: string;
+    is_active: boolean;
+    last_verified_at: string | null;
+  } | null>(null);
+  const [facebookPageId, setFacebookPageId] = useState('');
+  const [facebookPageToken, setFacebookPageToken] = useState('');
+  const [facebookIntegrationLoading, setFacebookIntegrationLoading] = useState(false);
+  const [facebookIntegrationSaving, setFacebookIntegrationSaving] = useState(false);
+  const [facebookIntegrationTesting, setFacebookIntegrationTesting] = useState(false);
+  const [facebookIntegrationError, setFacebookIntegrationError] = useState('');
+  const [facebookIntegrationNotice, setFacebookIntegrationNotice] = useState('');
+  const [facebookTestPageName, setFacebookTestPageName] = useState('');
+
+  const refreshFacebookIntegration = async () => {
+    if (!currentBarangay?.id || !kabisigApi.getToken()) return;
+    setFacebookIntegrationLoading(true);
+    setFacebookIntegrationError('');
+    try {
+      const result = await kabisigApi.getFacebookIntegration();
+      if (!result.success) throw new Error(result.message || 'Facebook integration could not be loaded.');
+      const connection = result.data?.is_active ? result.data : null;
+      setFacebookIntegration(connection);
+      setFacebookPageId(connection?.page_id || '');
+    } catch (error) {
+      setFacebookIntegrationError(error instanceof Error ? error.message : 'Facebook integration could not be loaded.');
+    } finally {
+      setFacebookIntegrationLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshFacebookIntegration();
+  }, [currentBarangay?.id, currentUser?.id]);
+
+  const handleTestFacebookIntegration = async () => {
+    setFacebookIntegrationError('');
+    setFacebookIntegrationNotice('');
+    setFacebookTestPageName('');
+    if (!facebookPageId.trim() || !facebookPageToken.trim()) {
+      setFacebookIntegrationError('Enter both the Page ID and Page Access Token to test the connection.');
+      return;
+    }
+    setFacebookIntegrationTesting(true);
+    try {
+      const result = await kabisigApi.testFacebookIntegration(facebookPageId.trim(), facebookPageToken.trim());
+      if (!result.success || !result.data) throw new Error(result.message || 'Facebook Page verification failed.');
+      setFacebookTestPageName(result.data.page_name);
+      setFacebookIntegrationNotice(`Connection verified for "${result.data.page_name}".`);
+    } catch (error) {
+      setFacebookIntegrationError(error instanceof Error ? error.message : 'Facebook Page verification failed.');
+    } finally {
+      setFacebookIntegrationTesting(false);
+    }
+  };
+
+  const handleConnectFacebookIntegration = async () => {
+    setFacebookIntegrationError('');
+    setFacebookIntegrationNotice('');
+    if (!facebookPageId.trim() || !facebookPageToken.trim()) {
+      setFacebookIntegrationError('Enter both the Page ID and Page Access Token to connect.');
+      return;
+    }
+    setFacebookIntegrationSaving(true);
+    try {
+      const result = await kabisigApi.connectFacebookIntegration(facebookPageId.trim(), facebookPageToken.trim());
+      if (!result.success || !result.data) throw new Error(result.message || 'Facebook Page could not be connected.');
+      setFacebookIntegration(result.data);
+      setFacebookPageId(result.data.page_id);
+      setFacebookPageToken('');
+      setFacebookIntegrationNotice(result.message || `Connected to "${result.data.page_name}".`);
+    } catch (error) {
+      setFacebookIntegrationError(error instanceof Error ? error.message : 'Facebook Page could not be connected.');
+    } finally {
+      setFacebookIntegrationSaving(false);
+    }
+  };
+
+  const handleDisconnectFacebookIntegration = async () => {
+    setFacebookIntegrationError('');
+    setFacebookIntegrationNotice('');
+    setFacebookIntegrationSaving(true);
+    try {
+      const result = await kabisigApi.disconnectFacebookIntegration();
+      if (!result.success) throw new Error(result.message || 'Facebook Page could not be disconnected.');
+      setFacebookIntegration(null);
+      setFacebookPageId('');
+      setFacebookPageToken('');
+      setFacebookIntegrationNotice(result.message || 'Facebook Page disconnected.');
+    } catch (error) {
+      setFacebookIntegrationError(error instanceof Error ? error.message : 'Facebook Page could not be disconnected.');
+    } finally {
+      setFacebookIntegrationSaving(false);
+    }
+  };
 
   const mapAnnouncement = (announcement: any): AnnouncementRecord => ({
     id: announcement.id,
@@ -578,9 +681,7 @@ export default function BarangayAdminPages({
       onAnnouncementsChanged?.(mapped);
     } catch (error: any) {
       const message = error?.message || 'Announcements could not be loaded.';
-      setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
-        ? 'Announcements are unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
-        : message);
+      setAnnouncementError(message);
     } finally {
       setIsLoadingAnnouncements(false);
     }
@@ -636,9 +737,7 @@ export default function BarangayAdminPages({
         : await kabisigApi.createAnnouncement(payload);
       if (!result.success || !result.data) {
         const message = result.message || 'Announcement could not be saved.';
-        setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
-          ? 'Announcement publishing is unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
-          : message);
+        setAnnouncementError(message);
         return;
       }
       const wasEditing = Boolean(editingAnnouncementId);
@@ -991,6 +1090,13 @@ export default function BarangayAdminPages({
                 Announcements
               </button>
               <button
+                onClick={() => { setActiveMenu('settings'); setIsMobileMenuOpen(false); }}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'settings' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
+              >
+                <SettingsIcon className="w-4.5 h-4.5 text-amber-400" />
+                Settings
+              </button>
+              <button
                 onClick={() => { setActiveMenu('audit'); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'audit' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
@@ -1122,6 +1228,18 @@ export default function BarangayAdminPages({
             >
               <Megaphone className={`w-4.5 h-4.5 ${activeMenu === 'announcements' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Announcements
+            </button>
+
+            <button
+              onClick={() => setActiveMenu('settings')}
+              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
+                activeMenu === 'settings'
+                  ? 'bg-[#eff6ff] text-[#091d64] shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
+              }`}
+            >
+              <SettingsIcon className={`w-4.5 h-4.5 ${activeMenu === 'settings' ? 'text-[#091d64]' : 'text-slate-400'}`} />
+              Settings
             </button>
 
             <button
@@ -1555,7 +1673,7 @@ export default function BarangayAdminPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {filteredProfiles.map(p => (
+                      {!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
                           <td className="px-6 py-4 font-extrabold text-slate-800 flex items-center gap-3">
                             <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-8 h-8 rounded-full border border-slate-100" />
@@ -1594,7 +1712,40 @@ export default function BarangayAdminPages({
                           </td>
                         </tr>
                       ))}
-                      {filteredProfiles.length === 0 && (
+                      {youthProfilesLoading && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold text-xs">
+                            <span className="inline-flex items-center gap-2">
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#091d64]" />
+                              Loading youth records...
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {!youthProfilesLoading && youthProfilesError && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-8 text-center text-rose-600 font-semibold text-xs">
+                            <div className="flex flex-col items-center gap-3">
+                              <span>Unable to load records. {youthProfilesError}</span>
+                              <button
+                                type="button"
+                                onClick={onRetryYouthProfiles}
+                                className="rounded-lg bg-[#091d64] px-3 py-1.5 text-white font-bold hover:bg-blue-900"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {!youthProfilesLoading && !youthProfilesError && localProfiles.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs">
+                            No records found.
+                          </td>
+                        </tr>
+                      )}
+                      {!youthProfilesLoading && !youthProfilesError && localProfiles.length > 0 && filteredProfiles.length === 0 && (
                         <tr>
                           <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs">
                             No matching applicant profiles found in registry.
@@ -2275,6 +2426,115 @@ export default function BarangayAdminPages({
               </div>
               </div>
             </div>
+          )}
+
+          {activeMenu === 'settings' && (
+            <section className="mx-auto max-w-3xl space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-blue-50 p-3 text-[#091d64]">
+                    <Facebook className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-extrabold text-[#091d64]">Facebook Integration</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                      Connect the Facebook Page managed by Barangay {currentBarangay?.name || 'your Barangay'}.
+                      Its access token is encrypted before it is stored and is never returned to the browser.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  {facebookIntegrationLoading ? (
+                    <p className="text-xs font-semibold text-slate-500">Loading Facebook connection…</p>
+                  ) : facebookIntegration?.is_active ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Connected Page</p>
+                        <p className="mt-1 text-sm font-extrabold text-slate-900">{facebookIntegration.page_name}</p>
+                        <p className="mt-0.5 font-mono text-[10px] text-slate-500">Page ID: {facebookIntegration.page_id}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-extrabold text-emerald-800">Active</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-600">No Barangay Facebook Page is connected.</p>
+                  )}
+                </div>
+
+                <div className="mt-5 space-y-4">
+                  <div>
+                    <label htmlFor="facebook-page-id" className="mb-1 block text-xs font-bold text-slate-700">Page ID</label>
+                    <input
+                      id="facebook-page-id"
+                      value={facebookPageId}
+                      onChange={event => setFacebookPageId(event.target.value)}
+                      autoComplete="off"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-[#091d64] focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                      placeholder="Enter Facebook Page ID"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="facebook-page-token" className="mb-1 block text-xs font-bold text-slate-700">Page Access Token</label>
+                    <input
+                      id="facebook-page-token"
+                      type="password"
+                      value={facebookPageToken}
+                      onChange={event => setFacebookPageToken(event.target.value)}
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-[#091d64] focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                      placeholder={facebookIntegration ? 'Enter token to verify or replace the saved token' : 'Enter Page Access Token'}
+                    />
+                    <p className="mt-1 text-[10px] text-slate-400">The saved token cannot be viewed again. Enter it to test or replace the connection.</p>
+                  </div>
+                </div>
+
+                {facebookIntegrationError && (
+                  <p role="alert" className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                    {facebookIntegrationError}
+                  </p>
+                )}
+                {facebookIntegrationNotice && (
+                  <p role="status" className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                    {facebookIntegrationNotice}
+                  </p>
+                )}
+                {facebookTestPageName && (
+                  <p className="mt-2 text-xs font-bold text-emerald-700">Verified Page: {facebookTestPageName}</p>
+                )}
+                <p className="mt-4 text-[10px] leading-relaxed text-slate-400">
+                  Existing system-wide Facebook environment credentials remain available as a temporary publishing fallback only when this Barangay has no integration record.
+                </p>
+
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  {facebookIntegration?.is_active && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDisconnectFacebookIntegration()}
+                      disabled={facebookIntegrationSaving || facebookIntegrationLoading}
+                      className="rounded-xl border border-rose-200 px-4 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      {facebookIntegrationSaving ? 'Working…' : 'Disconnect'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleTestFacebookIntegration()}
+                    disabled={facebookIntegrationTesting || facebookIntegrationSaving || facebookIntegrationLoading}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {facebookIntegrationTesting ? 'Testing…' : 'Test Connection'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConnectFacebookIntegration()}
+                    disabled={facebookIntegrationSaving || facebookIntegrationTesting || facebookIntegrationLoading}
+                    className="rounded-xl bg-[#091d64] px-4 py-2 text-xs font-bold text-white hover:bg-blue-900 disabled:opacity-50"
+                  >
+                    {facebookIntegrationSaving ? 'Saving…' : facebookIntegration ? 'Update Connection' : 'Connect'}
+                  </button>
+                </div>
+              </div>
+            </section>
           )}
 
           {/* 8. AUDIT LOG */}
