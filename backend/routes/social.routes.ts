@@ -239,7 +239,7 @@ router.post(
     const user = (req as AuthRequest).user!;
     const { data: announcement, error: announcementError } = await supabaseAdmin
       .from('announcement')
-      .select('id, tenant_id, title, content, what, where_text, event_when, hashtags, status')
+      .select('id, tenant_id, title, content, what, where_text, event_when, hashtags, image_path, status')
       .eq('id', parsed.data.announcement_id)
       .maybeSingle();
 
@@ -304,7 +304,6 @@ router.post(
     }
 
     const version = process.env.FACEBOOK_GRAPH_VERSION || 'v25.0';
-    const graphUrl = `https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(pageId)}/feed`;
     const details = [
       announcement.what ? `What: ${announcement.what}` : '',
       announcement.where_text ? `Where: ${announcement.where_text}` : '',
@@ -314,14 +313,30 @@ router.post(
     ].filter(Boolean).join('\n\n');
     const message = `${announcement.title}\n\n${details}`;
 
+    let imageUrl: string | null = null;
+    if (announcement.image_path) {
+      const { data: signedImage, error: signedImageError } = await supabaseAdmin.storage
+        .from('announcement-pubmats')
+        .createSignedUrl(announcement.image_path, 60 * 60);
+      if (signedImageError || !signedImage?.signedUrl) {
+        sendError(res, `The announcement image could not be prepared for Facebook: ${signedImageError?.message || 'No signed URL was returned.'}`, 502);
+        return;
+      }
+      imageUrl = signedImage.signedUrl;
+    }
+
+    const graphUrl = `https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(pageId)}/${imageUrl ? 'photos' : 'feed'}`;
+    const graphParams = imageUrl
+      ? new URLSearchParams({ url: imageUrl, caption: message, access_token: pageAccessToken })
+      : new URLSearchParams({ message, access_token: pageAccessToken });
     try {
       const graphResponse = await fetch(graphUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ message, access_token: pageAccessToken }),
+        body: graphParams,
       });
       const graphBody = await graphResponse.json().catch(() => null) as
-        | { id?: string; post_url?: string; created_time?: string; posted_at?: string; error?: { message?: string; type?: string; code?: number } }
+        | { id?: string; post_id?: string; post_url?: string; created_time?: string; posted_at?: string; error?: { message?: string; type?: string; code?: number } }
         | null;
 
       if (!graphResponse.ok || !graphBody?.id) {
@@ -345,7 +360,8 @@ router.post(
         return;
       }
 
-      const postUrl = graphBody.post_url || `https://www.facebook.com/${encodeURIComponent(graphBody.id)}`;
+      const facebookPostId = graphBody.post_id || graphBody.id;
+      const postUrl = graphBody.post_url || `https://www.facebook.com/${encodeURIComponent(facebookPostId)}`;
       const postedAt = graphBody.posted_at || graphBody.created_time || new Date().toISOString();
       const { data: persistedPost, error: persistenceError } = await supabaseAdmin
         .from('social_media_posts')
@@ -372,7 +388,7 @@ router.post(
 
       sendSuccess(res, {
         id: persistedPost.id,
-        post_id: graphBody.id,
+        post_id: facebookPostId,
         post_url: persistedPost.post_url,
         posted_at: persistedPost.posted_at,
         persisted: true,

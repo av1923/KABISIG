@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Building2, 
   Users, 
@@ -84,6 +85,19 @@ import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import kabisigApi from '../lib/api';
+
+function createAnnouncementStorageClient(accessToken: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Announcement image upload requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to be configured.');
+  }
+
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+}
 
 export interface BarangayAdminPagesProps {
   currentBarangay: BarangayTenant;
@@ -546,6 +560,8 @@ export default function BarangayAdminPages({
   const [annHashtags, setAnnHashtags] = useState('');
   const [annImageFile, setAnnImageFile] = useState<File | null>(null);
   const [annImagePreview, setAnnImagePreview] = useState('');
+  const [annImagePath, setAnnImagePath] = useState<string | null>(null);
+  const [annImageUploading, setAnnImageUploading] = useState(false);
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
   const [mutatingAnnouncementId, setMutatingAnnouncementId] = useState<string | null>(null);
   const [annPostToFb, setAnnPostToFb] = useState(false);
@@ -659,6 +675,7 @@ export default function BarangayAdminPages({
     when: announcement.event_when || '',
     hashtags: announcement.hashtags || '',
     imageUrl: announcement.image_url || '',
+    imagePath: announcement.image_path || '',
     author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
     barangay: currentBarangay?.name || 'Barangay',
     datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
@@ -691,34 +708,61 @@ export default function BarangayAdminPages({
     void refreshAnnouncements();
   }, [currentBarangay?.id]);
 
+  const handleAnnouncementImageSelected = async (file: File | null) => {
+    if (!file) return;
+    const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
+    const validExtension = /\.(jpe?g|png)$/i.test(file.name);
+    if (!validMime || !validExtension || file.size > 10 * 1024 * 1024) {
+      setAnnouncementError('Select a JPG or PNG image no larger than 10 MB.');
+      return;
+    }
+    const accessToken = kabisigApi.getToken();
+    if (!currentBarangay?.id || !accessToken) {
+      setAnnouncementError('Sign in again before uploading an announcement image.');
+      return;
+    }
+
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    setAnnImageFile(file);
+    setAnnImagePath(null);
+    setAnnImagePreview('');
+    setAnnImageUploading(true);
+    try {
+      const safeFileName = file.name.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') || 'announcement-pubmat';
+      const path = `${currentBarangay.id}/${crypto.randomUUID()}/${safeFileName}`;
+      const storage = createAnnouncementStorageClient(accessToken).storage.from('announcement-pubmats');
+      const { data: upload, error: uploadError } = await storage.upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (uploadError) throw new Error(`Announcement image upload failed: ${uploadError.message}`);
+
+      setAnnImagePath(upload.path);
+      const { data: signedUrl, error: signedUrlError } = await storage.createSignedUrl(upload.path, 60 * 60);
+      if (signedUrlError || !signedUrl?.signedUrl) {
+        throw new Error(`Image uploaded, but its signed preview URL could not be created: ${signedUrlError?.message || 'No URL was returned.'}`);
+      }
+      setAnnImagePreview(signedUrl.signedUrl);
+    } catch (error) {
+      setAnnouncementError(error instanceof Error ? error.message : 'Announcement image upload failed.');
+    } finally {
+      setAnnImageUploading(false);
+    }
+  };
+
   const handlePublishAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annWhat.trim() || !annWhere.trim() || !annWhen.trim()
       || !annContent.trim() || !annHashtags.trim() || isSubmittingAnnouncement) return;
+    if (annImageFile && !annImagePath) {
+      setAnnouncementError('Wait for the announcement image upload to finish successfully before publishing.');
+      return;
+    }
     setIsSubmittingAnnouncement(true);
     setAnnouncementError('');
     setAnnouncementSuccess('');
     try {
-      const imagePayload = annImageFile
-        ? await new Promise<{ file_name: string; content_type: 'image/jpeg' | 'image/png'; file_base64: string }>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const dataUrl = typeof reader.result === 'string' ? reader.result : '';
-              const base64 = dataUrl.split(',')[1];
-              if (!base64) {
-                reject(new Error('The selected pubmat could not be read.'));
-                return;
-              }
-              resolve({
-                file_name: annImageFile.name,
-                content_type: annImageFile.type as 'image/jpeg' | 'image/png',
-                file_base64: base64,
-              });
-            };
-            reader.onerror = () => reject(new Error('The selected pubmat could not be read.'));
-            reader.readAsDataURL(annImageFile);
-          })
-        : undefined;
       const payload = {
         title: annTitle.trim(),
         content: annContent.trim(),
@@ -730,7 +774,7 @@ export default function BarangayAdminPages({
         status: editingAnnouncementId
           ? announcementsList.find(item => item.id === editingAnnouncementId)?.status === 'draft' ? 'draft' as const : 'published' as const
           : 'published' as const,
-        ...(imagePayload ? { image: imagePayload } : {}),
+        image_path: annImagePath,
       };
       const result = editingAnnouncementId
         ? await kabisigApi.updateAnnouncement(editingAnnouncementId, payload)
@@ -749,6 +793,7 @@ export default function BarangayAdminPages({
       setAnnHashtags('');
       setAnnImageFile(null);
       setAnnImagePreview('');
+      setAnnImagePath(null);
       setEditingAnnouncementId(null);
       if (!wasEditing && annPostToFb) {
         const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
@@ -784,6 +829,7 @@ export default function BarangayAdminPages({
     setAnnHashtags(announcement.hashtags || '');
     setAnnImageFile(null);
     setAnnImagePreview(announcement.imageUrl || '');
+    setAnnImagePath(announcement.imagePath || null);
     setAnnouncementError('');
     setAnnouncementSuccess('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -799,6 +845,7 @@ export default function BarangayAdminPages({
     setAnnHashtags('');
     setAnnImageFile(null);
     setAnnImagePreview('');
+    setAnnImagePath(null);
     setAnnouncementError('');
   };
 
@@ -2314,24 +2361,18 @@ export default function BarangayAdminPages({
                     <input
                       type="file"
                       accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                      onChange={event => {
-                        const file = event.currentTarget.files?.[0] || null;
-                        if (!file) return;
-                        const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
-                        const validExtension = /\.(jpe?g|png)$/i.test(file.name);
-                        if (!validMime || !validExtension || file.size > 10 * 1024 * 1024) {
-                          setAnnouncementError('Select a JPG or PNG image no larger than 10 MB.');
-                          event.currentTarget.value = '';
-                          return;
-                        }
-                        setAnnouncementError('');
-                        setAnnImageFile(file);
-                        setAnnImagePreview('');
-                      }}
+                      onChange={event => void handleAnnouncementImageSelected(event.currentTarget.files?.[0] || null)}
+                      disabled={annImageUploading || isSubmittingAnnouncement}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-[#091d64]"
                     />
-                    {annImageFile && <p className="mt-1 text-[10px] text-slate-500">{annImageFile.name}</p>}
-                    {!annImageFile && annImagePreview && (
+                    {annImageUploading && (
+                      <p role="status" className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-blue-700">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-200 border-t-blue-700" />
+                        Uploading pubmat to Supabase Storage…
+                      </p>
+                    )}
+                    {annImageFile && !annImageUploading && <p className="mt-1 text-[10px] text-slate-500">{annImageFile.name}</p>}
+                    {!annImageUploading && annImagePreview && (
                       <img src={annImagePreview} alt="Current announcement pubmat" className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain" />
                     )}
                   </div>
@@ -2350,7 +2391,7 @@ export default function BarangayAdminPages({
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="submit"
-                      disabled={isSubmittingAnnouncement}
+                      disabled={isSubmittingAnnouncement || annImageUploading}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#091d64] px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isSubmittingAnnouncement ? 'Saving...' : editingAnnouncementId ? 'Update Announcement' : 'Publish Announcement'}

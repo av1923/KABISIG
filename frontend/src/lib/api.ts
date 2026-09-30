@@ -10,6 +10,7 @@ export interface AnnouncementPayload {
   hashtags: string;
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   status: 'draft' | 'published';
+  image_path?: string | null;
   image?: {
     file_name: string;
     content_type: 'image/jpeg' | 'image/png';
