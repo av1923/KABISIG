@@ -5,29 +5,6 @@ import { authenticateUser, requireActiveUser, requireRoles } from '../middleware
 import { sendError, sendSuccess } from '../utils/response.js';
 const router = express.Router();
 const publishSchema = z.object({ announcement_id: z.string().uuid() });
-router.get('/metrics', authenticateUser, requireActiveUser, async (req, res) => {
-    const user = req.user;
-    let query = supabaseAdmin.from('social_media_posts').select('metrics').eq('platform', 'facebook');
-    if (user.role !== 'SUPER_ADMIN')
-        query = query.eq('tenant_id', user.tenant_id);
-    const { data, error } = await query;
-    if (error) {
-        sendError(res, error.message, 500);
-        return;
-    }
-    const rows = data || [];
-    if (!rows.length) {
-        sendSuccess(res, { hasMetrics: false, reach: null, engagement: null });
-        return;
-    }
-    const totals = rows.reduce((sum, row) => {
-        const metrics = row.metrics || {};
-        sum.reach += Number(metrics.reach) || 0;
-        sum.engagement += (Number(metrics.likes) || 0) + (Number(metrics.comments) || 0) + (Number(metrics.shares) || 0);
-        return sum;
-    }, { reach: 0, engagement: 0 });
-    sendSuccess(res, { hasMetrics: true, ...totals });
-});
 router.post('/facebook/publish', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req, res) => {
     const parsed = publishSchema.safeParse(req.body);
     if (!parsed.success) {

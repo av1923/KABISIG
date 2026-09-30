@@ -210,15 +210,14 @@ export default function App() {
 
     (kabisigApi.getToken() ? kabisigApi.getAnnouncements() : Promise.resolve([])).then((rows) => {
       if (rows.length) {
-        const uniqueRows = Array.from(new Map(rows.filter((a: any) => a.status === 'published').map((a: any) => [a.id, a])).values());
-        setAnnouncements(uniqueRows.map((a: any): AnnouncementRecord => ({
+        setAnnouncements(rows.map((a: any): AnnouncementRecord => ({
           id: a.id,
           title: a.title,
           content: a.content,
           author: a.author?.full_name || 'SK Official',
           barangay: a.tenant_id || 'Barangay',
           datePosted: (a.published_at || a.created_at || '').split('T')[0],
-          category: a.category === 'Advisory' ? 'Notice' : a.category,
+          category: a.category,
           attachments: [],
         })));
       }
