@@ -558,6 +558,14 @@ export default function ViewerPages({
                           <span className="text-slate-400 font-mono">{ann.datePosted}</span>
                         </div>
                         <h4 className="font-bold text-xs text-slate-800">{ann.title}</h4>
+                        {ann.imageUrl && <img src={ann.imageUrl} alt={`Pubmat for ${ann.title}`} className="mt-2 max-h-32 w-full rounded-md bg-white object-contain" />}
+                        {(ann.what || ann.where || ann.when) && (
+                          <div className="mt-1 space-y-0.5 text-[10px] text-slate-600">
+                            {ann.what && <p><strong>What:</strong> {ann.what}</p>}
+                            {ann.where && <p><strong>Where:</strong> {ann.where}</p>}
+                            {ann.when && <p><strong>When:</strong> {ann.when}</p>}
+                          </div>
+                        )}
                         <p className="text-[11px] text-slate-500 line-clamp-2 mt-1">{ann.content}</p>
                       </div>
                     ))}
@@ -944,8 +952,8 @@ export default function ViewerPages({
                                 {exp.taxType}
                               </span>
                             </td>
-                            <td className="px-5 py-3.5 text-right font-mono text-slate-500">₱{exp.withholdingTax.toLocaleString()}</td>
-                            <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">₱{exp.netAmount.toLocaleString()}</td>
+                            <td className="px-5 py-3.5 text-right font-mono text-slate-500">₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
+                            <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1021,8 +1029,15 @@ export default function ViewerPages({
                           <span className="text-[10px] text-slate-400 font-mono">{ann.datePosted}</span>
                         </div>
 
-                        <h4 className="font-bold text-sm text-slate-800 leading-snug">{ann.title}</h4>
-                        <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed font-medium">{ann.content}</p>
+                        <h4 className="text-sm font-black text-slate-900 leading-snug">{ann.title}</h4>
+                        {ann.imageUrl && <img src={ann.imageUrl} alt={`Pubmat for ${ann.title}`} className="max-h-56 w-full rounded-lg bg-slate-50 object-contain" />}
+                        <div className="space-y-1 text-xs text-slate-600">
+                          {ann.what && <p><strong>What:</strong> {ann.what}</p>}
+                          {ann.where && <p><strong>Where:</strong> {ann.where}</p>}
+                          {ann.when && <p><strong>When:</strong> {ann.when}</p>}
+                          <p className="line-clamp-3 leading-relaxed font-medium">{ann.content}</p>
+                          {ann.hashtags && <p className="font-semibold text-blue-700">{ann.hashtags}</p>}
+                        </div>
                       </div>
 
                       <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-xs font-semibold">
@@ -1101,9 +1116,17 @@ export default function ViewerPages({
                 <span>DATE: {readAnnounce.datePosted}</span>
               </div>
 
+              {readAnnounce.imageUrl && <img src={readAnnounce.imageUrl} alt={`Pubmat for ${readAnnounce.title}`} className="max-h-96 w-full rounded-lg border border-slate-200 object-contain" />}
+              <div className="space-y-1.5 text-slate-600">
+                {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
+                {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
+                {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
+              </div>
+              <h4 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</h4>
               <p className="text-slate-600 leading-relaxed text-sm font-medium whitespace-pre-wrap">
                 {readAnnounce.content}
               </p>
+              {readAnnounce.hashtags && <p className="border-t border-slate-100 pt-3 font-semibold text-blue-700">{readAnnounce.hashtags}</p>}
 
               {readAnnounce.attachments && readAnnounce.attachments.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 space-y-2">

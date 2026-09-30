@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Building2, 
   Users, 
@@ -46,13 +46,14 @@ import {
   FileCheck,
   XCircle,
   Facebook,
+  Pencil,
   Printer,
   FileSpreadsheet,
-  Share2,
   Sparkles,
   Layers,
   HelpCircle,
-  TrendingUpIcon
+  TrendingUpIcon,
+  Trash2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -66,7 +67,7 @@ import {
   Cell, 
   Legend
 } from 'recharts';
-import { BarangayTenant, Program, YouthProfile, DocumentRecord, SystemAuditLog } from '../types';
+import { AnnouncementRecord, BarangayTenant, Program, YouthProfile, DocumentRecord, SystemAuditLog } from '../types';
 import ProfileAvatar from './ProfileAvatar';
 import { 
   classifyDemographics, 
@@ -82,6 +83,7 @@ import {
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
+import kabisigApi from '../lib/api';
 
 export interface BarangayAdminPagesProps {
   currentBarangay: BarangayTenant;
@@ -96,7 +98,13 @@ export interface BarangayAdminPagesProps {
   resolutions?: any[];
   onApproveYouth: (id: string) => void;
   onRejectYouth: (id: string, reason: string) => void;
+  onApproveDocument: (id: string, notes: string) => Promise<DocumentRecord>;
+  onRejectDocument: (id: string, notes: string) => Promise<DocumentRecord>;
+  onAddDocument: (document: DocumentRecord) => void;
   onCreateProgram: (newProg: Program) => void;
+  onUpdateProgram: (program: Program) => Promise<boolean>;
+  onDeleteProgram: (programId: string) => Promise<boolean>;
+  onAnnouncementsChanged?: (announcements: AnnouncementRecord[]) => void;
   onLogout: () => void;
 }
 
@@ -113,7 +121,13 @@ export default function BarangayAdminPages({
   resolutions = [],
   onApproveYouth,
   onRejectYouth,
+  onApproveDocument,
+  onRejectDocument,
+  onAddDocument,
   onCreateProgram,
+  onUpdateProgram,
+  onDeleteProgram,
+  onAnnouncementsChanged,
   onLogout
 }: BarangayAdminPagesProps) {
   const [activeMenu, setActiveMenu] = useState<
@@ -129,6 +143,15 @@ export default function BarangayAdminPages({
       alert('Please allow popups for this website to export the PDF report.');
       return;
     }
+    const reportProgramRows = programs.length > 0
+      ? programs.map(program => {
+          const allocated = Number(program.budgetAllocation) || 0;
+          const spent = expenses.filter(expense => expense.programId === program.id)
+            .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || Number(program.spentBudget) || 0;
+          const rate = allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0';
+          return `<tr><td><strong>${program.title}</strong><br><span style="color:#64748b">${program.category}</span></td><td>${program.aipReference || 'Not provided'}</td><td class="text-right">₱${allocated.toLocaleString()}</td><td class="text-right">₱${spent.toLocaleString()}</td><td class="text-right">${rate}%</td><td class="text-center"><span class="badge">${program.status}</span></td></tr>`;
+        }).join('')
+      : '<tr><td colspan="6" class="text-center">No program records available.</td></tr>';
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -174,30 +197,7 @@ export default function BarangayAdminPages({
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong>Sports & Active Citizenship</strong></td>
-              <td>AIP-2026-SPT-01</td>
-              <td class="text-right">₱180,000</td>
-              <td class="text-right">₱152,000</td>
-              <td class="text-right">84.4%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
-            <tr>
-              <td><strong>Educational Assistance & Scholarships</strong></td>
-              <td>AIP-2026-EDU-02</td>
-              <td class="text-right">₱220,000</td>
-              <td class="text-right">₱195,000</td>
-              <td class="text-right">88.6%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
-            <tr>
-              <td><strong>Health, Nutrition & Anti-Drug Advocacy</strong></td>
-              <td>AIP-2026-HLT-03</td>
-              <td class="text-right">₱140,000</td>
-              <td class="text-right">₱110,000</td>
-              <td class="text-right">78.5%</td>
-              <td class="text-center"><span class="badge">COA Audited</span></td>
-            </tr>
+            ${reportProgramRows}
           </tbody>
         </table>
 
@@ -213,22 +213,7 @@ export default function BarangayAdminPages({
           </thead>
           <tbody>
             <tr>
-              <td>Annual Barangay Youth Development Plan (ABYIP 2026)</td>
-              <td>Q1 2026</td>
-              <td>January 15, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
-            </tr>
-            <tr>
-              <td>Quarterly Session Minutes & Enacted Resolutions</td>
-              <td>Q2 2026</td>
-              <td>June 30, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
-            </tr>
-            <tr>
-              <td>Disbursement Vouchers & 5% VAT Tax Withholding Ledger</td>
-              <td>Q2 2026</td>
-              <td>July 10, 2026</td>
-              <td class="text-center"><span class="badge">Compliant</span></td>
+              <td colspan="4" class="text-center">No compliance transmittal records available.</td>
             </tr>
           </tbody>
         </table>
@@ -253,7 +238,7 @@ export default function BarangayAdminPages({
     printWindow.document.close();
   };
 
-  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('Pending');
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -263,10 +248,15 @@ export default function BarangayAdminPages({
   const [docStatusFilter, setDocStatusFilter] = useState('All');
   const [inspectDoc, setInspectDoc] = useState<DocumentRecord | null>(null);
   const [showUploadDocModal, setShowUploadDocModal] = useState(false);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState('');
   const [showApproveDocModal, setShowApproveDocModal] = useState(false);
   const [selectedDocForApprove, setSelectedDocForApprove] = useState<DocumentRecord | null>(null);
   const [approvalDecision, setApprovalDecision] = useState<'Approved' | 'Rejected'>('Approved');
   const [approvalNotes, setApprovalNotes] = useState('');
+  const [isReviewingDocument, setIsReviewingDocument] = useState(false);
+  const [documentReviewError, setDocumentReviewError] = useState('');
   const [newDocForm, setNewDocForm] = useState<{
     title: string;
     category: DocumentRecord['category'];
@@ -396,16 +386,20 @@ export default function BarangayAdminPages({
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectField, setShowRejectField] = useState(false);
 
-  const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(true);
+  const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(false);
   const [progListFilter, setProgListFilter] = useState<'List' | 'Calendar'>('List');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [newProgForm, setNewProgForm] = useState({
     title: '',
     description: '',
-    startDate: '2026-05-20',
-    endDate: '2026-05-22',
-    location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
-    maxParticipants: 100,
-    budgetAllocation: 50000,
+    category: 'Sports Development' as Program['category'],
+    startDate: '',
+    endDate: '',
+    location: '',
+    maxParticipants: 0,
+    budgetAllocation: null as number | null,
+    aipReference: '',
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
   });
 
@@ -414,6 +408,30 @@ export default function BarangayAdminPages({
 
   const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
 
+  const handleReviewDocument = async () => {
+    if (!selectedDocForApprove) return;
+    if (approvalDecision === 'Rejected' && approvalNotes.trim().length < 5) {
+      setDocumentReviewError('Enter at least five characters explaining the rejection.');
+      return;
+    }
+
+    setIsReviewingDocument(true);
+    setDocumentReviewError('');
+    try {
+      const reviewed = approvalDecision === 'Approved'
+        ? await onApproveDocument(selectedDocForApprove.id, approvalNotes.trim())
+        : await onRejectDocument(selectedDocForApprove.id, approvalNotes.trim());
+      setLocalDocs(previous => previous.map(doc => doc.id === reviewed.id ? reviewed : doc));
+      setShowApproveDocModal(false);
+      setSelectedDocForApprove(null);
+      setApprovalNotes('');
+    } catch (error: any) {
+      setDocumentReviewError(error.message || 'Document review could not be saved.');
+    } finally {
+      setIsReviewingDocument(false);
+    }
+  };
+
   const fallbackBarangay: BarangayTenant = {
     id: '',
     name: '',
@@ -421,69 +439,289 @@ export default function BarangayAdminPages({
     youthPopulation: 0,
     activePrograms: 0,
     totalBudget: 0,
-    spentBudget: 0,
     allocatedBudget: 0,
+    spentBudget: 0,
     contact: '',
     status: 'Active',
     district: '',
   };
 
-  const isMatchBarangay = (p: YouthProfile) => 
-    p.barangayId === currentBarangay?.id || 
-    p.barangayId === currentBarangay?.name || 
-    (Boolean(p.address && currentBarangay?.name && p.address.toLowerCase().includes(currentBarangay.name.toLowerCase())));
+  const isMatchBarangay = (profile: YouthProfile) =>
+    profile.barangayId === currentBarangay?.id ||
+    profile.barangayId === currentBarangay?.name ||
+    (Boolean(profile.address && currentBarangay?.name && profile.address.toLowerCase().includes(currentBarangay.name.toLowerCase())));
 
-  const pendingRegistrations = youthProfiles.filter(p => p.status === 'Pending' && isMatchBarangay(p));
-  const filteredProfiles = youthProfiles.filter(p => {
-    const matchesBarangay = isMatchBarangay(p);
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          p.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          p.zone.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'All' ? true : p.status === filterStatus;
+  const pendingRegistrations = youthProfiles.filter(profile => profile.status === 'Pending' && isMatchBarangay(profile));
+  const filteredProfiles = youthProfiles.filter(profile => {
+    const matchesBarangay = isMatchBarangay(profile);
+    const matchesSearch = profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      profile.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      profile.zone.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = filterStatus === 'All' ? true : profile.status === filterStatus;
     return matchesBarangay && matchesSearch && matchesStatus;
   });
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
-  const intelligentBudget = getBudgetAnalytics(currentBarangay?.totalBudget || 0, programs, expenses);
+  const programAllocatedBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+  const intelligentBudget = getBudgetAnalytics(programAllocatedBudget, programs, expenses);
   const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
+  const budgetAlertSignature = budgetAlerts
+    .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
+    .join('|');
   const complianceIssues = getComplianceIssues(localProfiles, programs, documents, expenses);
   const lowEngagementItems = detectLowEngagement(localProfiles, registrations);
+  const complianceIssueSignature = complianceIssues
+    .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
+    .join('|');
 
-  const [fbAutoSyncEnabled, setFbAutoSyncEnabled] = useState(true);
-  const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
+  useEffect(() => {
+    if (!currentBarangay?.id || !currentUser?.id || !kabisigApi.getToken() || complianceIssues.length === 0) return;
 
-  const [annTitle, setAnnTitle] = useState('');
-  const [annCategory, setAnnCategory] = useState('Advisory');
-  const [annContent, setAnnContent] = useState('');
-  const [annTarget, setAnnTarget] = useState('All Zones');
-  const [annPostToFb, setAnnPostToFb] = useState(true);
+    const persistIssues = async () => {
+      const results = await Promise.all(
+        complianceIssues.map(issue => kabisigApi.persistComplianceIssue({
+          report_type: issue.code,
+          fiscal_year: new Date().getFullYear(),
+          status: 'pending',
+          notes: `${issue.message} Recommended action: ${issue.action}`,
+        }))
+      );
 
-  const handlePublishAnnouncement = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!annTitle.trim() || !annContent.trim()) return;
-
-    const newAnn = {
-      id: `ann-${Date.now().toString().slice(-4)}`,
-      title: annTitle,
-      category: annCategory,
-      content: annContent,
-      targetPurok: annTarget,
-      author: currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson'),
-      datePublished: new Date().toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      postStatus: 'Published',
-      fbSyncStatus: (annPostToFb && fbAutoSyncEnabled) ? 'Synced' : 'Draft',
-      fbPostId: (annPostToFb && fbAutoSyncEnabled) ? `fb_post_${Math.floor(10000000000 + Math.random() * 90000000000)}` : 'N/A',
-      socialReach: { views: 1, reactions: 0, shares: 0 }
+      const failed = results.find(result => !result.success);
+      if (failed) {
+        const message = failed.message || 'Failed to persist one or more compliance issues.';
+        if (message.includes("Could not find the table 'public.compliance_monitoring'")) {
+          console.warn('Compliance persistence is unavailable until migration 002 is applied in Supabase.');
+        } else {
+          console.error(message);
+        }
+      }
     };
 
-    setAnnouncementsList([newAnn, ...announcementsList]);
+    void persistIssues();
+  }, [complianceIssueSignature, currentBarangay?.id, currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentBarangay?.id || !currentUser?.id || !kabisigApi.getToken() || budgetAlerts.length === 0) return;
+
+    const persistAlerts = async () => {
+      const results = await Promise.all(
+        budgetAlerts.map(alert => kabisigApi.persistBudgetAlert({
+          alert_code: alert.code,
+          level: alert.level,
+          message: alert.message,
+          link: `/budget?alert=${encodeURIComponent(alert.code)}`,
+        }))
+      );
+
+      const failed = results.find(result => !result.success);
+      if (failed) {
+        const message = failed.message || 'Failed to persist one or more budget alerts.';
+        if (message.includes("Could not find the table 'public.notifications'")) {
+          console.warn('Budget-alert persistence is unavailable until migration 002 is applied in Supabase.');
+        } else {
+          console.error(message);
+        }
+      }
+    };
+
+    void persistAlerts();
+  }, [budgetAlertSignature, currentBarangay?.id, currentUser?.id]);
+
+  const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
+  const [announcementError, setAnnouncementError] = useState('');
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
+
+  const [annTitle, setAnnTitle] = useState('');
+  const [annWhat, setAnnWhat] = useState('');
+  const [annWhere, setAnnWhere] = useState('');
+  const [annWhen, setAnnWhen] = useState('');
+  const [annContent, setAnnContent] = useState('');
+  const [annHashtags, setAnnHashtags] = useState('');
+  const [annImageFile, setAnnImageFile] = useState<File | null>(null);
+  const [annImagePreview, setAnnImagePreview] = useState('');
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
+  const [mutatingAnnouncementId, setMutatingAnnouncementId] = useState<string | null>(null);
+  const [annPostToFb, setAnnPostToFb] = useState(false);
+  const [announcementSuccess, setAnnouncementSuccess] = useState('');
+  const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
+  const [facebookPosts, setFacebookPosts] = useState<Record<string, { post_id: string; post_url: string; posted_at: string }>>({});
+
+  const mapAnnouncement = (announcement: any): AnnouncementRecord => ({
+    id: announcement.id,
+    title: announcement.title,
+    content: announcement.content,
+    what: announcement.what || '',
+    where: announcement.where_text || '',
+    when: announcement.event_when || '',
+    hashtags: announcement.hashtags || '',
+    imageUrl: announcement.image_url || '',
+    author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
+    barangay: currentBarangay?.name || 'Barangay',
+    datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
+    category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
+    status: announcement.status,
+    attachments: [],
+    facebookPostUrl: facebookPosts[announcement.id]?.post_url,
+    facebookPostId: facebookPosts[announcement.id]?.post_id,
+    facebookPostedAt: facebookPosts[announcement.id]?.posted_at,
+  });
+
+  const refreshAnnouncements = async () => {
+    if (!currentBarangay?.id || !kabisigApi.getToken()) return;
+    setIsLoadingAnnouncements(true);
+    setAnnouncementError('');
+    try {
+      const rows = await kabisigApi.getAnnouncements(currentBarangay.id);
+      const mapped = rows.map(mapAnnouncement);
+      setAnnouncementsList(mapped);
+      onAnnouncementsChanged?.(mapped);
+    } catch (error: any) {
+      const message = error?.message || 'Announcements could not be loaded.';
+      setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
+        ? 'Announcements are unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
+        : message);
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshAnnouncements();
+  }, [currentBarangay?.id]);
+
+  const handlePublishAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!annTitle.trim() || !annWhat.trim() || !annWhere.trim() || !annWhen.trim()
+      || !annContent.trim() || !annHashtags.trim() || isSubmittingAnnouncement) return;
+    setIsSubmittingAnnouncement(true);
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    try {
+      const imagePayload = annImageFile
+        ? await new Promise<{ file_name: string; content_type: 'image/jpeg' | 'image/png'; file_base64: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+              const base64 = dataUrl.split(',')[1];
+              if (!base64) {
+                reject(new Error('The selected pubmat could not be read.'));
+                return;
+              }
+              resolve({
+                file_name: annImageFile.name,
+                content_type: annImageFile.type as 'image/jpeg' | 'image/png',
+                file_base64: base64,
+              });
+            };
+            reader.onerror = () => reject(new Error('The selected pubmat could not be read.'));
+            reader.readAsDataURL(annImageFile);
+          })
+        : undefined;
+      const payload = {
+        title: annTitle.trim(),
+        content: annContent.trim(),
+        what: annWhat.trim(),
+        where: annWhere.trim(),
+        when: annWhen.trim(),
+        hashtags: annHashtags.trim(),
+        category: 'Notice' as const,
+        status: editingAnnouncementId
+          ? announcementsList.find(item => item.id === editingAnnouncementId)?.status === 'draft' ? 'draft' as const : 'published' as const
+          : 'published' as const,
+        ...(imagePayload ? { image: imagePayload } : {}),
+      };
+      const result = editingAnnouncementId
+        ? await kabisigApi.updateAnnouncement(editingAnnouncementId, payload)
+        : await kabisigApi.createAnnouncement(payload);
+      if (!result.success || !result.data) {
+        const message = result.message || 'Announcement could not be saved.';
+        setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
+          ? 'Announcement publishing is unavailable because the Supabase announcement table is not configured. Apply migration 003_add_announcements.sql.'
+          : message);
+        return;
+      }
+      const wasEditing = Boolean(editingAnnouncementId);
+      setAnnTitle('');
+      setAnnWhat('');
+      setAnnWhere('');
+      setAnnWhen('');
+      setAnnContent('');
+      setAnnHashtags('');
+      setAnnImageFile(null);
+      setAnnImagePreview('');
+      setEditingAnnouncementId(null);
+      if (!wasEditing && annPostToFb) {
+        const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
+        if (!facebookResult.success || !facebookResult.data) {
+          const graphError = facebookResult.details?.graph;
+          const reason = graphError
+            ? `Facebook Graph error (code: ${graphError.code ?? 'unknown'}, type: ${graphError.type || 'unknown'}, message: ${graphError.message || facebookResult.message || 'Unknown Facebook error.'})`
+            : facebookResult.message || 'Unknown Facebook error.';
+          setAnnouncementError(`Announcement saved to portal, but Facebook publishing failed: ${reason}`);
+        } else {
+          setFacebookPosts(previous => ({ ...previous, [result.data.id]: facebookResult.data! }));
+          setAnnouncementSuccess('Announcement published to portal and Facebook.');
+        }
+      } else {
+        setAnnouncementSuccess(wasEditing ? 'Announcement updated.' : 'Announcement published to the portal.');
+      }
+      setAnnPostToFb(false);
+      await refreshAnnouncements();
+    } catch (error: any) {
+      setAnnouncementError(error?.message || 'Announcement could not be saved.');
+    } finally {
+      setIsSubmittingAnnouncement(false);
+    }
+  };
+
+  const handleEditAnnouncement = (announcement: AnnouncementRecord) => {
+    setEditingAnnouncementId(announcement.id);
+    setAnnTitle(announcement.title);
+    setAnnWhat(announcement.what || '');
+    setAnnWhere(announcement.where || '');
+    setAnnWhen(announcement.when || '');
+    setAnnContent(announcement.content);
+    setAnnHashtags(announcement.hashtags || '');
+    setAnnImageFile(null);
+    setAnnImagePreview(announcement.imageUrl || '');
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelAnnouncementEdit = () => {
+    setEditingAnnouncementId(null);
     setAnnTitle('');
+    setAnnWhat('');
+    setAnnWhere('');
+    setAnnWhen('');
     setAnnContent('');
-    alert(
-      annPostToFb && fbAutoSyncEnabled
-        ? 'Announcement published and successfully auto-synced to the Official SK Facebook Page!'
-        : 'Announcement published on KABISIG Constituent Portal!'
-    );
+    setAnnHashtags('');
+    setAnnImageFile(null);
+    setAnnImagePreview('');
+    setAnnouncementError('');
+  };
+
+  const handleDeleteAnnouncement = async (announcement: AnnouncementRecord) => {
+    if (!window.confirm(`Delete "${announcement.title}"? This cannot be undone.`)) return;
+    setMutatingAnnouncementId(announcement.id);
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    try {
+      const result = await kabisigApi.deleteAnnouncement(announcement.id);
+      if (!result.success) {
+        setAnnouncementError(result.message || 'Announcement could not be deleted.');
+        return;
+      }
+      if (editingAnnouncementId === announcement.id) handleCancelAnnouncementEdit();
+      setAnnouncementSuccess(result.message || 'Announcement deleted.');
+      await refreshAnnouncements();
+    } catch (error: any) {
+      setAnnouncementError(error?.message || 'Announcement could not be deleted.');
+    } finally {
+      setMutatingAnnouncementId(null);
+    }
   };
 
   const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
@@ -503,23 +741,32 @@ export default function BarangayAdminPages({
   ];
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const totalBgyBudget = currentBarangay?.totalBudget || 0;
-  const monthlyAlloc = totalBgyBudget > 0 ? Math.round(totalBgyBudget / 12) : 0;
+  const totalBgyBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+  const budgetPrograms = programs.filter(program => budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter);
   const budgetVsActualMonthlyData = months.map((month, idx) => {
     const monthExpenses = expenses.filter(e => {
       const d = e.date || e.created_at || e.expense_date ? new Date(e.date || e.created_at || e.expense_date) : null;
-      return d && d.getMonth() === idx;
+      return d && d.getFullYear() === Number(budgetYear) && d.getMonth() === idx
+        && (budgetProgramFilter === 'All Programs' || e.programId === budgetProgramFilter);
     }).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0);
     return {
       month,
-      budget: monthlyAlloc,
+      budget: budgetPrograms.reduce((sum, program) => {
+        const start = new Date(program.startDate);
+        const end = new Date(program.endDate || program.startDate);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start.getFullYear() !== Number(budgetYear)) return sum;
+        const monthCount = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1);
+        return idx >= start.getMonth() && idx <= end.getMonth()
+          ? sum + (Number(program.budgetAllocation) || 0) / monthCount
+          : sum;
+      }, 0),
       spent: monthExpenses
     };
   });
 
   const progColors = ['#091d64', '#2563eb', '#60a5fa', '#93c5fd', '#94a3b8', '#cbd5e1'];
-  const totalAllocBudget = currentBarangay?.totalBudget || (programs.reduce((sum, p) => sum + (p.budgetAllocation || 0), 0) || 1);
-  const budgetAllocationByProgramData = programs.length > 0 ? programs.map((p, idx) => {
+  const totalAllocBudget = programAllocatedBudget;
+  const budgetAllocationByProgramData = budgetPrograms.length > 0 ? budgetPrograms.map((p, idx) => {
     const alloc = p.budgetAllocation || 0;
     const pct = totalAllocBudget > 0 ? ((alloc / totalAllocBudget) * 100).toFixed(1) : '0';
     return {
@@ -532,7 +779,7 @@ export default function BarangayAdminPages({
     { name: 'Unallocated', value: totalBgyBudget, color: '#091d64', percentage: '100%' }
   ];
 
-  const budgetUtilizationTable = programs.map(p => {
+  const budgetUtilizationTable = budgetPrograms.map(p => {
     const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0) || p.spentBudget || 0;
     const remaining = Math.max(0, (p.budgetAllocation || 0) - spent);
     const rate = p.budgetAllocation > 0 ? Number(((spent / p.budgetAllocation) * 100).toFixed(1)) : 0;
@@ -553,34 +800,88 @@ export default function BarangayAdminPages({
     }
 
     const createdProg: Program = {
-      id: `prog-${Date.now().toString().slice(-3)}`,
+      id: editingProgram?.id || `prog-${Date.now().toString().slice(-3)}`,
       title: newProgForm.title,
       description: newProgForm.description,
       startDate: newProgForm.startDate,
       endDate: newProgForm.endDate,
       location: newProgForm.location,
       maxParticipants: newProgForm.maxParticipants,
-      budgetAllocation: newProgForm.budgetAllocation,
+      budgetAllocation: newProgForm.budgetAllocation ?? 0,
       spentBudget: 0,
-      aipReference: `AIP-2026-${(currentBarangay?.name || 'SAN').slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-3)}`,
-      category: 'Sports Development',
+      aipReference: newProgForm.aipReference.trim(),
+      category: newProgForm.category,
       status: newProgForm.status,
       registeredCount: 0
     };
 
-    onCreateProgram(createdProg);
+    if (editingProgram) {
+      void onUpdateProgram(createdProg).then(success => {
+        if (success) {
+          setEditingProgram(null);
+          setShowCreateProgDrawer(false);
+        }
+      });
+    } else {
+      onCreateProgram(createdProg);
+    }
     
     setNewProgForm({
       title: '',
       description: '',
-      startDate: '2026-05-20',
-      endDate: '2026-05-22',
-      location: `Barangay ${currentBarangay?.name || 'Barangay'} Hall Complex`,
-      maxParticipants: 100,
-      budgetAllocation: 50000,
+      category: 'Sports Development',
+      startDate: '',
+      endDate: '',
+      location: '',
+      maxParticipants: 0,
+      budgetAllocation: null,
+      aipReference: '',
       status: 'Upcoming'
     });
   };
+
+  const calendarStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+  const calendarDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+  const calendarOffset = calendarStart.getDay();
+  const calendarCells = Array.from({ length: Math.ceil((calendarOffset + calendarDays) / 7) * 7 }, (_, index) => {
+    const day = index - calendarOffset + 1;
+    return day > 0 && day <= calendarDays ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day) : null;
+  });
+  const programsForDay = (day: Date) => programs.filter(program => {
+    const start = new Date(program.startDate);
+    const end = new Date(program.endDate || program.startDate);
+    const current = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+    return current >= new Date(start.getFullYear(), start.getMonth(), start.getDate())
+      && current <= new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  });
+  const openProgramEditor = (program?: Program) => {
+    if (!program) {
+      setEditingProgram(null);
+      setNewProgForm(previous => ({ ...previous, title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: null }));
+    } else {
+      setEditingProgram(program);
+      setNewProgForm({
+        title: program.title,
+        description: program.description,
+        category: program.category,
+        startDate: program.startDate,
+        endDate: program.endDate,
+        location: program.location,
+        maxParticipants: program.maxParticipants,
+        budgetAllocation: Number(program.budgetAllocation) || 0,
+        aipReference: program.aipReference || '',
+        status: program.status,
+      });
+    }
+    setShowCreateProgDrawer(true);
+  };
+  const announcementStatusCards = [
+    { label: 'Total Published', count: announcementsList.filter(item => item.status === 'published').length, icon: Megaphone, color: 'text-blue-700', background: 'bg-blue-50' },
+    { label: 'Draft', count: announcementsList.filter(item => item.status === 'draft').length, icon: FileText, color: 'text-slate-700', background: 'bg-slate-100' },
+    { label: 'Scheduled', count: announcementsList.filter(item => item.status === 'scheduled').length, icon: Clock, color: 'text-amber-700', background: 'bg-amber-50' },
+    { label: 'Posted', count: announcementsList.filter(item => item.status === 'published').length, icon: CheckCircle2, color: 'text-emerald-700', background: 'bg-emerald-50' },
+    { label: 'Failed', count: announcementsList.filter(item => item.status === 'failed').length, icon: AlertTriangle, color: 'text-rose-700', background: 'bg-rose-50' },
+  ];
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
@@ -598,7 +899,7 @@ export default function BarangayAdminPages({
           )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
         >
@@ -1339,7 +1640,7 @@ export default function BarangayAdminPages({
                   </div>
                   
                   <button 
-                    onClick={() => setShowCreateProgDrawer(true)}
+                    onClick={() => openProgramEditor()}
                     className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -1350,7 +1651,46 @@ export default function BarangayAdminPages({
 
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 space-y-4">
-                  {programs.map(p => (
+                  {progListFilter === 'Calendar' ? (
+                    <div className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h4 className="font-extrabold text-[#091d64]">AIP Localized Program Timeline</h4>
+                          <p className="text-[11px] text-slate-400">Click a program to edit it. Changes are saved to the shared program record.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">‹</button>
+                          <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">
+                            {calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">›</button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 border-l border-t border-slate-200">
+                        {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+                          <div key={day} className="bg-[#091d64] text-white text-center text-[10px] font-black py-2 border-r border-b border-[#091d64]">{day}</div>
+                        ))}
+                        {calendarCells.map((day, index) => (
+                          <div key={`${day?.toISOString() || 'empty'}-${index}`} className={`min-h-[112px] border-r border-b border-slate-200 p-1.5 ${day ? 'bg-white' : 'bg-slate-50'}`}>
+                            {day && <span className="text-[10px] font-bold text-slate-500">{day.getDate()}</span>}
+                            <div className="space-y-1 mt-1">
+                              {day && programsForDay(day).map(program => (
+                                <button
+                                  type="button"
+                                  key={program.id}
+                                  onClick={() => openProgramEditor(program)}
+                                  className="w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white bg-blue-600 hover:bg-blue-700 truncate"
+                                  title={`${program.title} · ${program.category}`}
+                                >
+                                  {program.title}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : programs.map(p => (
                     <div key={p.id} className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5 flex flex-col md:flex-row gap-5 items-start justify-between">
                       <div className="flex gap-4 items-start">
                         <div className="w-20 h-20 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
@@ -1381,6 +1721,10 @@ export default function BarangayAdminPages({
                           <span className="text-[10px] text-slate-400 block font-bold">Registrations</span>
                           <span className="text-xs font-extrabold text-slate-800 block mt-0.5">{p.registeredCount || 0} / {p.maxParticipants || 100}</span>
                         </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => openProgramEditor(p)} className="px-2 py-1 border rounded text-[10px] font-bold">Edit</button>
+                          <button type="button" onClick={() => { if (window.confirm(`Delete "${p.title}"?`)) void onDeleteProgram(p.id); }} className="px-2 py-1 border border-red-200 text-red-600 rounded text-[10px] font-bold">Delete</button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1394,7 +1738,7 @@ export default function BarangayAdminPages({
                 {showCreateProgDrawer && (
                   <div className="bg-white rounded-xl border border-slate-100 p-6 shadow-xs h-fit sticky top-6">
                     <div className="flex justify-between items-center border-b pb-3 mb-4">
-                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Create New Program</h4>
+                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">{editingProgram ? 'Edit Program' : 'Create New Program'}</h4>
                       <button 
                         onClick={() => setShowCreateProgDrawer(false)}
                         className="p-1 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
@@ -1437,6 +1781,22 @@ export default function BarangayAdminPages({
                             className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
                           />
                         </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Program Category</label>
+                          <select
+                            value={newProgForm.category}
+                            onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })}
+                            className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
+                          >
+                            <option>Health & Nutrition</option>
+                            <option>Education & Scholarship</option>
+                            <option>Sports Development</option>
+                            <option>Livelihood & Skills</option>
+                            <option>Peace & Security</option>
+                            <option>Environmental Protection</option>
+                          </select>
+                        </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">End Date</label>
                           <input 
@@ -1454,12 +1814,31 @@ export default function BarangayAdminPages({
                           <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₱</span>
                           <input 
                             type="number" 
-                            value={newProgForm.budgetAllocation}
-                            onChange={(e) => setNewProgForm({...newProgForm, budgetAllocation: parseInt(e.target.value) || 0})}
+                            value={newProgForm.budgetAllocation ?? ''}
+                            onChange={(e) => setNewProgForm({
+                              ...newProgForm,
+                              budgetAllocation: e.target.value === '' ? null : Number(e.target.value)
+                            })}
                             placeholder="Enter budget amount"
                             className="w-full border border-slate-200 rounded-lg pl-7 pr-3 p-2 text-xs focus:outline-none font-bold"
                           />
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</label>
+                          <input type="text" required value={newProgForm.location} onChange={(e) => setNewProgForm({ ...newProgForm, location: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Total slots</label>
+                          <input type="number" min="1" required value={newProgForm.maxParticipants || ''} onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">AIP reference code</label>
+                        <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono" />
                       </div>
 
                       <div className="flex gap-2 pt-2 border-t">
@@ -1474,7 +1853,7 @@ export default function BarangayAdminPages({
                           type="submit"
                           className="flex-1 py-2 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold cursor-pointer"
                         >
-                          Create Program
+                          {editingProgram ? 'Save Changes' : 'Create Program'}
                         </button>
                       </div>
                     </form>
@@ -1486,67 +1865,78 @@ export default function BarangayAdminPages({
 
           {/* 4. BUDGET MANAGEMENT */}
           {activeMenu === 'budget' && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex flex-col gap-4">
                 <div>
-                  <h3 className="text-xl font-extrabold text-[#091d64]">Budget Monitoring</h3>
-                  <p className="text-xs text-slate-400 mt-1">Track and monitor the utilization of the SK Federation budget.</p>
+                  <h3 className="text-xl font-extrabold text-[#091d64]">Budget Management</h3>
+                  <p className="text-xs text-slate-400 mt-1">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                 </div>
-                
-                <button 
-                  onClick={() => generatePDFReport('COA Annual Budget Audit Report')}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs cursor-pointer"
-                >
-                  <FileText className="w-4 h-4" />
-                  Generate COA Report
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Budget</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {(currentBarangay?.totalBudget || 0).toLocaleString()}</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">FY {new Date().getFullYear()} Budget</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <Briefcase className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Spent</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.spent.toLocaleString()}</h4>
-                    <p className="text-[9px] text-slate-400 font-semibold mt-0.5">Live Disbursed</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <Coins className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Remaining</span>
-                    <h4 className="text-xl font-extrabold text-slate-800 mt-1">₱ {intelligentBudget.remaining.toLocaleString()}</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{(currentBarangay?.totalBudget || 0) > 0 ? ((intelligentBudget.remaining / (currentBarangay?.totalBudget || 1)) * 100).toFixed(1) : '0'}% Available</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-lg">
-                    <DollarSign className="w-5 h-5" />
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-2xs flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Utilization Rate</span>
-                    <h4 className="text-xl font-extrabold text-[#091d64] mt-1">{intelligentBudget.utilizationRate.toFixed(1)}%</h4>
-                    <p className="text-[9px] text-green-600 font-bold mt-0.5">{intelligentBudget.consumptionTrend}</p>
-                  </div>
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
+                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
+                    <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
+                      {[...new Set([new Date().getFullYear(), ...programs.map(program => new Date(program.startDate).getFullYear()).filter(Boolean)])].sort().reverse().map(year => <option key={year}>{year}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
+                    <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-52 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
+                      <option>All Programs</option>
+                      {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Reset filters</button>
                 </div>
               </div>
+
+              {(() => {
+                const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+                const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
+                const filteredRemaining = Math.max(0, filteredAllocated - filteredSpent);
+                const filteredRate = filteredAllocated > 0 ? (filteredSpent / filteredAllocated) * 100 : 0;
+                const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
+                return (
+                  <>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ['Total allocated', filteredAllocated, Briefcase, 'text-blue-600 bg-blue-50'],
+                        ['Total spent', filteredSpent, Coins, 'text-amber-600 bg-amber-50'],
+                        ['Remaining balance', filteredRemaining, DollarSign, 'text-emerald-600 bg-emerald-50'],
+                      ].map(([label, value, Icon, iconClass]) => (
+                        <div key={String(label)} className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                          <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{String(label)}</span><span className={`rounded-lg p-2 ${iconClass}`}><Icon className="h-4 w-4" /></span></div>
+                          <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{Number(value).toLocaleString()}</p>
+                        </div>
+                      ))}
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                        <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Utilization rate</span><span className="rounded-lg bg-violet-50 p-2 text-violet-600"><TrendingUp className="h-4 w-4" /></span></div>
+                        <p className="mt-3 text-2xl font-extrabold text-[#091d64]">{filteredRate.toFixed(1)}%</p>
+                        <p className="mt-1 text-[10px] font-semibold text-slate-400">{filteredAllocated ? 'Based on recorded expenses' : 'No allocation recorded'}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-3">
+                        <h4 className="text-sm font-extrabold text-slate-800">Monthly budget vs actual</h4>
+                        <p className="mb-4 text-[10px] text-slate-400">Actual expenses are grouped by expense date.</p>
+                        {budgetPrograms.length || expenses.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={budgetVsActualMonthlyData}><XAxis dataKey="month" fontSize={10} /><YAxis fontSize={10} tickFormatter={value => `₱${Number(value) / 1000}k`} /><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /><Legend /><Bar dataKey="budget" name="Budget" fill="#bfdbfe" radius={[4, 4, 0, 0]} /><Bar dataKey="spent" name="Actual" fill="#091d64" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No budget or expense records for this view.</div>}
+                      </div>
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-2">
+                        <h4 className="text-sm font-extrabold text-slate-800">Program allocation</h4>
+                        <p className="mb-2 text-[10px] text-slate-400">Share of the selected allocation.</p>
+                        {budgetAllocationByProgramData.some(item => item.value > 0) ? <><ResponsiveContainer width="100%" height={190}><PieChart><Pie data={budgetAllocationByProgramData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{budgetAllocationByProgramData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /></PieChart></ResponsiveContainer><div className="space-y-2">{budgetAllocationByProgramData.slice(0, 6).map(item => <div key={item.name} className="flex items-center justify-between text-[10px] font-semibold text-slate-600"><span className="flex min-w-0 items-center gap-2"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /> <span className="truncate">{item.name}</span></span><span>{item.percentage}</span></div>)}</div></> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No program allocations recorded.</div>}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                      <h4 className="mb-4 text-sm font-extrabold text-slate-800">Utilization by program</h4>
+                      {budgetUtilizationTable.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3">Program</th><th className="px-3 py-3 text-right">Allocated</th><th className="px-3 py-3 text-right">Actual</th><th className="px-3 py-3 text-right">Remaining</th><th className="px-3 py-3 text-right">Utilization</th></tr></thead><tbody className="divide-y divide-slate-50">{budgetUtilizationTable.map(row => <tr key={row.program}><td className="px-3 py-3 font-bold text-slate-700">{row.program}</td><td className="px-3 py-3 text-right">₱{row.allocated.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.spent.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.remaining.toLocaleString()}</td><td className={`px-3 py-3 text-right font-bold ${row.rate > 100 ? 'text-rose-600' : 'text-slate-700'}`}>{row.rate.toFixed(1)}%</td></tr>)}</tbody></table></div> : <div className="py-10 text-center text-xs font-semibold text-slate-400">No programs available for this filter.</div>}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                      <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-5"><h4 className="flex items-center gap-2 text-sm font-extrabold text-rose-800"><AlertTriangle className="h-4 w-4" /> Overspending alerts</h4>{overspent.length ? <ul className="mt-3 space-y-2 text-xs font-semibold text-rose-700">{overspent.map(row => <li key={row.program} className="flex justify-between gap-3"><span>{row.program}</span><span>₱{(row.spent - row.allocated).toLocaleString()} over</span></li>)}</ul> : <p className="mt-3 text-xs font-semibold text-slate-500">No overspending detected in the selected programs.</p>}</div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -1587,6 +1977,7 @@ export default function BarangayAdminPages({
                         <th className="px-5 py-3.5">Author / Officer</th>
                         <th className="px-5 py-3.5">Date</th>
                         <th className="px-5 py-3.5 text-center">Approval Status</th>
+                        <th className="px-5 py-3.5 text-right">Review</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
@@ -1610,15 +2001,36 @@ export default function BarangayAdminPages({
                             {doc.uploadedDate}
                           </td>
                           <td className="px-5 py-4 text-center">
-                            <span className="px-2.5 py-0.5 rounded text-[9px] font-black uppercase border bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <span className={`px-2.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                              doc.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              doc.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                              'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
                               {doc.status}
                             </span>
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            {doc.status === 'Pending' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedDocForApprove(doc);
+                                  setApprovalDecision('Approved');
+                                  setApprovalNotes('');
+                                  setDocumentReviewError('');
+                                  setShowApproveDocModal(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#091d64] text-white text-[10px] font-bold hover:bg-[#122878]"
+                              >
+                                <FileCheck className="w-3.5 h-3.5" /> Review
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
                       {localDocs.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center py-8 text-slate-400 font-bold">
+                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold">
                             No documents found in repository.
                           </td>
                         </tr>
@@ -1626,6 +2038,53 @@ export default function BarangayAdminPages({
                     </tbody>
                   </table>
                 </div>
+
+                {showApproveDocModal && selectedDocForApprove && (
+                  <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden">
+                      <div className="bg-[#091d64] text-white p-5">
+                        <h3 className="font-bold text-base">Review Document</h3>
+                        <p className="mt-1 text-xs text-blue-100">{selectedDocForApprove.title}</p>
+                      </div>
+                      <div className="p-5 space-y-4">
+                        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Review decision">
+                          <button
+                            type="button"
+                            onClick={() => setApprovalDecision('Approved')}
+                            className={`rounded-lg border px-3 py-2 text-xs font-bold ${approvalDecision === 'Approved' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-slate-600 border-slate-200'}`}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setApprovalDecision('Rejected')}
+                            className={`rounded-lg border px-3 py-2 text-xs font-bold ${approvalDecision === 'Rejected' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-slate-600 border-slate-200'}`}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                        <div>
+                          <label className="block mb-1 text-[10px] font-bold text-slate-500 uppercase">
+                            {approvalDecision === 'Rejected' ? 'Rejection reason (required)' : 'Review notes (optional)'}
+                          </label>
+                          <textarea
+                            value={approvalNotes}
+                            onChange={(event) => setApprovalNotes(event.target.value)}
+                            rows={3}
+                            className="w-full rounded-lg border border-slate-200 p-2.5 text-xs"
+                          />
+                        </div>
+                        {documentReviewError && <p role="alert" className="text-xs text-rose-700">{documentReviewError}</p>}
+                        <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                          <button type="button" disabled={isReviewingDocument} onClick={() => setShowApproveDocModal(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold disabled:opacity-50">Cancel</button>
+                          <button type="button" disabled={isReviewingDocument} onClick={handleReviewDocument} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                            {isReviewingDocument ? 'Saving...' : `Confirm ${approvalDecision}`}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               </div>
             </div>
@@ -1655,11 +2114,9 @@ export default function BarangayAdminPages({
           {/* 7. ANNOUNCEMENTS */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6 text-left animate-in fade-in duration-200">
-              <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-2xs space-y-4">
-                <h4 className="font-sans font-bold text-slate-800 text-sm flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-[#091d64]" />
-                  Compose Advisory / Announcement
-                </h4>
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,.85fr)]">
+              <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+                <h4 className="mb-5 flex items-center gap-2 text-sm font-black text-slate-800"><Megaphone className="h-4 w-4 text-[#091d64]" />{editingAnnouncementId ? 'Edit Announcement' : 'Compose Announcement'}</h4>
                 <form onSubmit={handlePublishAnnouncement} className="space-y-4 text-xs font-semibold">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Announcement Title *</label>
@@ -1672,24 +2129,150 @@ export default function BarangayAdminPages({
                       required
                     />
                   </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">What *</label>
+                      <input value={annWhat} onChange={e => setAnnWhat(e.target.value)} placeholder="What is happening?" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Where *</label>
+                      <input value={annWhere} onChange={e => setAnnWhere(e.target.value)} placeholder="Venue or location" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">When *</label>
+                      <input value={annWhen} onChange={e => setAnnWhen(e.target.value)} placeholder="Date and time" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Body Content *</label>
                     <textarea 
                       value={annContent}
                       onChange={(e) => setAnnContent(e.target.value)}
-                      rows={4} 
+                      rows={5}
                       placeholder="Type announcement details..." 
                       className="w-full p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#091d64] bg-slate-50 focus:bg-white"
                       required
                     />
                   </div>
-                  <button 
-                    type="submit"
-                    className="py-2.5 px-5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs cursor-pointer shadow-xs"
-                  >
-                    Publish Announcement
-                  </button>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hashtags *</label>
+                    <input value={annHashtags} onChange={e => setAnnHashtags(e.target.value)} placeholder="#KABISIG #Kabataan" className="w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white" required />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Announcement Pubmat (JPG or PNG)</label>
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                      onChange={event => {
+                        const file = event.currentTarget.files?.[0] || null;
+                        if (!file) return;
+                        const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
+                        const validExtension = /\.(jpe?g|png)$/i.test(file.name);
+                        if (!validMime || !validExtension || file.size > 10 * 1024 * 1024) {
+                          setAnnouncementError('Select a JPG or PNG image no larger than 10 MB.');
+                          event.currentTarget.value = '';
+                          return;
+                        }
+                        setAnnouncementError('');
+                        setAnnImageFile(file);
+                        setAnnImagePreview('');
+                      }}
+                      className="block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-[#091d64]"
+                    />
+                    {annImageFile && <p className="mt-1 text-[10px] text-slate-500">{annImageFile.name}</p>}
+                    {!annImageFile && annImagePreview && (
+                      <img src={annImagePreview} alt="Current announcement pubmat" className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain" />
+                    )}
+                  </div>
+                  {!editingAnnouncementId && (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={annPostToFb}
+                        onChange={(e) => setAnnPostToFb(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                      />
+                      Also publish to Facebook
+                      <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAnnouncement}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#091d64] px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSubmittingAnnouncement ? 'Saving...' : editingAnnouncementId ? 'Update Announcement' : 'Publish Announcement'}
+                    </button>
+                    {editingAnnouncementId && (
+                      <button type="button" onClick={handleCancelAnnouncementEdit} disabled={isSubmittingAnnouncement} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-50">
+                        Cancel edit
+                      </button>
+                    )}
+                  </div>
+                  {announcementSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{announcementSuccess}</p>}
+                  {announcementError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{announcementError}</p>}
                 </form>
+              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {announcementStatusCards.map(({ label, count, icon: Icon, color, background }) => (
+                    <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${background}`}>
+                        <Icon className={`h-4 w-4 ${color}`} />
+                      </div>
+                      <p className="text-xl font-black text-[#091d64]">{count}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Announcements</h5>
+                    <button type="button" onClick={() => void refreshAnnouncements()} className="text-[10px] font-bold text-[#091d64] hover:underline">{isLoadingAnnouncements ? 'Refreshing...' : 'Refresh'}</button>
+                  </div>
+                  {announcementsList.length ? (
+                    <div className="space-y-2">
+                      {announcementsList.map((announcement: AnnouncementRecord) => (
+                        <article key={announcement.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h6 className="text-sm font-black text-slate-900">{announcement.title}</h6>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                                <span className={`rounded px-2 py-0.5 text-[9px] font-bold uppercase ${announcement.status === 'published' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{announcement.status || 'published'}</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <button type="button" aria-label={`Edit ${announcement.title}`} onClick={() => handleEditAnnouncement(announcement)} className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-700">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button type="button" aria-label={`Delete ${announcement.title}`} onClick={() => void handleDeleteAnnouncement(announcement)} disabled={mutatingAnnouncementId === announcement.id} className="rounded-md border border-slate-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-64 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
+                          <div className="mt-3 space-y-2 text-[11px]">
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
+                            <div className="border-t border-slate-200 pt-2">
+                              <p className="font-bold text-slate-700">Body Content</p>
+                              <p className="mt-1 whitespace-pre-line font-medium text-slate-600">{announcement.content}</p>
+                            </div>
+                            {announcement.hashtags && <p className="border-t border-slate-200 pt-2 font-semibold text-blue-700">{announcement.hashtags}</p>}
+                          </div>
+                          <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted} · {announcement.author}</p>
+                          {(facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl) && <a href={facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:underline"><Facebook className="h-3 w-3" />View Facebook post</a>}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-5 text-center text-xs font-semibold text-slate-400">{isLoadingAnnouncements ? 'Loading announcements...' : 'No persisted announcements found.'}</p>
+                  )}
+                </div>
+              </div>
               </div>
             </div>
           )}
@@ -1778,6 +2361,30 @@ export default function BarangayAdminPages({
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Address</span>
                   <span className="text-slate-800 block">{inspectProfile.address} ({inspectProfile.zone})</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Contact & email</span>
+                  <span className="text-slate-800 block">{inspectProfile.mobile || 'Not provided'} · {inspectProfile.email || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Education</span>
+                  <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'}{inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment & scholarship</span>
+                  <span className="text-slate-800 block">{inspectProfile.employmentStatus || inspectProfile.employment || 'Not provided'} · {inspectProfile.scholarStatus || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Youth sector</span>
+                  <span className="text-slate-800 block">{inspectProfile.youthSector || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Guardian</span>
+                  <span className="text-slate-800 block">{inspectProfile.guardianName || 'Not provided'}{inspectProfile.guardianContact ? ` · ${inspectProfile.guardianContact}` : ''}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Registration status</span>
+                  <span className="text-slate-800 block">{inspectProfile.status} · Registered {inspectProfile.dateRegistered || 'date unavailable'}</span>
                 </div>
               </div>
 
@@ -1870,31 +2477,49 @@ export default function BarangayAdminPages({
             </div>
 
             <form 
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newDocForm.title.trim()) return;
-                const createdDoc: DocumentRecord = {
-                  id: `DOC-2026-00${localDocs.length + 1}`,
-                  title: newDocForm.title,
-                  category: newDocForm.category,
-                  uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
-                  uploadedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                  fileSize: '1.8 MB',
-                  status: 'Approved',
-                  resolutionNumber: newDocForm.resolutionNumber || `EO-2026-00${localDocs.length + 1}`,
-                  description: newDocForm.description,
-                  designatedApprover: 'Hon. SK Chairperson'
-                };
-                setLocalDocs([createdDoc, ...localDocs]);
-                setShowUploadDocModal(false);
-                setNewDocForm({
-                  title: '',
-                  category: 'Resolutions',
-                  resolutionNumber: '',
-                  description: '',
-                  fileSize: '1.4 MB',
-                  designatedApprover: 'Hon. SK Chairperson'
-                });
+                if (!selectedUploadFile) {
+                  setDocumentUploadError('Select a document file to upload.');
+                  return;
+                }
+                setIsUploadingDocument(true);
+                setDocumentUploadError('');
+                try {
+                  const documentType = newDocForm.category === 'Resolutions' ? 'Resolution' : newDocForm.category === 'Minutes' ? 'Minutes' : newDocForm.category === 'Reports' || newDocForm.category === 'Budget' ? 'Financial Report' : 'Other';
+                  const result = await kabisigApi.uploadDocument({
+                    title: newDocForm.title.trim(),
+                    document_type: documentType,
+                    file: selectedUploadFile,
+                  });
+                  if (!result.success || !result.data?.id) throw new Error(result.message || 'Document upload failed.');
+
+                  const saved = result.data;
+                  const uploaded: DocumentRecord = {
+                    id: saved.id,
+                    title: saved.title,
+                    category: newDocForm.category,
+                    uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
+                    uploadedDate: saved.created_at ? new Date(saved.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+                    fileSize: `${(selectedUploadFile.size / (1024 * 1024)).toFixed(2)} MB`,
+                    status: 'Pending',
+                    resolutionNumber: newDocForm.resolutionNumber || `DOC-${saved.id.slice(0, 8)}`,
+                    description: newDocForm.description,
+                    designatedApprover: 'Hon. SK Chairperson',
+                    barangayId: saved.tenant_id,
+                    fileUrl: saved.file_url,
+                  };
+                  setLocalDocs(previous => [uploaded, ...previous]);
+                  onAddDocument(uploaded);
+                  setShowUploadDocModal(false);
+                  setSelectedUploadFile(null);
+                  setNewDocForm({ title: '', category: 'Resolutions', resolutionNumber: '', description: '', fileSize: '1.4 MB', designatedApprover: 'Hon. SK Chairperson' });
+                } catch (error: any) {
+                  setDocumentUploadError(error.message || 'Document upload failed.');
+                } finally {
+                  setIsUploadingDocument(false);
+                }
               }}
               className="p-6 space-y-4"
             >
@@ -1910,20 +2535,48 @@ export default function BarangayAdminPages({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Document File *</label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  required
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    if (file && file.size > 25 * 1024 * 1024) {
+                      setDocumentUploadError('File size exceeds maximum limit of 25MB.');
+                      setSelectedUploadFile(null);
+                      return;
+                    }
+                    if (file && !['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'].includes(file.type)) {
+                      setDocumentUploadError('Only PDF, Word, JPG, and PNG files are allowed.');
+                      setSelectedUploadFile(null);
+                      return;
+                    }
+                    setSelectedUploadFile(file);
+                    setDocumentUploadError('');
+                  }}
+                  className="block w-full text-xs"
+                />
+              </div>
+              {documentUploadError && <p role="alert" className="text-xs text-rose-700">{documentUploadError}</p>}
+              {documentUploadError && <p role="alert" className="text-xs text-rose-700">{documentUploadError}</p>}
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
+                  disabled={isUploadingDocument}
                   onClick={() => setShowUploadDocModal(false)}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  disabled={isUploadingDocument}
+                  className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   <Upload className="w-4 h-4 text-amber-400" />
-                  Upload & Archive
+                  {isUploadingDocument ? 'Uploading...' : 'Upload for Review'}
                 </button>
               </div>
             </form>

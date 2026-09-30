@@ -49,8 +49,11 @@ import {
   YouthProfile, 
   Registration, 
   FeedbackRecord, 
-  ResolutionRecord 
+  ResolutionRecord,
+  BarangayTenant,
+  AnnouncementRecord
 } from '../types';
+import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import { 
   classifyDemographics, 
   calculateEngagementScore, 
@@ -67,9 +70,12 @@ interface YouthPagesProps {
   registrations: Registration[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
-  onRegisterProgram: (pId: string) => void;
+  announcements: AnnouncementRecord[];
+  currentTenant?: BarangayTenant | null;
+  tenants?: BarangayTenant[];
+  onRegisterProgram: (pId: string) => Promise<Registration>;
   onSubmitFeedback: (feed: FeedbackRecord) => void;
-  onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => void;
+  onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => Promise<ResolutionRecord>;
   onUpdateYouthProfile?: (updated: YouthProfile) => void;
   onLogout: () => void;
 }
@@ -80,12 +86,19 @@ export default function YouthPages({
   registrations,
   feedback,
   resolutions,
+  announcements = [],
+  currentTenant,
+  tenants = [],
   onRegisterProgram,
   onSubmitFeedback,
   onVoteResolution,
   onUpdateYouthProfile,
   onLogout
 }: YouthPagesProps) {
+  const resolvedTenant = currentTenant?.id === currentYouth.barangayId
+    ? currentTenant
+    : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
+  const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
@@ -100,6 +113,17 @@ export default function YouthPages({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
+  const [registeringProgramId, setRegisteringProgramId] = useState<string | null>(null);
+  const [registrationNotice, setRegistrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [votingResolutionId, setVotingResolutionId] = useState<string | null>(null);
+  const [resolutionVoteNotice, setResolutionVoteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const youthQrPayload = (profile: YouthProfile) => profile.userId
+    ? JSON.stringify({ user_id: profile.userId })
+    : profile.qrCode?.startsWith('KAB-NAGA-')
+      ? profile.qrCode
+      : profile.id;
 
   useEffect(() => {
     if (currentYouth) {
@@ -107,6 +131,28 @@ export default function YouthPages({
       setEditForm(currentYouth);
     }
   }, [currentYouth]);
+
+  useEffect(() => {
+    let isMounted = true;
+    kabisigApi.getMyProgramRegistrations().then((rows) => {
+      if (!isMounted || !rows) return;
+      setLocalRegs(rows.map((row: any) => {
+        const program = Array.isArray(row.program) ? row.program[0] : row.program;
+        return {
+          id: row.id,
+          programId: row.program_id,
+          programTitle: program?.title || 'Program',
+          participantId: currentYouth.id,
+          participantName: currentYouth.name,
+          dateRegistered: row.registered_at?.split('T')[0] || '',
+          status: row.status === 'attended' ? 'Completed' : row.status === 'registered' ? 'Approved' : 'Pending',
+          qrCode: currentYouth.qrCode || `QR-KK-${currentYouth.id}`,
+        };
+      }));
+    }).catch((error: any) => console.warn('Could not restore program registrations:', error));
+
+    return () => { isMounted = false; };
+  }, [currentYouth.id, currentYouth.name, currentYouth.qrCode]);
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -136,8 +182,8 @@ export default function YouthPages({
 
   // --- RULE-BASED INTELLIGENCE ENGINE COMPUTATIONS ---
   const myDemographics = classifyDemographics(youth);
-  const myEngagement = calculateEngagementScore(youth, registrations, feedback, resolutions);
-  const myRecommendations = recommendPrograms(youth, programs, registrations);
+  const myEngagement = calculateEngagementScore(youth, localRegs, feedback, resolutions);
+  const myRecommendations = recommendPrograms(youth, programs, localRegs);
 
   // Search & Filters
   const [programSearch, setProgramSearch] = useState('');
@@ -154,9 +200,13 @@ export default function YouthPages({
     anonymous: false
   });
 
-  // Local state copy of registrations for dynamic UI experience
-  const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    setLocalFeedback(feedback);
+  }, [feedback]);
 
   // Derived arrays
   const myRegistrations = localRegs.filter(r => r.participantId === youth.id);
@@ -185,7 +235,7 @@ export default function YouthPages({
       // Persist profile to Supabase PostgreSQL database via backend API
       const res = await kabisigApi.updateProfile(updatedProfile);
       if (!res.success) {
-        console.warn('Database save warning:', res.message);
+        throw new Error(res.message || 'The profile could not be saved.');
       }
 
       setYouth(updatedProfile);
@@ -196,18 +246,13 @@ export default function YouthPages({
       alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
-      setYouth(updatedProfile);
-      if (onUpdateYouthProfile) {
-        onUpdateYouthProfile(updatedProfile);
-      }
-      setIsEditModalOpen(false);
-      alert(`Your Katipunan ng Kabataan Profile has been updated!\n\nNote: Backend database sync returned: ${err.message || 'Network notice'}`);
+      alert(`Your profile was not saved: ${err.message || 'Backend database sync failed.'}`);
     } finally {
       setIsSavingProfile(false);
     }
   };
 
-  const handleRegisterProgramClick = (progId: string) => {
+  const handleRegisterProgramClick = async (progId: string) => {
     // Check if already registered
     const alreadyReg = localRegs.some(r => r.programId === progId && r.participantId === currentYouth.id);
     if (alreadyReg) {
@@ -218,62 +263,104 @@ export default function YouthPages({
     const prog = programs.find(p => p.id === progId);
     if (!prog) return;
 
-    onRegisterProgram(progId);
-
-    const newReg: Registration = {
-      id: `reg-${Date.now().toString().slice(-3)}`,
-      programId: progId,
-      programTitle: prog.title,
-      participantId: currentYouth.id,
-      participantName: currentYouth.name,
-      dateRegistered: new Date().toISOString().split('T')[0],
-      status: 'Approved',
-      qrCode: `KABISIG-QR-${progId}-${currentYouth.id}`
-    };
-
-    setLocalRegs([newReg, ...localRegs]);
-    alert(`Successfully registered for "${prog.title}"! Your slot is confirmed.`);
+    setRegisteringProgramId(progId);
+    setRegistrationNotice(null);
+    try {
+      const savedRegistration = await onRegisterProgram(progId);
+      setLocalRegs(previous => [savedRegistration, ...previous.filter(registration => registration.id !== savedRegistration.id)]);
+      setRegistrationNotice({ type: 'success', text: `Successfully registered for "${prog.title}".` });
+      window.setTimeout(() => setRegistrationNotice(null), 4000);
+    } catch (error: any) {
+      setRegistrationNotice({ type: 'error', text: error.message || 'Program registration failed.' });
+    } finally {
+      setRegisteringProgramId(null);
+    }
   };
 
-  const handleFeedbackFormSubmit = (e: React.FormEvent) => {
+  const handleFeedbackFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!feedbackForm.title || !feedbackForm.content) {
-      alert('Please fill out all feedback fields.');
+    if (!feedbackForm.title.trim() || !feedbackForm.content.trim()) {
+      setFeedbackNotice({ type: 'error', text: 'Please fill out all feedback fields.' });
+      return;
+    }
+    if (!currentYouth.barangayId) {
+      setFeedbackNotice({ type: 'error', text: 'Your profile is not linked to a barangay.' });
       return;
     }
 
-    const newFeed: FeedbackRecord = {
-      id: `feed-${Date.now().toString().slice(-3)}`,
-      type: feedbackForm.type,
-      title: feedbackForm.title,
-      content: feedbackForm.content,
-      rating: 5,
-      anonymous: feedbackForm.anonymous,
-      status: 'Pending',
-      dateSubmitted: new Date().toISOString().split('T')[0],
-      submittedBy: feedbackForm.anonymous ? 'Anonymous' : currentYouth.name
-    };
+    setIsSubmittingFeedback(true);
+    setFeedbackNotice(null);
+    try {
+      const result = await kabisigApi.submitFeedback({
+        tenant_id: currentYouth.barangayId,
+        subject: feedbackForm.title.trim(),
+        message: feedbackForm.content.trim(),
+        category: feedbackForm.type,
+        is_anonymous: feedbackForm.anonymous,
+      });
+      const saved = result.data?.feedback;
+      if (!result.success || !saved) throw new Error(result.message || 'Feedback could not be saved.');
 
-    onSubmitFeedback(newFeed);
-    setLocalFeedback([newFeed, ...localFeedback]);
-
-    setFeedbackForm({
-      type: 'Suggestion',
-      title: '',
-      content: '',
-      anonymous: false
-    });
-
-    alert('Your suggestion has been logged. Thank you for your active participation!');
+      const sentiment = result.data?.sentiment_analysis?.sentiment;
+      const newFeed: FeedbackRecord = {
+        id: saved.id,
+        type: saved.category,
+        title: saved.subject,
+        content: saved.message,
+        rating: sentiment === 'positive' ? 5 : sentiment === 'negative' ? 1 : 3,
+        anonymous: saved.is_anonymous,
+        status: 'Pending',
+        dateSubmitted: saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        submittedBy: saved.is_anonymous ? 'Anonymous' : currentYouth.name,
+      };
+      onSubmitFeedback(newFeed);
+      setLocalFeedback(previous => [newFeed, ...previous.filter(item => item.id !== newFeed.id)]);
+      setFeedbackForm({ type: 'Suggestion', title: '', content: '', anonymous: false });
+      setFeedbackNotice({
+        type: 'success',
+        text: `Feedback saved. Sentiment analysis: ${sentiment || 'neutral'}.`,
+      });
+    } catch (error: any) {
+      setFeedbackNotice({ type: 'error', text: error.message || 'Feedback could not be saved.' });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
   };
 
-  const handleResolutionVote = (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
-    onVoteResolution(resId, voteType);
-    alert(`Thank you! Your vote of "${voteType.toUpperCase()}" has been recorded.`);
+  const handleResolutionVote = async (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
+    if (!currentYouth.userId) {
+      setResolutionVoteNotice({ type: 'error', text: 'Your authenticated youth account could not be verified.' });
+      return;
+    }
+    const resolution = resolutions.find(item => item.id === resId);
+    if (resolution?.votedUsers.includes(currentYouth.userId)) {
+      setResolutionVoteNotice({ type: 'error', text: 'You have already voted in this poll.' });
+      return;
+    }
+
+    setVotingResolutionId(resId);
+    setResolutionVoteNotice(null);
+    try {
+      await onVoteResolution(resId, voteType);
+      setResolutionVoteNotice({ type: 'success', text: 'Your vote was recorded.' });
+      window.setTimeout(() => setResolutionVoteNotice(null), 4000);
+    } catch (error: any) {
+      setResolutionVoteNotice({ type: 'error', text: error.message || 'Your vote could not be recorded.' });
+    } finally {
+      setVotingResolutionId(null);
+    }
   };
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
+      {registrationNotice && (
+        <div
+          role={registrationNotice.type === 'error' ? 'alert' : 'status'}
+          className={`fixed top-4 right-4 z-[70] max-w-sm rounded-lg px-4 py-3 text-xs font-bold shadow-lg ${registrationNotice.type === 'success' ? 'bg-emerald-700 text-white' : 'bg-rose-700 text-white'}`}
+        >
+          {registrationNotice.text}
+        </div>
+      )}
       
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
@@ -489,16 +576,18 @@ export default function YouthPages({
                   <div className="flex justify-between items-start z-10">
                     <div className="flex items-center gap-3">
                       <div className="relative w-11 h-11 rounded-full bg-white p-0.5 border-2 border-amber-400 shadow-md flex items-center justify-center overflow-hidden flex-shrink-0">
-                        <div className="w-full h-full rounded-full overflow-hidden">
+                        {barangayLogo ? (
+                          <img src={barangayLogo} alt={`${resolvedTenant?.name || 'Barangay'} official seal`} className="w-full h-full object-contain" />
+                        ) : (
                           <KabisigLogo className="w-28" />
-                        </div>
+                        )}
                       </div>
                       <div>
                         <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 inline-block mb-1">
                           Barangay Official Seal
                         </span>
                         <h4 className="font-sans font-black text-white text-sm tracking-tight leading-none uppercase">
-                          BARANGAY {currentYouth.address?.includes('Barangay') ? currentYouth.address.split('Barangay')[1]?.split(',')[0]?.trim() : 'BALATAS'}
+                          BARANGAY {resolvedTenant?.name || 'UNASSIGNED'}
                         </h4>
                         <span className="text-[8px] text-slate-300 block font-mono font-bold mt-1 uppercase tracking-[0.15em] opacity-90">
                           Katipunan ng Kabataan Registry • Naga City
@@ -546,7 +635,7 @@ export default function YouthPages({
                     </div>
                     
                     <div className="bg-white p-1.5 rounded-lg shadow-inner ring-4 ring-white/5">
-                      <QRCodeSVG value={currentYouth.id} size={52} fgColor="#091d64" />
+                      <QRCodeSVG value={youthQrPayload(currentYouth)} size={52} fgColor="#091d64" />
                     </div>
                   </div>
                 </div>
@@ -560,9 +649,15 @@ export default function YouthPages({
                       <Users className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Barangay Youth</span>
-                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">2,150</h4>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Naga City Census</p>
+                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Youth in this barangay</span>
+                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">
+                        {resolvedTenant?.youthPopulationAvailable ? resolvedTenant.youthPopulation : '—'}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                        {resolvedTenant?.youthPopulationAvailable
+                          ? 'Active Youth Constituent accounts'
+                          : 'Live registry count unavailable'}
+                      </p>
                     </div>
                   </div>
 
@@ -573,7 +668,9 @@ export default function YouthPages({
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Ongoing Programs</span>
-                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">12</h4>
+                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">
+                        {programs.filter(program => program.status === 'Upcoming' || program.status === 'Ongoing').length}
+                      </h4>
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">Available for Registration</p>
                     </div>
                   </div>
@@ -677,10 +774,11 @@ export default function YouthPages({
                               {!isRegistered ? (
                                 <button
                                   type="button"
+                                  disabled={registeringProgramId !== null}
                                   onClick={() => handleRegisterProgramClick(rec.program.id)}
-                                  className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors"
+                                  className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors disabled:opacity-60"
                                 >
-                                  Instantly Register &rarr;
+                                  {registeringProgramId === rec.program.id ? <Loader2 className="w-3 h-3 inline animate-spin" /> : 'Instantly Register →'}
                                 </button>
                               ) : (
                                 <span className="text-[10px] text-emerald-600 font-extrabold">Slot Confirmed</span>
@@ -715,82 +813,44 @@ export default function YouthPages({
                 </div>
 
                 <div className="space-y-4 divide-y divide-slate-50">
-                  
-                  {/* Item 1: Sports Fest */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
-                        <ClipboardList className="w-5 h-5" />
+                  {programs
+                    .filter(program => program.status === 'Upcoming' || program.status === 'Ongoing')
+                    .slice(0, 3)
+                    .map(program => (
+                      <div key={program.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
+                        <div className="flex gap-4 items-start">
+                          <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
+                            <ClipboardList className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-sm text-slate-800">{program.title}</h5>
+                            <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                              {program.startDate || 'Date to be announced'}{program.endDate ? ` - ${program.endDate}` : ''}
+                            </span>
+                            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                              {program.description || 'Program details will be announced by the Sangguniang Kabataan.'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
+                          <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">
+                            {program.registeredCount || 0} / {program.maxParticipants || 0} registered
+                          </span>
+                          <button
+                            disabled={registeringProgramId !== null}
+                            onClick={() => handleRegisterProgramClick(program.id)}
+                            className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
+                          >
+                            {registeringProgramId === program.id ? 'Registering...' : 'Register Now'}
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Kabataan Sports Fest 2025</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">May 20, 2025 - May 22, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          A 3-day sports festival that promotes camaraderie and athletic teamwork.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">120 / 200 registered</span>
-                      <button 
-                        onClick={() => handleRegisterProgramClick('prog-01')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
-                      >
-                        Register Now
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Item 2: Leadership Summit */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 gap-4">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0">
-                        <Award className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Youth Leadership Summit</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Jun 10, 2025 - Jun 11, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          Empowering the next generation of youth leaders in Barangay Pacol.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">45 / 150 registered</span>
-                      <button 
-                        onClick={() => handleRegisterProgramClick('prog-02')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
-                      >
-                        Register Now
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Item 3: Digital Literacy */}
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 gap-4 border-none">
-                    <div className="flex gap-4 items-start">
-                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
-                        <BookOpen className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-sm text-slate-800">Digital Literacy Training</h5>
-                        <span className="text-[10px] text-slate-400 font-bold block mt-0.5">Jul 05, 2025 - Jul 06, 2025</span>
-                        <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                          Practical training sessions on cloud storage, cyber security, and productivity software.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-start sm:items-end w-full sm:w-auto gap-2">
-                      <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">60 / 100 registered</span>
-                      <button 
-                        onClick={() => handleRegisterProgramClick('prog-03')}
-                        className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer"
-                      >
-                        Register Now
-                      </button>
-                    </div>
-                  </div>
-
+                    ))}
+                  {programs.filter(program => program.status === 'Upcoming' || program.status === 'Ongoing').length === 0 && (
+                    <p className="py-6 text-center text-xs text-slate-400 font-semibold">
+                      No upcoming programs have been published for your Barangay yet.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -866,7 +926,7 @@ export default function YouthPages({
 
                   {/* QR CODE DISPLAY */}
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col items-center gap-1 shadow-2xs self-center lg:self-start flex-shrink-0">
-                    <QRCodeSVG value={youth.qrCode || youth.id} size={88} fgColor="#091d64" />
+                    <QRCodeSVG value={youthQrPayload(youth)} size={88} fgColor="#091d64" />
                     <span className="text-[9px] font-mono font-bold text-slate-400">Digital ID QR Code</span>
                   </div>
                 </div>
@@ -1105,10 +1165,11 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
+                                disabled={registeringProgramId !== null}
                                 onClick={() => handleRegisterProgramClick(p.id)}
-                                className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm cursor-pointer"
+                                className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm cursor-pointer disabled:opacity-60"
                               >
-                                Join Program
+                                {registeringProgramId === p.id ? 'Registering...' : 'Join Program'}
                               </button>
                             )}
                           </div>
@@ -1163,7 +1224,7 @@ export default function YouthPages({
 
                           <div className="bg-slate-50/60 p-5 flex flex-col items-center justify-center border-l border-slate-100 sm:w-44 text-center gap-1.5">
                             <div className="bg-white p-2 rounded-xl shadow-2xs border border-slate-100">
-                              <QRCodeSVG value={currentYouth.id} size={80} fgColor="#091d64" />
+                              <QRCodeSVG value={youthQrPayload(currentYouth)} size={80} fgColor="#091d64" />
                             </div>
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Youth ID QR Code</span>
                           </div>
@@ -1213,6 +1274,11 @@ export default function YouthPages({
                     <p className="text-xs text-slate-400 mb-6">Submit suggestions, concerns, or inquiries directly to your SK Council. You can choose to remain anonymous.</p>
                     
                     <form onSubmit={handleFeedbackFormSubmit} className="space-y-4">
+                      {feedbackNotice && (
+                        <div role={feedbackNotice.type === 'error' ? 'alert' : 'status'} className={`rounded-lg px-3 py-2 text-xs font-semibold ${feedbackNotice.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                          {feedbackNotice.text}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5">Feedback Category</label>
@@ -1261,8 +1327,8 @@ export default function YouthPages({
                           required
                         />
                       </div>
-                      <button type="submit" className="w-full py-3 bg-[#091d64] text-white font-extrabold rounded-xl text-xs hover:bg-[#122878] transition-all transform active:scale-[0.98] cursor-pointer">
-                        Submit Official Feedback
+                      <button type="submit" disabled={isSubmittingFeedback} className="w-full py-3 bg-[#091d64] text-white font-extrabold rounded-xl text-xs hover:bg-[#122878] transition-all transform active:scale-[0.98] cursor-pointer disabled:opacity-60">
+                        {isSubmittingFeedback ? 'Submitting...' : 'Submit Official Feedback'}
                       </button>
                     </form>
                   </div>
@@ -1303,27 +1369,35 @@ export default function YouthPages({
                     <p className="text-xs text-slate-400 mt-1">Review resolutions formulated by Sangguniang Kabataan and exercise your direct voting eligibility.</p>
                   </div>
 
+                  {resolutionVoteNotice && (
+                    <div role={resolutionVoteNotice.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-lg px-3 py-2 text-xs font-semibold ${resolutionVoteNotice.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
+                      {resolutionVoteNotice.text}
+                    </div>
+                  )}
+
                   <div className="space-y-4">
                     {resolutions.map(res => (
                       <div key={res.id} className="p-5 border border-slate-100 rounded-xl bg-white space-y-3 shadow-xs">
                         <div className="flex justify-between items-center border-b border-slate-50 pb-2">
                           <span className="text-[10px] font-mono font-bold text-[#091d64] px-2 py-0.5 rounded bg-blue-50 tracking-wider uppercase">{res.resolutionNumber}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Voting Session Open</span>
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">Closes {res.validityPeriod.split(' - ')[1] || 'per poll schedule'}</span>
                         </div>
                         <h4 className="font-bold text-slate-800 text-sm mt-2 leading-snug">{res.title}</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium">{res.content}</p>
                         <div className="flex gap-2 justify-end pt-3">
                           <button 
+                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
                             onClick={() => handleResolutionVote(res.id, 'Support')} 
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Support
+                            {votingResolutionId === res.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Support ({res.votesSupport})
                           </button>
                           <button 
+                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
                             onClick={() => handleResolutionVote(res.id, 'Oppose')} 
-                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                           >
-                            <X className="w-3.5 h-3.5" /> Oppose
+                            <X className="w-3.5 h-3.5" /> Oppose ({res.votesOppose})
                           </button>
                         </div>
                       </div>
@@ -1344,33 +1418,33 @@ export default function YouthPages({
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="p-5 border border-slate-100 rounded-xl bg-white space-y-2 shadow-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-0.5 rounded border border-amber-100">Official Notice</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">Today at 10:00 AM</span>
-                    </div>
-                    <h4 className="font-bold text-slate-800 text-sm mt-2 leading-tight">Annual Youth Assembly 2025: Strategic Planning</h4>
-                    <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
-                      We invite all Katipunan ng Kabataan registered members of Barangay Pacol to join our upcoming general assembly to formulate next year's Annual Investment Program. Your participation ensures inclusive governance.
-                    </p>
-                    <div className="text-[10px] font-bold text-slate-400 pt-3 flex items-center gap-1 border-t border-slate-50 mt-2">
-                      <span>Published by:</span> <span className="text-[#091d64]">SK Chairperson's Office</span>
-                    </div>
-                  </div>
-
-                  <div className="p-5 border border-slate-100 rounded-xl bg-white space-y-2 shadow-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-0.5 rounded border border-blue-100">Development Aid</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">Posted June 28, 2026</span>
-                    </div>
-                    <h4 className="font-bold text-[#091d64] text-sm mt-2 leading-tight">City-Wide Educational Assistance Enrollment</h4>
-                    <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
-                      The SK Federation is opening applications for local educational aid. Verified KK members are encouraged to coordinate with the SK Secretary for document validation and submission of requirements.
-                    </p>
-                    <div className="text-[10px] font-bold text-slate-400 pt-3 flex items-center gap-1 border-t border-slate-50 mt-2">
-                      <span>Published by:</span> <span className="text-[#091d64]">SK Federation Secretariat</span>
-                    </div>
-                  </div>
+                  {announcements.filter(announcement => announcement.status === 'published').map(announcement => (
+                    <article key={announcement.id} className="rounded-xl border border-slate-100 bg-white p-5 shadow-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="rounded border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                        <span className="text-[10px] font-semibold text-slate-400">{announcement.datePosted}</span>
+                      </div>
+                      <h4 className="mt-3 text-sm font-black leading-tight text-slate-900">{announcement.title}</h4>
+                      {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-80 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
+                      <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+                        {announcement.what && <p><strong className="text-slate-800">What:</strong> {announcement.what}</p>}
+                        {announcement.where && <p><strong className="text-slate-800">Where:</strong> {announcement.where}</p>}
+                        {announcement.when && <p><strong className="text-slate-800">When:</strong> {announcement.when}</p>}
+                      </div>
+                      <div className="mt-3 border-t border-slate-100 pt-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</p>
+                        <p className="mt-1 whitespace-pre-line text-xs font-medium leading-relaxed text-slate-600">{announcement.content}</p>
+                      </div>
+                      {announcement.hashtags && <p className="mt-3 border-t border-slate-100 pt-3 text-xs font-semibold text-blue-700">{announcement.hashtags}</p>}
+                      <div className="mt-3 border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-400">
+                        Published by <span className="text-[#091d64]">{announcement.author}</span>
+                        {announcement.barangay && <span> · {announcement.barangay}</span>}
+                      </div>
+                    </article>
+                  ))}
+                  {announcements.filter(announcement => announcement.status === 'published').length === 0 && (
+                    <p className="py-8 text-center text-xs font-semibold text-slate-400">No published announcements for your Barangay yet.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1393,7 +1467,9 @@ export default function YouthPages({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Demographic Zone</span>
-                        <span className="text-slate-800 font-bold block">{currentYouth.zone} (Verified Barangay Balatas Resident)</span>
+                        <span className="text-slate-800 font-bold block">
+                          {currentYouth.zone} (Verified {resolvedTenant?.name || 'Barangay'} Resident)
+                        </span>
                       </div>
                       <div>
                         <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Voter Registration State</span>

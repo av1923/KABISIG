@@ -75,6 +75,36 @@ export const BARANGAY_DISTRICTS: Record<string, 'District 1' | 'District 2'> = {
   'Triangulo': 'District 2',
 };
 
+export const BARANGAY_SK_DISTRICTS: Record<string, 'North' | 'South' | 'West' | 'East'> = {
+  'Bagumbayan Norte': 'North',
+  'Bagumbayan Sur': 'North',
+  'Calauag': 'North',
+  'Liboton': 'North',
+  'Peñafrancia': 'North',
+  'San Felipe': 'North',
+  'San Francisco': 'North',
+  'Santa Cruz': 'North',
+  'Balatas': 'South',
+  'Concepcion Grande': 'South',
+  'Concepcion Pequeña': 'South',
+  'Dayangdang': 'South',
+  'Tinago': 'South',
+  'Triangulo': 'South',
+  'Abella': 'West',
+  'Dinaga': 'West',
+  'Igualdad Interior': 'West',
+  'Lerma': 'West',
+  'Mabolo': 'West',
+  'Sabang': 'West',
+  'Tabuco': 'West',
+  'Cararayan': 'East',
+  'Carolina': 'East',
+  'Del Rosario': 'East',
+  'Pacol': 'East',
+  'Panicuason': 'East',
+  'San Isidro': 'East',
+};
+
 export const NAGA_BARANGAYS: BarangayTenant[] = [
   {
     "id": "b0222222-2222-4000-8000-000000000012",
@@ -483,7 +513,7 @@ export const NAGA_BARANGAYS: BarangayTenant[] = [
   }
 ];
 
-// Clean state: all mock data cleared for actual input starting from SK Federation President
+// User-generated records start empty and are populated from the backend.
 export const INITIAL_PROGRAMS: Program[] = [];
 export const INITIAL_YOUTH_PROFILES: YouthProfile[] = [];
 export const INITIAL_REGISTRATIONS: Registration[] = [];
@@ -492,13 +522,4 @@ export const INITIAL_RESOLUTIONS: ResolutionRecord[] = [];
 export const INITIAL_EXPENSES: ExpenseRecord[] = [];
 export const INITIAL_DOCUMENTS: DocumentRecord[] = [];
 export const INITIAL_ANNOUNCEMENTS: AnnouncementRecord[] = [];
-export const INITIAL_AUDIT_LOGS: SystemAuditLog[] = [
-  {
-    id: 'log-001',
-    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    user: 'SK Federation President',
-    role: 'Super Admin',
-    action: 'SYSTEM_INITIALIZATION',
-    details: 'System initialized. 27 Naga City barangays permanently provisioned in registry.'
-  }
-];
+export const INITIAL_AUDIT_LOGS: SystemAuditLog[] = [];

@@ -8,6 +8,10 @@ import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
 
+function round2(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
 const UpdateBarangaySchema = z.object({
   chairperson: z.string().optional(),
   chairperson_email: z.string().email().optional().or(z.literal('')),
@@ -78,7 +82,12 @@ function getCustomLogos(): Record<string, string> {
 function saveCustomLogo(idOrName: string, logoUrl: string) {
   try {
     const logos = getCustomLogos();
-    logos[idOrName] = logoUrl;
+    fs.mkdirSync(path.dirname(LOGOS_FILE), { recursive: true });
+    if (logoUrl.trim()) {
+      logos[idOrName] = logoUrl;
+    } else {
+      delete logos[idOrName];
+    }
     fs.writeFileSync(LOGOS_FILE, JSON.stringify(logos, null, 2), 'utf-8');
   } catch (err) {
     console.warn('Error saving custom logo:', err);
@@ -95,7 +104,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, city, district, created_at, updated_at')
+      .select('id, name, city, district, sk_district, created_at, updated_at')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -135,11 +144,14 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     });
 
     // Fetch registered youth population per barangay (users with role_id = 4: YOUTH_CONSTITUENT)
-    const { data: youthUsers } = await supabaseAdmin
+    const { data: youthUsers, error: youthUsersError } = await supabaseAdmin
       .from('users')
       .select('tenant_id')
       .eq('role_id', 4)
       .eq('status', 'active');
+    if (youthUsersError) {
+      console.warn('Unable to load live youth counts for barangays:', youthUsersError.message);
+    }
 
     const youthCountMap = new Map<string, number>();
     youthUsers?.forEach((u) => {
@@ -173,10 +185,12 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         name: b.name,
         city: b.city,
         district: b.district,
+        skDistrict: b.sk_district ?? null,
         chairperson: chair?.full_name || 'Unassigned',
         chairpersonEmail: chair?.email || '',
         contact: chair?.phone || '',
         youthPopulation: youthCountMap.get(b.id) || 0,
+        youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
         totalBudget: budget.allocated,
         allocatedBudget: budget.allocated,
@@ -263,15 +277,51 @@ router.patch(
     // 1. If allocating budget, upsert into budget table for current year
     if (typeof allocatedBudget === 'number' && allocatedBudget >= 0) {
       const currentYear = new Date().getFullYear();
-      await supabaseAdmin.from('budget').upsert({
-        tenant_id: id,
-        fiscal_year: currentYear,
-        category: 'General Youth Development Fund',
+      const { data: currentBudget, error: budgetFetchError } = await supabaseAdmin
+        .from('budget')
+        .select('id, allocated_amount, remaining_amount')
+        .eq('tenant_id', id)
+        .eq('fiscal_year', currentYear)
+        .eq('category', 'General Youth Development Fund')
+        .maybeSingle();
+
+      if (budgetFetchError) {
+        sendError(res, `Failed to retrieve the current budget allocation: ${budgetFetchError.message}`, 500);
+        return;
+      }
+
+      const previouslySpent = currentBudget
+        ? round2(Number(currentBudget.allocated_amount) - Number(currentBudget.remaining_amount))
+        : 0;
+      if (allocatedBudget < previouslySpent) {
+        sendError(
+          res,
+          `The new allocation cannot be lower than the ₱${previouslySpent.toLocaleString()} already spent.`,
+          422,
+          { allocated_budget: allocatedBudget, already_spent: previouslySpent }
+        );
+        return;
+      }
+
+      const budgetValues = {
         allocated_amount: allocatedBudget,
-        remaining_amount: allocatedBudget,
+        remaining_amount: round2(allocatedBudget - previouslySpent),
         description: `Annual budget allocation configured by SK Federation President for Brgy. ${existingBgy.name}`,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'tenant_id,fiscal_year,category' });
+      };
+      const budgetWrite = currentBudget
+        ? await supabaseAdmin.from('budget').update(budgetValues).eq('id', currentBudget.id)
+        : await supabaseAdmin.from('budget').insert({
+            tenant_id: id,
+            fiscal_year: currentYear,
+            category: 'General Youth Development Fund',
+            ...budgetValues,
+          });
+
+      if (budgetWrite.error) {
+        sendError(res, `Failed to save the budget allocation: ${budgetWrite.error.message}`, 500);
+        return;
+      }
     }
 
     // 2. Chairperson assignment and resolution
@@ -378,8 +428,8 @@ router.patch(
       }
     }
 
-    if (updates.logo || updates.logo_url) {
-      const newLogo = updates.logo || updates.logo_url!;
+    if ('logo' in updates || 'logo_url' in updates) {
+      const newLogo = updates.logo ?? updates.logo_url ?? '';
       saveCustomLogo(id, newLogo);
       saveCustomLogo(existingBgy.name, newLogo);
     }

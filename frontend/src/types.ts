@@ -18,6 +18,7 @@ export interface BarangayTenant {
   name: string;
   chairperson: string;
   youthPopulation: number;
+  youthPopulationAvailable?: boolean;
   activePrograms: number;
   totalBudget: number;
   spentBudget: number;
@@ -27,12 +28,14 @@ export interface BarangayTenant {
   logo?: string;
   dateCreated?: string;
   district?: string;
+  skDistrict?: string | null;
   city?: string;
   chairpersonEmail?: string;
   mustChangePassword?: boolean;
 }
 
 export interface YouthProfile {
+  userId?: string;
   id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
   name: string; // Full Name (Required)
   sex: 'Male' | 'Female' | 'Other'; // Sex (Required)
@@ -120,6 +123,8 @@ export interface DocumentRecord {
   uploadedDate: string;
   fileSize: string;
   description: string;
+  fileUrl?: string;
+  reviewFeedback?: string;
   resolutionNumber?: string;
   designatedApprover?: string;
   version?: string;
@@ -131,6 +136,7 @@ export interface DocumentRecord {
 export interface ExpenseRecord {
   id: string;
   programId: string;
+  budgetId?: string;
   programTitle: string;
   amount: number;
   supplier?: string;
@@ -194,9 +200,18 @@ export interface AnnouncementRecord {
   id: string;
   title: string;
   content: string;
+  what?: string;
+  where?: string;
+  when?: string;
+  hashtags?: string;
+  imageUrl?: string;
   author: string;
   barangay: string;
   datePosted: string;
+  status?: string;
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   attachments?: string[];
+  facebookPostUrl?: string;
+  facebookPostId?: string;
+  facebookPostedAt?: string;
 }

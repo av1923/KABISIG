@@ -117,6 +117,27 @@ router.post('/', async (req, res) => {
         sendError(res, `Failed to record feedback: ${error.message}`, 500);
         return;
     }
+    const { error: analysisError } = await supabaseAdmin
+        .from('sentiment_analysis')
+        .insert({
+        tenant_id,
+        feedback_id: newFeedback.id,
+        sentiment: sentimentResult.sentiment,
+        score: sentimentResult.score,
+        positive_keywords: sentimentResult.positiveMatches,
+        negative_keywords: sentimentResult.negativeMatches,
+    });
+    if (analysisError) {
+        const missingSentimentTable = analysisError.code === '42P01'
+            || analysisError.message.toLowerCase().includes('sentiment_analysis')
+            || analysisError.message.toLowerCase().includes('schema cache');
+        if (!missingSentimentTable) {
+            console.error('Failed to persist sentiment analysis:', analysisError);
+            sendError(res, `Feedback was saved, but sentiment analysis could not be persisted: ${analysisError.message}`, 502);
+            return;
+        }
+        console.warn('Feedback saved without sentiment_analysis record because the optional table is unavailable:', analysisError.message);
+    }
     sendCreated(res, {
         feedback: newFeedback,
         sentiment_analysis: {

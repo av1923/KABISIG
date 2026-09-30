@@ -1,11 +1,141 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant } from '../services/supabase.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
+
+const ComplianceIssueSchema = z.object({
+  report_type: z.string().min(1).max(150),
+  fiscal_year: z.number().int().min(2000).max(2100),
+  status: z.enum(['pending', 'submitted', 'approved', 'rejected', 'overdue']).default('pending'),
+  due_date: z.string().date().optional(),
+  notes: z.string().max(5000).optional(),
+});
+
+const BudgetAlertSchema = z.object({
+  alert_code: z.string().min(1).max(150),
+  level: z.enum(['Critical', 'Warning', 'Info']),
+  message: z.string().min(1).max(5000),
+  link: z.string().max(500).optional(),
+});
+
+router.post('/budget-alerts', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  const user = (req as AuthRequest).user!;
+  const parsed = BudgetAlertSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
+    return;
+  }
+
+  if (!user.tenant_id) {
+    sendError(res, 'User has no assigned Barangay tenant.', 400);
+    return;
+  }
+
+  const { data: recipients, error: recipientError } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .eq('tenant_id', user.tenant_id)
+    .in('role_id', [2, 3]);
+
+  if (recipientError) {
+    sendError(res, `Failed to find budget alert recipients: ${recipientError.message}`, 500);
+    return;
+  }
+
+  const recipientIds = (recipients || []).map(recipient => recipient.id);
+  if (recipientIds.length === 0) {
+    sendSuccess(res, { inserted: 0 }, 'No tenant officials are available for budget alerts.');
+    return;
+  }
+
+  const notificationType = `BUDGET_ALERT_${parsed.data.alert_code}`;
+  const link = parsed.data.link || '/budget';
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('notifications')
+    .select('user_id')
+    .eq('tenant_id', user.tenant_id)
+    .eq('notification_type', notificationType)
+    .eq('link', link)
+    .eq('is_read', false)
+    .in('user_id', recipientIds);
+
+  if (existingError) {
+    sendError(res, `Failed to check existing budget alerts: ${existingError.message}`, 500);
+    return;
+  }
+
+  const existingRecipients = new Set((existing || []).map(notification => notification.user_id));
+  const notifications = recipientIds
+    .filter(userId => !existingRecipients.has(userId))
+    .map(userId => ({
+      tenant_id: user.tenant_id,
+      user_id: userId,
+      notification_type: notificationType,
+      title: `${parsed.data.level} budget alert`,
+      message: parsed.data.message,
+      link,
+      is_read: false,
+    }));
+
+  if (notifications.length === 0) {
+    sendSuccess(res, { inserted: 0 }, 'Budget alert already exists for all tenant officials.');
+    return;
+  }
+
+  const { error: insertError } = await supabaseAdmin.from('notifications').insert(notifications);
+  if (insertError) {
+    sendError(res, `Failed to persist budget alert notifications: ${insertError.message}`, 500);
+    return;
+  }
+
+  sendSuccess(res, { inserted: notifications.length }, 'Budget alert notifications persisted.');
+});
+
+router.post('/compliance', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  const user = (req as AuthRequest).user!;
+  const parsed = ComplianceIssueSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
+    return;
+  }
+
+  if (!user.tenant_id && user.role !== 'SUPER_ADMIN') {
+    sendError(res, 'User has no assigned Barangay tenant.', 400);
+    return;
+  }
+
+  const tenantId = user.tenant_id;
+  if (!tenantId) {
+    sendError(res, 'A tenant_id is required for compliance records.', 400);
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('compliance_monitoring')
+    .upsert({
+      tenant_id: tenantId,
+      report_type: parsed.data.report_type,
+      fiscal_year: parsed.data.fiscal_year,
+      status: parsed.data.status,
+      due_date: parsed.data.due_date || null,
+      notes: parsed.data.notes || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tenant_id,report_type,fiscal_year' })
+    .select()
+    .single();
+
+  if (error) {
+    sendError(res, `Failed to persist compliance issue: ${error.message}`, 500);
+    return;
+  }
+
+  sendSuccess(res, data, 'Compliance issue persisted.');
+});
 
 function calculateAge(birthdateStr: string): number {
   const birthdate = new Date(birthdateStr);
@@ -148,7 +278,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, district')
+      .select('id, name, sk_district')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -159,7 +289,8 @@ router.get(
     const { data: youthCounts } = await supabaseAdmin
       .from('users')
       .select('tenant_id, role_id')
-      .eq('role_id', 4);
+      .eq('role_id', 4)
+      .eq('status', 'active');
 
     const youthPerBarangay: Record<string, number> = {};
     youthCounts?.forEach((y) => {
@@ -171,10 +302,11 @@ router.get(
     const currentYear = new Date().getFullYear();
     const { data: allBudgets } = await supabaseAdmin
       .from('budget')
-      .select('tenant_id, allocated_amount, remaining_amount')
+      .select('tenant_id, category, allocated_amount, remaining_amount')
       .eq('fiscal_year', currentYear);
 
     const budgetPerBarangay: Record<string, { allocated: number; spent: number }> = {};
+    const budgetByCategory: Record<string, number> = {};
     let cityTotalAllocated = 0;
     let cityTotalSpent = 0;
 
@@ -183,6 +315,7 @@ router.get(
       const spent = allocated - Number(b.remaining_amount);
       cityTotalAllocated += allocated;
       cityTotalSpent += spent;
+      budgetByCategory[b.category] = (budgetByCategory[b.category] || 0) + allocated;
 
       const current = budgetPerBarangay[b.tenant_id] || { allocated: 0, spent: 0 };
       budgetPerBarangay[b.tenant_id] = {
@@ -191,9 +324,17 @@ router.get(
       };
     });
 
-    const { count: cityProgramCount } = await supabaseAdmin
+    const { data: cityPrograms } = await supabaseAdmin
       .from('program')
-      .select('*', { count: 'exact', head: true });
+      .select('tenant_id, status');
+
+    const activeProgramStatuses = new Set(['upcoming', 'ongoing']);
+    const programPerBarangay: Record<string, number> = {};
+    cityPrograms?.forEach((program) => {
+      if (activeProgramStatuses.has(program.status)) {
+        programPerBarangay[program.tenant_id] = (programPerBarangay[program.tenant_id] || 0) + 1;
+      }
+    });
 
     const { count: cityAttendanceCount } = await supabaseAdmin
       .from('program_attendance')
@@ -210,14 +351,16 @@ router.get(
       total: allFeedbacks?.length || 0,
     };
 
-    const barangayMatrix = barangays.map((b) => {
+    const loadedBarangays = barangays || [];
+    const barangayMatrix = loadedBarangays.map((b) => {
       const bgyBudget = budgetPerBarangay[b.id] || { allocated: 0, spent: 0 };
       const utilization = bgyBudget.allocated > 0 ? Math.round((bgyBudget.spent / bgyBudget.allocated) * 100) : 0;
       return {
         id: b.id,
         name: b.name,
-        district: b.district,
+        sk_district: b.sk_district ?? null,
         registered_youth: youthPerBarangay[b.id] || 0,
+        active_programs: programPerBarangay[b.id] || 0,
         budget_allocated: bgyBudget.allocated,
         budget_spent: bgyBudget.spent,
         budget_utilization_pct: utilization,
@@ -232,13 +375,14 @@ router.get(
         city: 'Naga City',
         fiscal_year: currentYear,
         citywide_totals: {
-          total_barangays: barangays.length,
+          total_barangays: loadedBarangays.length,
           total_registered_youth: youthCounts?.length || 0,
           total_budget_allocated: cityTotalAllocated,
           total_budget_spent: cityTotalSpent,
-          total_programs_held: cityProgramCount || 0,
+          total_active_programs: Object.values(programPerBarangay).reduce((sum, count) => sum + count, 0),
           total_program_attendees: cityAttendanceCount || 0,
         },
+        budget_by_category: Object.entries(budgetByCategory).map(([category, allocated]) => ({ category, allocated })),
         sentiment_overview: sentimentOverview,
         barangay_rankings: barangayMatrix,
       },

@@ -225,7 +225,14 @@ export default function PublicPages({
       } else if (roleId === 2) {
         finalRole = 'Barangay Admin';
       } else if (roleId === 3) {
-        finalRole = dbUser?.official_position || 'SK Kagawad';
+        const registeredRole = dbUser?.official_position
+          || dbUser?.user_metadata?.role
+          || dbUser?.role;
+        finalRole = registeredRole === 'SK Secretary'
+          ? 'SK Secretary'
+          : registeredRole === 'SK Treasurer'
+            ? 'SK Treasurer'
+            : 'SK Kagawad';
       } else {
         finalRole = 'Youth Constituent';
       }
@@ -393,6 +400,7 @@ export default function PublicPages({
           full_name: signUpForm.name.trim(),
           barangay_id: resolvedBarangayId,
           phone: signUpForm.mobile.trim(),
+          profile_pic: typeof signUpForm.profilePic === 'string' ? signUpForm.profilePic : undefined,
           birthdate: signUpForm.birthdate,
           sex: signUpForm.sex,
           address: `${signUpForm.address}, ${signUpForm.zone}`,
@@ -404,7 +412,8 @@ export default function PublicPages({
           const detail = typeof res.error === 'object' && res.error !== null
             ? Object.entries(res.error).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
             : (typeof res.error === 'string' ? res.error : '');
-          alert(`Youth registration failed: ${res.message || 'Error occurred.'}${detail ? `\nDetails: ${detail}` : ''}`);
+          const isExistingEmail = res.error?.code === 'EMAIL_ALREADY_REGISTERED';
+          alert(`Youth registration failed: ${res.message || 'Error occurred.'}${isExistingEmail ? '\n\nPlease use the Login tab for this account, or register with a different email address.' : ''}${detail && !isExistingEmail ? `\nDetails: ${detail}` : ''}`);
           setIsSubmittingSignUp(false);
           return;
         }

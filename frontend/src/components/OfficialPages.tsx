@@ -42,6 +42,7 @@ import {
   BarChart3,
   Settings,
   Coins,
+  Megaphone,
   MessageSquare,
   Star,
   HeartHandshake,
@@ -81,7 +82,8 @@ import {
   FeedbackRecord,
   ResolutionRecord,
   UserRole,
-  BarangayTenant
+  BarangayTenant,
+  AnnouncementRecord
 } from '../types';
 import { 
   analyzeFeedbackSentiment, 
@@ -103,14 +105,18 @@ interface OfficialPagesProps {
   registrations: Registration[];
   attendance: AttendanceRecord[];
   documents: DocumentRecord[];
+  feedback: FeedbackRecord[];
+  resolutions: ResolutionRecord[];
   expenses: ExpenseRecord[];
+  announcements?: AnnouncementRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
   currentUser?: any;
-  onAddProgram: (p: Program) => void;
-  onAddExpense: (e: ExpenseRecord) => void;
+  onAddProgram: (p: Program) => Promise<boolean>;
+  onAddResolution: (resolution: ResolutionRecord) => void;
+  onAddExpense: (e: ExpenseRecord) => Promise<void> | void;
   onAddDocument: (d: DocumentRecord) => void;
-  onRegisterAttendance: (record: AttendanceRecord) => void;
+  onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
 }
 
@@ -121,11 +127,15 @@ export default function OfficialPages({
   registrations,
   attendance,
   documents,
+  feedback,
+  resolutions,
   expenses,
+  announcements = [],
   currentTenant,
   tenants = [],
   currentUser,
   onAddProgram,
+  onAddResolution,
   onAddExpense,
   onAddDocument,
   onRegisterAttendance,
@@ -144,13 +154,12 @@ export default function OfficialPages({
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
-  // --- LOCAL PERSISTENT STATES TO SEED WORKING DATA REPLICANTS ---
+  // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
-  const [localResolutions, setLocalResolutions] = useState<any[]>([]);
+  const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
   const [inventory, setInventory] = useState<any[]>([]);
 
-  // Seed Boses ng Kabataan feedback records for SK Kagawad review
-  const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>([]);
+  const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
 
   // Feedback Desk States
   const [feedbackSubTab, setFeedbackSubTab] = useState<'boses' | 'resolutions'>('boses');
@@ -161,44 +170,24 @@ export default function OfficialPages({
   const [feedbackResponseText, setFeedbackResponseText] = useState('');
   const [feedbackStatusChoice, setFeedbackStatusChoice] = useState<'Reviewed' | 'Resolved'>('Reviewed');
 
-  // Seed local attendance records with some checked-in items based on registrations
-  useEffect(() => {
-    if (localAttendance.length === 0) {
-      const initial: AttendanceRecord[] = [];
-      const approvedRegs = registrations.filter(r => r.status === 'Approved');
-      approvedRegs.slice(0, 10).forEach((r, idx) => {
-        initial.push({
-          id: `att-seed-${idx}`,
-          programId: r.programId,
-          participantId: r.participantId,
-          participantName: r.participantName,
-          checkInTime: new Date(Date.now() - idx * 7200000).toISOString(),
-          status: 'Present'
-        });
-      });
-      setLocalAttendance(initial);
-    }
-  }, [registrations]);
-
   // --- SK SECRETARY SPECIFIC STATES & REPOSITORY ---
-  const [localDocs, setLocalDocs] = useState<DocumentRecord[]>([]);
+  const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
 
   const [docCategoryFilter, setDocCategoryFilter] = useState<string>('All');
   const [docStatusFilter, setDocStatusFilter] = useState<string>('All');
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
   const [showViewDocModal, setShowViewDocModal] = useState<boolean>(false);
-  const [showApprovalDocModal, setShowApprovalDocModal] = useState<boolean>(false);
   const [showEditDocModal, setShowEditDocModal] = useState<boolean>(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
-  const [docApprovalNotes, setDocApprovalNotes] = useState<string>('');
+  const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [documentUploadError, setDocumentUploadError] = useState('');
 
   // Youth Records & Profile Management State
   const [localYouthProfiles, setLocalYouthProfiles] = useState<YouthProfile[]>(youthProfiles || []);
 
   useEffect(() => {
-    if (youthProfiles && youthProfiles.length > 0) {
-      setLocalYouthProfiles(youthProfiles);
-    }
+    setLocalYouthProfiles(youthProfiles || []);
   }, [youthProfiles]);
 
   const [secYouthTab, setSecYouthTab] = useState<'verified' | 'pending'>('verified');
@@ -225,17 +214,16 @@ export default function OfficialPages({
 
   // Sync documents prop to localDocs
   useEffect(() => {
-    if (documents && documents.length > 0) {
-      setLocalDocs(prev => {
-        const existingIds = new Set(prev.map(d => d.id));
-        const newDocs = documents.filter(d => !existingIds.has(d.id));
-        if (newDocs.length > 0) {
-          return [...newDocs, ...prev];
-        }
-        return prev;
-      });
-    }
+    setLocalDocs(documents || []);
   }, [documents]);
+
+  useEffect(() => {
+    setLocalFeedback(feedback || []);
+  }, [feedback]);
+
+  useEffect(() => {
+    setLocalResolutions(resolutions || []);
+  }, [resolutions]);
 
   // --- MODALS STATE ---
   const [showProgModal, setShowProgModal] = useState(false);
@@ -245,6 +233,13 @@ export default function OfficialPages({
       alert('Please allow popups for this website to export the PDF report.');
       return;
     }
+
+    const totalYouth = localYouthProfiles.filter(profile => profile.status === 'Approved').length;
+    const activeResolutions = localResolutions.filter(resolution => resolution.status === 'Voting Open' || resolution.status === 'Approved').length;
+    const totalAttendance = localAttendance.length;
+    const totalAllocated = programs.reduce((sum, program) => sum + (program.budgetAllocation || 0), 0);
+    const totalSpent = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    const utilization = totalAllocated > 0 ? ((totalSpent / totalAllocated) * 100).toFixed(1) : '0.0';
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -299,44 +294,12 @@ export default function OfficialPages({
           </thead>
           <tbody>
             <tr>
-              <td><strong>Education & Scholarship</strong></td>
-              <td>AIP-2026-EDU-01</td>
-              <td class="text-right">₱180,000</td>
-              <td class="text-right">₱142,500</td>
-              <td class="text-right"><strong>79.2%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Sports Development</strong></td>
-              <td>AIP-2026-SPT-02</td>
-              <td class="text-right">₱150,000</td>
-              <td class="text-right">₱128,000</td>
-              <td class="text-right"><strong>85.3%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Health & Nutrition</strong></td>
-              <td>AIP-2026-HLT-03</td>
-              <td class="text-right">₱120,000</td>
-              <td class="text-right">₱95,000</td>
-              <td class="text-right"><strong>79.1%</strong></td>
-              <td class="text-center"><span class="badge badge-warning">Pending Voucher</span></td>
-            </tr>
-            <tr>
-              <td><strong>Environmental Protection</strong></td>
-              <td>AIP-2026-ENV-04</td>
-              <td class="text-right">₱90,000</td>
-              <td class="text-right">₱45,000</td>
-              <td class="text-right"><strong>50.0%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
-            </tr>
-            <tr>
-              <td><strong>Livelihood & Skills</strong></td>
-              <td>AIP-2026-LIV-05</td>
-              <td class="text-right">₱100,000</td>
-              <td class="text-right">₱78,000</td>
-              <td class="text-right"><strong>78.0%</strong></td>
-              <td class="text-center"><span class="badge">Verified</span></td>
+              <td><strong>All published programs</strong></td>
+              <td>${programs.length} records</td>
+              <td class="text-right">₱${totalAllocated.toLocaleString()}</td>
+              <td class="text-right">₱${totalSpent.toLocaleString()}</td>
+              <td class="text-right"><strong>${utilization}%</strong></td>
+              <td class="text-center"><span class="badge">${programs.length > 0 ? 'Recorded' : 'No records'}</span></td>
             </tr>
           </tbody>
         </table>
@@ -346,12 +309,12 @@ export default function OfficialPages({
           <div class="card">
             <h4>Program & Resolution Alignment</h4>
             <p><strong>CBYDP Alignment:</strong> Fully compliant with 5-Year Development Plan.</p>
-            <p><strong>Active Resolutions:</strong> 12 resolutions authored & approved.</p>
+            <p><strong>Active Resolutions:</strong> ${activeResolutions} records.</p>
           </div>
           <div class="card">
             <h4>Meeting Attendance & Quorum</h4>
-            <p><strong>Attendance Ratio:</strong> 98.5% across all 12 sessions.</p>
-            <p><strong>Mandatory Trainings:</strong> 100% council participation.</p>
+            <p><strong>Attendance Records:</strong> ${totalAttendance} records.</p>
+            <p><strong>Mandatory Trainings:</strong> No training records available.</p>
           </div>
         </div>
 
@@ -359,21 +322,21 @@ export default function OfficialPages({
         <div class="grid-2">
           <div class="card">
             <h4>Youth Population (Aged 15–30)</h4>
-            <p><strong>Total Registered:</strong> 1,420 Residents</p>
-            <p><strong>15-17 yrs:</strong> 380 &bull; <strong>18-24 yrs:</strong> 710 &bull; <strong>25-30 yrs:</strong> 330</p>
+            <p><strong>Total Verified:</strong> ${totalYouth} Residents</p>
+            <p>Age distribution is calculated from verified profiles when available.</p>
           </div>
           <div class="card">
             <h4>Educational & Scholarship Grantees</h4>
-            <p><strong>Senior High / College:</strong> 1,100 Youth</p>
-            <p><strong>Active Scholarship Grantees:</strong> 145 Beneficiaries</p>
+            <p><strong>Senior High / College:</strong> ${localYouthProfiles.filter(profile => profile.educationalLevel?.includes('High School') || profile.educationalLevel?.includes('College')).length} Youth</p>
+            <p><strong>Active Scholarship Grantees:</strong> ${localYouthProfiles.filter(profile => profile.scholarStatus === 'Scholar').length} Beneficiaries</p>
           </div>
         </div>
 
         <div class="footer">
           <p>Certified Accurate and Compliant by:</p>
           <div class="sign">
-            HON. NANA BARROSA<br>
-            <span style="font-weight: normal; color: #64748b;">SK Treasurer, Barangay ${currentTenant?.name || 'Barangay'}</span>
+            ${currentUser?.full_name || 'Authorized SK Official'}<br>
+            <span style="font-weight: normal; color: #64748b;">${profileConfig[currentRole]?.title || 'SK Official'}, Barangay ${currentTenant?.name || 'Barangay'}</span>
           </div>
         </div>
 
@@ -398,19 +361,24 @@ export default function OfficialPages({
 
   // Form states
   const [progForm, setProgForm] = useState({
-    title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 45000, aipReference: 'AIP-2026-BAL-', category: (currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship') as any, status: 'Published' as any
+    title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: (currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship') as any, status: 'Published' as any
   });
   const [docForm, setDocForm] = useState({
-    title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'
+    title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
   });
   const [expenseForm, setExpenseForm] = useState({
-    programId: programs[0]?.id || 'prog-01', amount: 10000, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
+    programId: programs[0]?.id || '', budgetId: '', amount: 0, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
   });
+  const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
+  const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [expenseSaveError, setExpenseSaveError] = useState('');
   const [resForm, setResForm] = useState({
-    title: '', number: '', author: 'Hon. Ashley Kyla D. Vinzon'
+    title: '', number: '', author: '', endDate: ''
   });
+  const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
-    item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 500, location: 'SK Office'
+    item: '', category: 'Sports Equipment', quantity: 0, condition: 'Good', cost: 0, location: ''
   });
 
   // Rejection Reason state for Secretary validations
@@ -418,7 +386,8 @@ export default function OfficialPages({
   const [rejectReason, setRejectReason] = useState('');
 
   // Attendance scanner simulation states
-  const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || 'prog-01');
+  const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
+  const [selectedProgramRegistrations, setSelectedProgramRegistrations] = useState<Registration[]>([]);
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
@@ -434,11 +403,93 @@ export default function OfficialPages({
     programTitle?: string;
     timestamp: string;
   } | null>(null);
+  const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
+
+  useEffect(() => {
+    if (!selectedProgId) {
+      setLocalAttendance([]);
+      return;
+    }
+
+    let isMounted = true;
+    kabisigApi.getProgramAttendance(selectedProgId).then((rows) => {
+      if (!isMounted || !rows) return;
+      setLocalAttendance(rows.map((row: any) => {
+        const user = Array.isArray(row.users) ? row.users[0] : row.users;
+        const profile = youthProfiles.find(candidate => candidate.userId === row.user_id);
+        return {
+          id: row.id,
+          programId: row.program_id,
+          participantId: profile?.id || row.user_id,
+          participantName: user?.full_name || profile?.name || 'Youth Constituent',
+          checkInTime: row.checked_in_at,
+          status: 'Present' as const,
+        };
+      }));
+    }).catch((error: any) => console.warn('Could not load program attendance:', error));
+
+    return () => { isMounted = false; };
+  }, [selectedProgId, youthProfiles]);
+
+  useEffect(() => {
+    if (!selectedProgId) {
+      setSelectedProgramRegistrations([]);
+      return;
+    }
+    let isMounted = true;
+    kabisigApi.getProgramRegistrations(selectedProgId).then((rows) => {
+      if (!isMounted || !rows) return;
+      setSelectedProgramRegistrations(rows.map((row: any) => {
+        const user = Array.isArray(row.users) ? row.users[0] : row.users;
+        const profile = youthProfiles.find(candidate => candidate.userId === row.user_id);
+        return {
+          id: row.id,
+          programId: row.program_id,
+          programTitle: programs.find(program => program.id === row.program_id)?.title || '',
+          participantId: profile?.id || row.user_id,
+          participantName: user?.full_name || profile?.name || 'Youth Constituent',
+          dateRegistered: row.registered_at || '',
+          status: row.status === 'attended' ? 'Completed' : 'Approved',
+          qrCode: profile?.qrCode || '',
+        };
+      }));
+    }).catch((error: any) => setQrMessage(error.message || 'Could not load registrations for this program.'));
+    return () => { isMounted = false; };
+  }, [selectedProgId, programs, youthProfiles]);
 
   // Tax withholding calculations (for expense form)
   const [calcVat, setCalcVat] = useState(0);
   const [calcWithholding, setCalcWithholding] = useState(0);
   const [calcNet, setCalcNet] = useState(10000);
+
+  useEffect(() => {
+    if (!currentTenant?.id) {
+      setBudgetOptions([]);
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingBudgets(true);
+    kabisigApi.getBudgets(currentTenant.id).then((budgets) => {
+      if (!isMounted) return;
+      const currentYear = new Date().getFullYear();
+      const currentYearBudgets = budgets.filter((budget) => Number(budget.fiscal_year) === currentYear);
+      setBudgetOptions(currentYearBudgets);
+      setExpenseForm(previous => ({
+        ...previous,
+        budgetId: currentYearBudgets.some(budget => budget.id === previous.budgetId)
+          ? previous.budgetId
+          : currentYearBudgets[0]?.id || '',
+      }));
+      setExpenseSaveError('');
+    }).catch((error: any) => {
+      if (isMounted) setExpenseSaveError(error.message || 'Could not load this barangay\'s budgets.');
+    }).finally(() => {
+      if (isMounted) setIsLoadingBudgets(false);
+    });
+
+    return () => { isMounted = false; };
+  }, [currentTenant?.id]);
 
   useEffect(() => {
     const amt = expenseForm.amount;
@@ -524,28 +575,31 @@ export default function OfficialPages({
 
   const profileConfig: Partial<Record<UserRole, { name: string; title: string; avatar?: string }>> = {
     'SK Kagawad': {
-      name: 'Hon. Ashley Kyla D. Vinzon',
-      title: 'SK Kagawad - Environment Committee Chair',
+      name: currentUser?.full_name || 'SK Kagawad',
+      title: 'SK Kagawad',
     },
     'SK Secretary': {
-      name: 'Hon. David James Ignacio',
-      title: 'SK Secretary - Council Secretariat',
+      name: currentUser?.full_name || 'SK Secretary',
+      title: 'SK Secretary',
     },
     'SK Treasurer': {
-      name: 'Hon. Nana Barrosa',
-      title: 'SK Treasurer - Chief Finance Officer',
+      name: currentUser?.full_name || 'SK Treasurer',
+      title: 'SK Treasurer',
     }
   };
 
   // --- STATS COMPUTATIONS ---
   const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalBarangayBudget = 450000;
+  const totalBarangayBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
 
   // --- ACTIONS HANDLERS ---
-  const handlePublishProgram = () => {
-    if (!progForm.title) return alert('Program Title is required.');
+  const handlePublishProgram = async () => {
+    if (!progForm.title) {
+      alert('Program Title is required.');
+      return;
+    }
     const newP: Program = {
       id: `prog-${Date.now().toString().slice(-3)}`,
       title: progForm.title,
@@ -561,21 +615,23 @@ export default function OfficialPages({
       status: progForm.status,
       registeredCount: 0
     };
-    onAddProgram(newP);
-    setShowProgModal(false);
+    const created = await onAddProgram(newP);
+    if (created) {
+      setShowProgModal(false);
+    }
   };
 
   const getDefaultApproverForCategory = (cat: string): string => {
     switch (cat) {
       case 'Resolutions':
       case 'Budget':
-        return 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)';
+        return currentTenant?.chairperson || 'SK Chairperson';
       case 'Minutes':
       case 'Meeting Minutes':
       case 'Communications':
         return 'Council Secretariat / SK Secretary';
       case 'Vouchers':
-        return 'Hon. Francis O. Martinez (SK Treasurer)';
+        return currentUser?.full_name || 'SK Treasurer';
       case 'Reports':
         return 'DILG Local Government Officer';
       default:
@@ -583,95 +639,69 @@ export default function OfficialPages({
     }
   };
 
-  const handleUploadDocumentSubmit = () => {
-    if (!docForm.title) return alert('Document Title is required.');
+  const handleUploadDocumentSubmit = async () => {
+    if (!docForm.title.trim()) return setDocumentUploadError('Document title is required.');
+    if (!selectedDocumentFile) return setDocumentUploadError('Select a document file to upload.');
     
     // Auto-generate resolution / tracking code if needed
     const cat = docForm.category || 'Resolutions';
     const catCode = cat === 'Resolutions' ? 'RES' : cat.slice(0, 3).toUpperCase();
     const count = localDocs.filter(d => d.category === cat).length + 1;
     const defaultResNum = cat === 'Resolutions'
-      ? `Res. No. 2026-${count.toString().padStart(3, '0')}`
+      ? `Res. No. ${new Date().getFullYear()}-${count.toString().padStart(3, '0')}`
       : `${catCode}-2026-${count.toString().padStart(3, '0')}`;
     const autoResNum = docForm.resolutionNumber?.trim() || defaultResNum;
 
-    const newD: DocumentRecord = {
-      id: `doc-${Date.now().toString().slice(-3)}`,
-      title: docForm.title,
-      category: docForm.category,
-      status: 'Pending',
-      uploadedBy: `${currentRole} Secretariat`,
-      uploadedDate: new Date().toISOString().split('T')[0],
-      fileSize: docForm.fileName ? '2.4 MB' : '1.5 MB',
-      description: docForm.description,
-      resolutionNumber: autoResNum,
-      designatedApprover: docForm.designatedApprover || 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)',
-      version: 'v1.0',
-      history: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          action: 'Document Uploaded & Cataloged',
-          user: `${currentRole} Secretariat`,
-          notes: docForm.description || 'Uploaded to official council repository.'
-        }
-      ]
-    };
+    const documentType = docForm.category === 'Resolutions'
+      ? 'Resolution'
+      : docForm.category === 'Minutes'
+        ? 'Minutes'
+        : docForm.category === 'Reports' || docForm.category === 'Budget' || docForm.category === 'Vouchers'
+          ? 'Financial Report'
+          : 'Other';
 
-    setLocalDocs(prev => [newD, ...prev]);
-    onAddDocument(newD);
-    setShowDocModal(false);
-    setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)' });
-  };
-
-  const handleApproveDocument = (docId: string, notes: string) => {
-    setLocalDocs(prev => prev.map(doc => {
-      if (doc.id === docId) {
-        const updatedHistory = doc.history || [];
-        return {
-          ...doc,
-          status: 'Approved',
-          history: [
-            ...updatedHistory,
-            {
-              date: new Date().toISOString().split('T')[0],
-              action: 'Approved & Signed Off',
-              user: `${currentRole} Official`,
-              notes: notes || 'Document approved and archived in official records.'
-            }
-          ]
-        };
+    setIsUploadingDocument(true);
+    setDocumentUploadError('');
+    try {
+      const result = await kabisigApi.uploadDocument({
+        title: docForm.title.trim(),
+        document_type: documentType,
+        file: selectedDocumentFile,
+      });
+      if (!result.success || !result.data?.id) {
+        throw new Error(result.message || 'Document upload could not be completed.');
       }
-      return doc;
-    }));
-    setShowApprovalDocModal(false);
-    setDocApprovalNotes('');
-    setSelectedDoc(null);
-  };
 
-  const handleRejectDocument = (docId: string, notes: string) => {
-    if (!notes) return alert('Please state the reason for rejection.');
-    setLocalDocs(prev => prev.map(doc => {
-      if (doc.id === docId) {
-        const updatedHistory = doc.history || [];
-        return {
-          ...doc,
-          status: 'Rejected',
-          history: [
-            ...updatedHistory,
-            {
-              date: new Date().toISOString().split('T')[0],
-              action: 'Document Rejected',
-              user: `${currentRole} Official`,
-              notes: notes
-            }
-          ]
-        };
-      }
-      return doc;
-    }));
-    setShowApprovalDocModal(false);
-    setDocApprovalNotes('');
-    setSelectedDoc(null);
+      const saved = result.data;
+      const uploadedDate = saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0];
+      const newDocument: DocumentRecord = {
+        id: saved.id,
+        title: saved.title,
+        category: docForm.category,
+        status: saved.status === 'pending_approval' ? 'Pending' : saved.status,
+        uploadedBy: currentUser?.full_name || `${currentRole} Secretariat`,
+        uploadedDate,
+        fileSize: `${(selectedDocumentFile.size / (1024 * 1024)).toFixed(2)} MB`,
+        description: docForm.description,
+        resolutionNumber: autoResNum,
+        designatedApprover: docForm.designatedApprover,
+        version: 'v1.0',
+        barangayId: saved.tenant_id,
+        fileUrl: saved.file_url,
+        reviewFeedback: saved.feedback || '',
+        created_at: saved.created_at,
+      };
+
+      setLocalDocs(prev => [newDocument, ...prev]);
+      onAddDocument(newDocument);
+      setShowDocModal(false);
+      setSelectedDocumentFile(null);
+      setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: currentTenant?.chairperson || '' });
+    } catch (error: any) {
+      setDocumentUploadError(error.message || 'Document upload failed.');
+    } finally {
+      setIsUploadingDocument(false);
+    }
   };
 
   const handleSaveDocEdit = () => {
@@ -763,7 +793,7 @@ export default function OfficialPages({
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `SK_Treasurer_Financial_Report_${currentTenant?.name || 'San_Francisco'}_2026.csv`);
+    link.setAttribute("download", `SK_Treasurer_Financial_Report_${currentTenant?.name || 'Barangay'}_${new Date().getFullYear()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -805,18 +835,18 @@ export default function OfficialPages({
         <div class="meta-bar">
           <span><strong>Report Title:</strong> ${title}</span>
           <span><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          <span><strong>Prepared By:</strong> Hon. David James Ignacio (SK Secretary)</span>
+          <span><strong>Prepared By:</strong> ${currentUser?.full_name || 'Authorized SK Official'} (${currentRole || 'SK Official'})</span>
         </div>
         ${reportHtml}
         <div class="footer-sig">
           <div class="sig-box">
             <p>Prepared & Certified Correct:</p>
-            <div class="sig-line">HON. DAVID JAMES IGNACIO</div>
-            <p style="font-size:10px; color:#64748b; margin-top:2px;">SK Secretary</p>
+            <div class="sig-line">${currentUser?.full_name || 'Authorized SK Official'}</div>
+            <p style="font-size:10px; color:#64748b; margin-top:2px;">${currentRole || 'SK Official'}</p>
           </div>
           <div class="sig-box">
             <p>Attested & Approved:</p>
-            <div class="sig-line">HON. ZALDY D. BRAGAIS JR.</div>
+            <div class="sig-line">${currentTenant?.chairperson || 'SK Chairperson'}</div>
             <p style="font-size:10px; color:#64748b; margin-top:2px;">SK Chairperson</p>
           </div>
         </div>
@@ -829,12 +859,16 @@ export default function OfficialPages({
     printWindow.document.close();
   };
 
-  const handleLogExpenseSubmit = () => {
-    if (!expenseForm.supplier) return alert('Supplier name is required.');
+  const handleLogExpenseSubmit = async () => {
+    if (!expenseForm.supplier.trim()) return setExpenseSaveError('Supplier name is required.');
+    if (!expenseForm.budgetId) return setExpenseSaveError('Select a current-year barangay budget before logging this expense.');
     const selectedP = programs.find(p => p.id === expenseForm.programId);
+    setIsSavingExpense(true);
+    setExpenseSaveError('');
     const newExp: ExpenseRecord = {
       id: `exp-${Date.now().toString().slice(-3)}`,
       programId: expenseForm.programId,
+      budgetId: expenseForm.budgetId,
       programTitle: selectedP?.title || 'General Fund',
       amount: expenseForm.amount,
       supplier: expenseForm.supplier,
@@ -846,25 +880,43 @@ export default function OfficialPages({
       status: 'Approved',
       dateLogged: new Date().toISOString().split('T')[0]
     };
-    onAddExpense(newExp);
-    setShowExpenseModal(false);
+    try {
+      await onAddExpense(newExp);
+      setShowExpenseModal(false);
+    } catch (error: any) {
+      setExpenseSaveError(error.message || 'Expense could not be saved. Please try again.');
+    } finally {
+      setIsSavingExpense(false);
+    }
   };
 
-  const handleDraftResolutionSubmit = () => {
-    if (!resForm.title || !resForm.number) return alert('Please fill in both title and number.');
-    const newRes = {
-      id: `res-${Date.now().toString().slice(-3)}`,
-      title: resForm.title,
-      number: resForm.number,
-      status: 'Pending',
-      author: resForm.author,
-      date: new Date().toISOString().split('T')[0],
-      votesSupport: 0,
-      votesOppose: 0,
-      votesAbstain: 0
-    };
-    setLocalResolutions(prev => [newRes, ...prev]);
-    setShowResModal(false);
+  const handleDraftResolutionSubmit = async () => {
+    if (!resForm.title.trim() || !resForm.number.trim() || !resForm.endDate) {
+      return alert('Please provide a resolution title, number, and voting close date.');
+    }
+
+    setIsSavingResolution(true);
+    try {
+      const startDate = new Date();
+      const endDate = new Date(`${resForm.endDate}T23:59:59.999`);
+      const result = await kabisigApi.createPoll({
+        question: resForm.title.trim(),
+        description: `Resolution Number: ${resForm.number.trim()}\nProposed by: ${resForm.author}`,
+        options: ['Support', 'Oppose'],
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
+      });
+      if (!result.success || !result.data) throw new Error(result.message || 'Resolution poll could not be saved.');
+
+      setLocalResolutions(prev => [result.data!, ...prev]);
+      onAddResolution(result.data);
+      setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' });
+      setShowResModal(false);
+    } catch (error: any) {
+      alert(error.message || 'Resolution poll could not be saved.');
+    } finally {
+      setIsSavingResolution(false);
+    }
   };
 
   const handleRegisterInventorySubmit = () => {
@@ -884,10 +936,20 @@ export default function OfficialPages({
     setShowFeedbackModal(true);
   };
 
-  const handleSaveFeedbackResponse = () => {
+  const handleSaveFeedbackResponse = async () => {
     if (!selectedFeedback) return;
     if (!feedbackResponseText.trim()) {
       alert('Please provide an official response for the youth constituent.');
+      return;
+    }
+    const apiStatus = feedbackStatusChoice === 'Reviewed' ? 'under_review' : 'resolved';
+    const result = await kabisigApi.respondToFeedback(
+      selectedFeedback.id,
+      feedbackResponseText.trim(),
+      apiStatus
+    );
+    if (!result.success) {
+      alert(result.message || 'Official response could not be saved.');
       return;
     }
     setLocalFeedback(prev => prev.map(f => {
@@ -905,7 +967,8 @@ export default function OfficialPages({
     alert('Official response saved and posted to Boses ng Kabataan constituent desk!');
   };
 
-  const handleActualScan = (scannedText: string) => {
+  const handleActualScan = async (scannedText: string) => {
+    if (isRecordingAttendance) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const currentProg = programs.find(p => p.id === selectedProgId);
     const progTitle = currentProg?.title || selectedProgId;
@@ -931,6 +994,17 @@ export default function OfficialPages({
     // 2. Parse Event Pass vs Youth ID Code
     let partId = scannedText;
     let qrProgId = selectedProgId;
+    let scannedUserId = '';
+    let scannedDigitalYouthId = '';
+
+    try {
+      const payload = JSON.parse(scannedText);
+      scannedUserId = payload.user_id || '';
+      scannedDigitalYouthId = payload.digital_youth_id || '';
+      partId = scannedDigitalYouthId || scannedUserId || partId;
+    } catch {
+      if (scannedText.startsWith('KAB-NAGA-')) scannedDigitalYouthId = scannedText;
+    }
 
     if (scannedText.startsWith('KABISIG-QR-')) {
       const qrPayload = scannedText.slice('KABISIG-QR-'.length);
@@ -964,91 +1038,71 @@ export default function OfficialPages({
     }
 
     // 4. Match against Approved Registrations for selected program
-    const reg = registrations.find(r => 
-      r.programId === selectedProgId && 
-      (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText) && 
-      r.status === 'Approved'
+    const youthProf = youthProfiles.find(y =>
+      (scannedUserId && y.userId === scannedUserId) ||
+      (scannedDigitalYouthId && y.id === scannedDigitalYouthId) ||
+      y.id === partId || y.id === scannedText || y.qrCode === scannedText
     );
-
-    // Also lookup Youth Profile if registered or unregistered
-    const youthProf = youthProfiles.find(y => 
-      y.id === partId || y.id === scannedText || y.qrCode === scannedText || (reg && y.id === reg.participantId)
+    const reg = selectedProgramRegistrations.find(r =>
+      r.programId === selectedProgId && 
+      (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
+      r.status === 'Approved'
     );
 
     const youthName = reg?.participantName || youthProf?.name || partId;
     const finalPartId = reg?.participantId || youthProf?.id || partId;
     const purokVal = youthProf?.zone || 'Naga Youth Constituent';
+    // The backend is authoritative for identity, registration, and duplicate check-in validation.
+    const record: AttendanceRecord = {
+      id: '',
+      programId: selectedProgId,
+      participantId: finalPartId,
+      participantName: youthName,
+      checkInTime: '',
+      status: 'Present'
+    };
 
-    if (!reg) {
+    setIsRecordingAttendance(true);
+    try {
+      const savedRecord = await onRegisterAttendance(record, scannedText);
+      setLocalAttendance(prev => [savedRecord, ...prev.filter(item => item.id !== savedRecord.id)]);
       setLastScanDetail({
         rawCode: scannedText,
-        status: 'NOT_REGISTERED',
-        title: 'Registration Not Found',
-        message: youthProf 
-          ? `Constituent ${youthProf.name} (ID: ${youthProf.id}) is verified in KK Directory, but is NOT registered for "${progTitle}".`
-          : `No approved registration or youth profile found for scanned ID code "${partId}".`,
+        status: 'SUCCESS',
+        title: 'Check-In Verified & Logged',
+        message: `Verified! ${savedRecord.participantName} has been marked Present for "${progTitle}".`,
+        participantName: savedRecord.participantName,
+        participantId: savedRecord.participantId,
+        purok: purokVal,
+        programTitle: progTitle,
+        timestamp: new Date(savedRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      });
+      setQrMessage(`SUCCESS: ${savedRecord.participantName} verified and logged Present!`);
+    } catch (error: any) {
+      const message = error.message || 'Attendance could not be recorded.';
+      const isDuplicate = /duplicate check-in|already checked in/i.test(message);
+      setLastScanDetail({
+        rawCode: scannedText,
+        status: isDuplicate ? 'ALREADY_PRESENT' : 'NOT_REGISTERED',
+        title: isDuplicate ? 'Already Present' : 'Attendance Rejected',
+        message,
         participantName: youthName,
         participantId: finalPartId,
         purok: purokVal,
         programTitle: progTitle,
         timestamp: timeStr
       });
-      setQrMessage(`Error: No approved registration found for ${youthName}.`);
-      return;
+      setQrMessage(message);
+    } finally {
+      setIsRecordingAttendance(false);
     }
-
-    // 5. Check if already marked Present
-    const alreadyChecked = localAttendance.some(a => a.programId === selectedProgId && a.participantId === reg.participantId);
-    if (alreadyChecked) {
-      const existingRecord = localAttendance.find(a => a.programId === selectedProgId && a.participantId === reg.participantId);
-      const checkTime = existingRecord ? new Date(existingRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'earlier session';
-
-      setLastScanDetail({
-        rawCode: scannedText,
-        status: 'ALREADY_PRESENT',
-        title: 'Already Present',
-        message: `${reg.participantName} (ID: ${reg.participantId}) was already checked in at ${checkTime}.`,
-        participantName: reg.participantName,
-        participantId: reg.participantId,
-        purok: purokVal,
-        programTitle: progTitle,
-        timestamp: timeStr
-      });
-      setQrMessage(`Refused: ${reg.participantName} is ALREADY marked Present.`);
-      return;
-    }
-
-    // 6. Record New Attendance
-    const record: AttendanceRecord = {
-      id: `att-${Date.now().toString().slice(-3)}`,
-      programId: selectedProgId,
-      participantId: reg.participantId,
-      participantName: reg.participantName,
-      checkInTime: new Date().toISOString(),
-      status: 'Present'
-    };
-    setLocalAttendance(prev => [record, ...prev]);
-    onRegisterAttendance(record);
-
-    setLastScanDetail({
-      rawCode: scannedText,
-      status: 'SUCCESS',
-      title: 'Check-In Verified & Logged',
-      message: `Verified! ${reg.participantName} has been marked Present for "${progTitle}".`,
-      participantName: reg.participantName,
-      participantId: reg.participantId,
-      purok: purokVal,
-      programTitle: progTitle,
-      timestamp: timeStr
-    });
-    setQrMessage(`SUCCESS: ${reg.participantName} verified and logged Present!`);
   };
 
   // Live QR Attendance Simulation Action
   const handleQrScanTrigger = () => {
     setQrScanning(true);
     setQrMessage('Aligning camera framework...');
-    setTimeout(() => {
+    setTimeout(async () => {
       const activeRegs = registrations.filter(r => r.programId === selectedProgId && r.status === 'Approved');
       if (activeRegs.length === 0) {
         setQrMessage('Error: No approved registrations to scan.');
@@ -1056,40 +1110,24 @@ export default function OfficialPages({
         return;
       }
       const rand = activeRegs[Math.floor(Math.random() * activeRegs.length)];
-      const alreadyChecked = localAttendance.some(a => a.programId === selectedProgId && a.participantId === rand.participantId);
-      if (alreadyChecked) {
-        setQrMessage(`Verification Refused: ${rand.participantName} is already Present.`);
+      const resident = youthProfiles.find(profile => profile.id === rand.participantId);
+      if (!resident?.userId) {
+        setQrMessage(`Cannot simulate check-in: ${rand.participantName}'s authenticated ID is unavailable.`);
         setQrScanning(false);
         return;
       }
-      const record: AttendanceRecord = {
-        id: `att-${Date.now().toString().slice(-3)}`,
-        programId: selectedProgId,
-        participantId: rand.participantId,
-        participantName: rand.participantName,
-        checkInTime: new Date().toISOString(),
-        status: 'Present'
-      };
-      setLocalAttendance(prev => [record, ...prev]);
-      onRegisterAttendance(record);
-      setQrMessage(`SUCCESS! QR Code Validated. Present: ${rand.participantName}`);
+      await handleActualScan(JSON.stringify({ user_id: resident.userId }));
       setQrScanning(false);
     }, 1200);
   };
 
-  const handleManualCheckIn = (r: Registration) => {
-    const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
-    if (isPresent) return;
-    const record: AttendanceRecord = {
-      id: `att-${Date.now().toString().slice(-3)}`,
-      programId: selectedProgId,
-      participantId: r.participantId,
-      participantName: r.participantName,
-      checkInTime: new Date().toISOString(),
-      status: 'Present'
-    };
-    setLocalAttendance(prev => [record, ...prev]);
-    onRegisterAttendance(record);
+  const handleManualCheckIn = async (r: Registration) => {
+    const resident = youthProfiles.find(profile => profile.id === r.participantId);
+    if (!resident?.userId) {
+      setQrMessage(`Cannot check in ${r.participantName}: authenticated youth ID is unavailable.`);
+      return;
+    }
+    await handleActualScan(JSON.stringify({ user_id: resident.userId }));
   };
 
   // Rejection handling with reason
@@ -1162,7 +1200,7 @@ export default function OfficialPages({
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                <ProfileAvatar name={profileConfig[currentRole]?.name} src={profileConfig[currentRole]?.avatar} className="w-10 h-10 rounded-full border-2 border-amber-400" />
+                <ProfileAvatar name={profileConfig[currentRole]?.name} className="w-10 h-10 rounded-full border-2 border-amber-400" />
                 <div>
                   <h4 className="text-xs font-bold text-white">{profileConfig[currentRole]?.name}</h4>
                   <p className="text-[10px] text-slate-300">{profileConfig[currentRole]?.title}</p>
@@ -1312,7 +1350,6 @@ export default function OfficialPages({
             <UserMenu 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
-              avatarUrl={profileConfig[currentRole]?.avatar}
               onLogout={onLogout}
             />
           </div>
@@ -1324,6 +1361,36 @@ export default function OfficialPages({
           {/* ==================== SCREEN 1: DASHBOARD (Unified role-based screen) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in duration-200">
+              <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-5 text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-[#091d64]">Barangay Announcements</h3>
+                    <p className="mt-1 text-[11px] text-slate-500">Published notices from the SK Chairperson for this barangay.</p>
+                  </div>
+                  <Megaphone className="h-5 w-5 text-[#091d64]" />
+                </div>
+                {announcements.length > 0 ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {announcements.slice(0, 4).map(announcement => (
+                      <article key={announcement.id} className="rounded-lg border border-white bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">{announcement.category}</p>
+                        <h4 className="mt-1 text-sm font-black text-slate-900">{announcement.title}</h4>
+                        {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-2 max-h-48 w-full rounded-md bg-slate-50 object-contain" />}
+                        <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                          {announcement.what && <p><strong>What:</strong> {announcement.what}</p>}
+                          {announcement.where && <p><strong>Where:</strong> {announcement.where}</p>}
+                          {announcement.when && <p><strong>When:</strong> {announcement.when}</p>}
+                          <p className="line-clamp-3 whitespace-pre-line">{announcement.content}</p>
+                          {announcement.hashtags && <p className="font-semibold text-blue-700">{announcement.hashtags}</p>}
+                        </div>
+                        <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted}</p>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white/70 p-4 text-center text-xs font-semibold text-slate-400">No published announcements yet.</p>
+                )}
+              </section>
               
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
@@ -1455,11 +1522,11 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">10% SK Allocation</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">FY 2026</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
+                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
                         <h3 className="text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Youth Allocation</p>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
                       </div>
                     </div>
 
@@ -1541,8 +1608,8 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">10% SK Allocation</span>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">FY 2026</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
+                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
                         <h3 className="text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{remainingCash.toLocaleString()} Cash Balance</p>
@@ -1591,8 +1658,8 @@ export default function OfficialPages({
                             description: '',
                             category: 'Resolutions',
                             fileName: '',
-                            resolutionNumber: `Res. No. 2026-00${localResolutions.length + 1}`,
-                            designatedApprover: 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'
+                            resolutionNumber: `Res. No. ${new Date().getFullYear()}-${String(localResolutions.length + 1).padStart(3, '0')}`,
+                            designatedApprover: currentTenant?.chairperson || ''
                           });
                           setShowDocModal(true);
                         }}
@@ -1644,9 +1711,9 @@ export default function OfficialPages({
                               <Pie 
                                 data={[
                                   { name: 'Council Resolutions', value: localDocs.filter(d=>d.category==='Resolutions').length || 6, color: '#091d64' },
-                                  { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length || 4, color: '#2563eb' },
-                                  { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length || 4, color: '#10b981' },
-                                  { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length || 4, color: '#f59e0b' }
+                                  { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length, color: '#2563eb' },
+                                  { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length, color: '#10b981' },
+                                  { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length, color: '#f59e0b' }
                                 ]}
                                 dataKey="value"
                                 cx="50%"
@@ -1676,9 +1743,9 @@ export default function OfficialPages({
                         <div className="space-y-2.5">
                           {(() => {
                             const resCount = localDocs.filter(d=>d.category==='Resolutions').length || 6;
-                            const minCount = localDocs.filter(d=>d.category==='Minutes').length || 4;
-                            const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length || 4;
-                            const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length || 4;
+                            const minCount = localDocs.filter(d=>d.category==='Minutes').length;
+                            const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length;
+                            const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length;
                             const total = localDocs.length || 1;
 
                             return [
@@ -1872,7 +1939,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-blue-100 bg-blue-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">In-School Students</span>
                         <h4 className="text-xl font-black text-[#091d64]">
-                          {youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length || 8}
+                          {youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length}
                         </h4>
                         <span className="text-[9px] font-bold text-blue-700 bg-blue-100/60 px-1.5 py-0.2 rounded inline-block">72% of Total</span>
                       </div>
@@ -1880,7 +1947,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-amber-100 bg-amber-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Out-of-School Youth</span>
                         <h4 className="text-xl font-black text-amber-600">
-                          {youthProfiles.filter(y => y.employmentStatus === 'Unemployed' && !y.school).length || 2}
+                          {youthProfiles.filter(y => y.employmentStatus === 'Unemployed' && !y.school).length}
                         </h4>
                         <span className="text-[9px] font-bold text-amber-700 bg-amber-100/60 px-1.5 py-0.2 rounded inline-block">Priority Outreach</span>
                       </div>
@@ -1888,7 +1955,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-emerald-100 bg-emerald-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Scholars</span>
                         <h4 className="text-xl font-black text-emerald-600">
-                          {youthProfiles.filter(y => y.scholarStatus === 'Scholar' || y.scholarStatus === 'Yes').length || 3}
+                          {youthProfiles.filter(y => y.scholarStatus === 'Scholar' || y.scholarStatus === 'Yes').length}
                         </h4>
                         <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/60 px-1.5 py-0.2 rounded inline-block">Barangay Grantees</span>
                       </div>
@@ -1896,7 +1963,7 @@ export default function OfficialPages({
                       <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Employed Youth</span>
                         <h4 className="text-xl font-black text-indigo-600">
-                          {youthProfiles.filter(y => y.employmentStatus === 'Employed').length || 2}
+                          {youthProfiles.filter(y => y.employmentStatus === 'Employed').length}
                         </h4>
                         <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100/60 px-1.5 py-0.2 rounded inline-block">Labor Force</span>
                       </div>
@@ -1938,7 +2005,7 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5">
                       <button 
                         onClick={() => {
-                          setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: 'Sports & Active Citizenship', status: 'Published' });
+                          setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: 'Sports Development', status: 'Published' });
                           setShowProgModal(true);
                         }}
                         className="px-3.5 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -1972,8 +2039,8 @@ export default function OfficialPages({
                           </h4>
                           <p className="text-xs text-slate-400 mt-0.5">Real-time registration counts against maximum target participant limits.</p>
                         </div>
-                        <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded">
-                          88.5% Avg Attendance
+                        <span className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-2.5 py-1 rounded">
+                          Live program data
                         </span>
                       </div>
 
@@ -1981,7 +2048,7 @@ export default function OfficialPages({
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={programs.slice(0, 5).map(p => ({
                             name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
-                            registered: p.registeredCount || 45,
+                            registered: p.registeredCount || registrations.filter(r => r.programId === p.id).length,
                             capacity: p.maxParticipants || 100
                           }))} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
                             <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
@@ -1996,23 +2063,7 @@ export default function OfficialPages({
                         </ResponsiveContainer>
                       </div>
 
-                      {/* AYDP 8 Centers of Participation Quick Grid */}
-                      <div className="pt-2 border-t border-slate-100">
-                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-2.5">Active Committee Focus Areas (RA 10742 Standard)</span>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          {[
-                            { label: 'Health & Anti-Drug', color: 'bg-emerald-50 text-emerald-800 border-emerald-200', count: '3 Events' },
-                            { label: 'Education & OSY', color: 'bg-blue-50 text-blue-800 border-blue-200', count: '4 Events' },
-                            { label: 'Sports & Active Citizens', color: 'bg-amber-50 text-amber-800 border-amber-200', count: '5 Events' },
-                            { label: 'Environment & Climate', color: 'bg-teal-50 text-teal-800 border-teal-200', count: '2 Events' },
-                          ].map((c, idx) => (
-                            <div key={idx} className={`p-2.5 rounded-lg border ${c.color} text-xs flex justify-between items-center`}>
-                              <span className="font-bold truncate">{c.label}</span>
-                              <span className="text-[10px] font-mono font-bold bg-white/80 px-1.5 py-0.5 rounded">{c.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                      <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">Committee activity summaries will appear when live program records are available.</div>
                     </div>
 
                     {/* Right Col: Intelligent Features (Smart Schedule Conflict & Low Engagement Alerts) */}
@@ -2090,9 +2141,9 @@ export default function OfficialPages({
                         <span className="px-2.5 py-0.5 bg-emerald-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
                           Financial Management & COA Audit Console
                         </span>
-                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY 2026 Budget</span>
+                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY {new Date().getFullYear()} Budget</span>
                       </div>
-                      <h3 className="text-xl font-bold font-sans tracking-tight">10% SK Allocation, Tax Withholding & Public Ledger</h3>
+                      <h3 className="text-xl font-bold font-sans tracking-tight">Program Allocations, Tax Withholding & Public Ledger</h3>
                       <p className="text-xs text-emerald-100 leading-relaxed">
                         Log disbursement vouchers, compute automated 5% VAT / 1% EWT tax withholdings, track liquidation timelines, and publish COA reports.
                       </p>
@@ -2101,7 +2152,7 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5">
                       <button 
                         onClick={() => {
-                          setExpenseForm({ programId: programs[0]?.id || 'prog-01', amount: 5000, supplier: 'Naga Sports Supplies', taxType: 'VAT', category: 'Supplies' });
+                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: budgetOptions[0]?.id || '', amount: 0, supplier: '', taxType: 'VAT', category: 'Supplies' });
                           setShowExpenseModal(true);
                         }}
                         className="px-3.5 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -2109,7 +2160,10 @@ export default function OfficialPages({
                         <Plus className="w-4 h-4 text-slate-950" /> Log Disbursement
                       </button>
                       <button 
-                        onClick={() => setActiveMenu('finances')}
+                        onClick={() => {
+                          setActiveMenu('reports');
+                          setReportModuleCategory('financial');
+                        }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
                       >
                         <Coins className="w-4 h-4 text-amber-300" /> Manage Liquidations
@@ -2344,7 +2398,7 @@ export default function OfficialPages({
                 </div>
                 <button 
                   onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship', status: 'Published' });
+                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship', status: 'Published' });
                     setShowProgModal(true);
                   }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
@@ -2487,7 +2541,7 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-1 tracking-wider">Verification Date</label>
-                  <input type="date" defaultValue="2026-07-08" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]" />
+                  <input type="date" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]" />
                 </div>
               </div>
 
@@ -2496,7 +2550,7 @@ export default function OfficialPages({
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
                   <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block">Registered</span>
                   <span className="text-xl font-black text-[#091d64] block mt-1">
-                    {registrations.filter(r => r.programId === selectedProgId).length || 5}
+                    {selectedProgramRegistrations.length}
                   </span>
                 </div>
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
@@ -2508,16 +2562,16 @@ export default function OfficialPages({
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-white shadow-sm">
                   <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block text-rose-500">Absentees</span>
                   <span className="text-xl font-black text-rose-500 block mt-1">
-                    {Math.max(0, (registrations.filter(r => r.programId === selectedProgId).length || 5) - localAttendance.filter(a => a.programId === selectedProgId).length)}
+                    {Math.max(0, selectedProgramRegistrations.length - localAttendance.filter(a => a.programId === selectedProgId).length)}
                   </span>
                 </div>
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-[#091d64] shadow-md text-white">
                   <span className="text-[9px] font-extrabold text-white/70 uppercase tracking-widest block">Yield Rate</span>
                   <span className="text-xl font-black text-amber-400 block mt-1">
                     {(() => {
-                      const reg = registrations.filter(r => r.programId === selectedProgId).length || 5;
+                      const reg = selectedProgramRegistrations.length;
                       const pres = localAttendance.filter(a => a.programId === selectedProgId).length;
-                      return ((pres / reg) * 100).toFixed(0);
+                      return reg > 0 ? ((pres / reg) * 100).toFixed(0) : '0';
                     })()}%
                   </span>
                 </div>
@@ -2652,12 +2706,12 @@ export default function OfficialPages({
                       <div className="flex justify-between items-center">
                         <span className="text-xs font-bold text-slate-800">Quick-Tap Registered Youth</span>
                         <span className="text-[10px] font-bold text-slate-400">
-                          {registrations.filter(r => r.programId === selectedProgId).length} Registered
+                          {selectedProgramRegistrations.length} Registered
                         </span>
                       </div>
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                        {registrations.filter(r => r.programId === selectedProgId).map(r => {
+                        {selectedProgramRegistrations.map(r => {
                           const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
                           return (
                             <div 
@@ -2701,7 +2755,7 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
-                      {registrations.filter(r => r.programId === selectedProgId).map(r => {
+                      {selectedProgramRegistrations.map(r => {
                         const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
@@ -3038,7 +3092,7 @@ export default function OfficialPages({
                       <p className="text-xs text-slate-400 mt-1">Author, catalog, and track municipal legislative submissions for youth development.</p>
                     </div>
                     <button 
-                      onClick={() => { setResForm({ title: '', number: 'Res. No. 2026-005', author: 'Hon. Ashley Kyla D. Vinzon' }); setShowResModal(true); }}
+                      onClick={() => { setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' }); setShowResModal(true); }}
                       className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
@@ -3133,7 +3187,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">BIR Tax Withholdings</span>
                         <Tag className="w-4 h-4 text-amber-600" />
                       </div>
-                      <h4 className="text-xl font-black text-amber-700">₱{expenses.reduce((a,c)=>a+c.withholdingTax, 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-amber-700">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Audited deductions for BIR remittance</p>
                     </div>
                   </div>
@@ -3189,16 +3243,12 @@ export default function OfficialPages({
                         const sportsStats = getSectorStats('Sports Development');
                         const healthStats = getSectorStats('Health & Nutrition');
 
-                        const sreCategories = [
-                          { name: 'Education & Scholarship Programs', cat: 'Education & Scholarship', aip: 'AIP-2026-EDU-01' },
-                          { name: 'Sports & Youth Recreation', cat: 'Sports Development', aip: 'AIP-2026-SPT-02' },
-                          { name: 'Health, Nutrition & Anti-Drug Advocacy', cat: 'Health & Nutrition', aip: 'AIP-2026-HLT-03' },
-                          { name: 'Environmental Protection & Climate Action', cat: 'Environmental Protection', aip: 'AIP-2026-ENV-04' },
-                          { name: 'Livelihood, Skills & Entrepreneurship', cat: 'Livelihood & Skills', aip: 'AIP-2026-LIV-05' },
-                        ].map(c => {
-                          const stats = getSectorStats(c.cat);
+                        const sreCategories = Array.from(new Set(programs.map(program => program.category))).map(cat => {
+                          const stats = getSectorStats(cat);
                           return {
-                            ...c,
+                            name: cat,
+                            cat,
+                            aip: programs.find(program => program.category === cat)?.aipReference || '',
                             alloc: stats.alloc,
                             disb: stats.disb,
                             rem: Math.max(0, stats.alloc - stats.disb),
@@ -3318,13 +3368,7 @@ export default function OfficialPages({
                         );
                       })()}
 
-                      <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-5 h-5 text-[#091d64]" />
-                          <span className="text-slate-700 font-medium">Certified true and correct in accordance with standard SK accounting guidelines:</span>
-                        </div>
-                        <span className="font-bold text-[#091d64]">HON. FRANCIS O. MARTINEZ • SK Treasurer</span>
-                      </div>
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">Certification details will appear after live budget records are available.</div>
                     </div>
                   )}
 
@@ -3419,7 +3463,7 @@ export default function OfficialPages({
                             {treasurerProgramsBudget.length === 0 ? (
                               <tr>
                                 <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
-                                  No program budget records available. Create a program to track disbursements.
+                                  No program budget records available. Select a program created by an authorized official to track disbursements.
                                 </td>
                               </tr>
                             ) : (
@@ -3466,12 +3510,12 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-rose-600 uppercase">Total Tax Withheld (BIR)</span>
-                          <h4 className="text-xl font-black text-rose-600">₱{expenses.reduce((a,c)=>a+c.withholdingTax,0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-rose-600">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Government withholding compliance</p>
                         </div>
                         <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Payables Remitted</span>
-                          <h4 className="text-xl font-black text-emerald-700">₱{expenses.reduce((a,c)=>a+c.netAmount,0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-emerald-700">₱{expenses.reduce((a,c)=>a + (Number(c.netAmount ?? c.amount) || 0), 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Net disbursed to suppliers</p>
                         </div>
                       </div>
@@ -3497,8 +3541,8 @@ export default function OfficialPages({
                                 <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-semibold">{exp.supplier}</td>
                                 <td className="px-5 py-3.5 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold">-₱{exp.withholdingTax.toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm">₱{exp.netAmount.toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center">{exp.dateLogged}</td>
                               </tr>
                             ))}
@@ -3664,7 +3708,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${(p.spentBudget || p.budgetAllocation * 0.85).toLocaleString()}</td></tr>`).join('')}
+                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -3848,13 +3892,13 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Youth Beneficiaries Reached</span>
-                          <h4 className="text-xl font-black text-emerald-700">1,240 Participants</h4>
-                          <p className="text-[11px] text-slate-500">88.5% average event engagement rate across 4 zones.</p>
+                          <h4 className="text-xl font-black text-emerald-700">{programs.reduce((sum, program) => sum + (program.registeredCount || registrations.filter(registration => registration.programId === program.id).length), 0).toLocaleString()} Participants</h4>
+                          <p className="text-[11px] text-slate-500">Based on registered participants in live programs.</p>
                         </div>
                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-violet-700 uppercase">Fund Disbursement Rate</span>
-                          <h4 className="text-xl font-black text-violet-700">81.4% Disbursed</h4>
-                          <p className="text-[11px] text-slate-500">All expenses backed by SK Treasurer liquidation vouchers.</p>
+                          <h4 className="text-xl font-black text-violet-700">{(() => { const allocated = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0); const spent = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); return `${allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0'}% Disbursed`; })()}</h4>
+                          <p className="text-[11px] text-slate-500">Calculated from recorded program expenses.</p>
                         </div>
                       </div>
 
@@ -3877,9 +3921,9 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-600">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64]">{p.registeredCount} / {p.maxParticipants}</td>
                                 <td className="px-5 py-3 text-right font-mono text-slate-700">₱{p.budgetAllocation.toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{(p.spentBudget || p.budgetAllocation * 0.85).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'AIP-2026'}</span>
+                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'No AIP reference'}</span>
                                 </td>
                               </tr>
                             ))}
@@ -3900,7 +3944,7 @@ export default function OfficialPages({
                         <div className="grid md:grid-cols-2 gap-4 text-xs">
                           <div className="p-3 bg-white rounded-lg border border-slate-200/60 space-y-1">
                             <span className="font-bold text-slate-800 block">Section 14 (a): Masterlist & Database</span>
-                            <p className="text-slate-500 text-[11px]">Updated master list of Katipunan ng Kabataan members maintained in digital vault with 1,420 registered residents.</p>
+                            <p className="text-slate-500 text-[11px]">Updated master list of Katipunan ng Kabataan members maintained in the digital registry with {localYouthProfiles.length} registered residents.</p>
                           </div>
                           <div className="p-3 bg-white rounded-lg border border-slate-200/60 space-y-1">
                             <span className="font-bold text-slate-800 block">Section 14 (b): Public Information & Posting</span>
@@ -3946,7 +3990,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 text-center"><span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-black text-[9px]">100% Present</span></td>
                                 <td className="px-5 py-3 font-mono text-slate-500">{min.uploadedDate}</td>
                                 <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">Hon. Clara B. Samson (SK Secretary)</span>
+                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">{currentUser?.full_name || 'SK Secretary'}</span>
                                 </td>
                               </tr>
                             ))}
@@ -4115,16 +4159,6 @@ export default function OfficialPages({
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
-
-                              {doc.status === 'Pending' && (
-                                <button 
-                                  onClick={() => { setSelectedDoc(doc); setShowApprovalDocModal(true); }} 
-                                  className="p-1.5 hover:bg-amber-100 rounded text-amber-700 font-bold" 
-                                  title="Review & Sign Off Approval Workflow"
-                                >
-                                  <FileCheck className="w-4 h-4" />
-                                </button>
-                              )}
 
                               <button 
                                 onClick={() => { setSelectedDoc(doc); setShowEditDocModal(true); }} 
@@ -4416,16 +4450,6 @@ export default function OfficialPages({
                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
                   <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
                 </div>
-                <button 
-                  onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '2026-07-15', endDate: '2026-07-20', location: 'Barangay Hall', maxParticipants: 100, budgetAllocation: 50000, aipReference: 'AIP-2026-BAL-', category: 'Education & Scholarship', status: 'Published' });
-                    setShowProgModal(true);
-                  }}
-                  className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  Create Program Allocation
-                </button>
               </div>
 
               {/* Tally boxes - Refined Premium Design */}
@@ -4524,7 +4548,7 @@ export default function OfficialPages({
                       {programs.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
-                            No program budget allocations registered. Click "Create Program Allocation" to allocate funds.
+                            No program budget allocations registered. Allocations will appear when a real program budget is approved.
                           </td>
                         </tr>
                       ) : (
@@ -4535,7 +4559,7 @@ export default function OfficialPages({
                           const isOver = spent > p.budgetAllocation && p.budgetAllocation > 0;
                           return (
                             <tr key={p.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'AIP-2026'}</td>
+                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'No AIP reference'}</td>
                               <td className="px-5 py-4 font-bold text-slate-800">{p.title}</td>
                               <td className="px-5 py-4"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span></td>
                               <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">₱{p.budgetAllocation.toLocaleString()}</td>
@@ -4603,8 +4627,8 @@ export default function OfficialPages({
                           <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
                           <td className="px-5 py-4 text-slate-600 font-semibold">{exp.supplier}</td>
                           <td className="px-5 py-4 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold">-₱{exp.withholdingTax.toLocaleString()}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm">₱{exp.netAmount.toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
                           <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic">{exp.dateLogged}</td>
                         </tr>
                       ))}
@@ -4675,7 +4699,7 @@ export default function OfficialPages({
 
               <div className="grid md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 p-6 border border-slate-100 rounded-xl flex flex-col items-center justify-center space-y-4">
-                  <ProfileAvatar name={profileConfig[currentRole]?.name} src={profileConfig[currentRole]?.avatar} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
+                  <ProfileAvatar name={profileConfig[currentRole]?.name} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
                   <button className="px-3 py-1.5 bg-[#eff6ff] hover:bg-[#dbeafe] text-[#091d64] text-xs font-bold rounded-lg flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5" /> Upload Avatar
                   </button>
@@ -4789,7 +4813,7 @@ export default function OfficialPages({
 
       {/* --- REUSABLE MODALS --- */}
       {/* 1. Create Program Modal (Kagawad) */}
-      {showProgModal && (
+      {showProgModal && currentRole !== 'SK Treasurer' && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
@@ -4897,8 +4921,8 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select value={docForm.designatedApprover} onChange={(e)=>setDocForm({...docForm, designatedApprover: e.target.value})} className="w-full p-2 border rounded text-xs font-semibold text-[#091d64]">
-                  <option value="Hon. Zaldy D. Bragais Jr. (SK Chairperson)">1. Hon. Zaldy D. Bragais Jr. (SK Chairperson / Barangay Admin)</option>
-                  <option value="Hon. Francis O. Martinez (SK Treasurer)">2. Hon. Francis O. Martinez (SK Treasurer)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
@@ -4914,14 +4938,16 @@ export default function OfficialPages({
               <div className="border-2 border-dashed border-slate-200 rounded-lg p-5 text-center bg-slate-50 relative cursor-pointer hover:bg-slate-100 transition-colors">
                 <input 
                   type="file" 
-                  accept=".pdf,.doc,.docx,.xls,.xlsx"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
                       if (file.size > 25 * 1024 * 1024) {
-                        alert('File size exceeds maximum limit of 25MB.');
+                        setDocumentUploadError('File size exceeds maximum limit of 25MB.');
                         return;
                       }
+                      setSelectedDocumentFile(file);
+                      setDocumentUploadError('');
                       setDocForm({ ...docForm, fileName: file.name, title: docForm.title || file.name.replace(/\.[^/.]+$/, "") });
                     }
                   }}
@@ -4933,9 +4959,12 @@ export default function OfficialPages({
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word files supported (Max 25MB)</span>
               </div>
+              {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Submit Document</button>
+                <button disabled={isUploadingDocument} onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isUploadingDocument} onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isUploadingDocument ? 'Uploading...' : 'Submit Document'}
+                </button>
               </div>
             </div>
           </div>
@@ -4970,6 +4999,26 @@ export default function OfficialPages({
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Barangay Budget Allocation</label>
+                <select
+                  value={expenseForm.budgetId}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, budgetId: e.target.value })}
+                  className="w-full p-2 border rounded text-xs"
+                  disabled={isLoadingBudgets || budgetOptions.length === 0}
+                  required
+                >
+                  <option value="">{isLoadingBudgets ? 'Loading current-year budgets...' : 'Select a budget allocation'}</option>
+                  {budgetOptions.map((budget) => (
+                    <option key={budget.id} value={budget.id}>
+                      {budget.category} · FY {budget.fiscal_year} · ₱{Number(budget.remaining_amount).toLocaleString()} remaining
+                    </option>
+                  ))}
+                </select>
+                {budgetOptions.length === 0 && !isLoadingBudgets && (
+                  <p className="mt-1 text-[10px] text-rose-600">No current-year budgets are available for this barangay.</p>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Gross invoice *</label>
@@ -4999,8 +5048,11 @@ export default function OfficialPages({
               </div>
 
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Log Transaction</button>
+                {expenseSaveError && <p role="alert" className="mr-auto self-center text-[10px] text-rose-700">{expenseSaveError}</p>}
+                <button disabled={isSavingExpense} onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingExpense || isLoadingBudgets || budgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isSavingExpense ? 'Saving...' : 'Log Transaction'}
+                </button>
               </div>
             </div>
           </div>
@@ -5030,9 +5082,22 @@ export default function OfficialPages({
                   <input type="text" value={resForm.author} onChange={(e)=>setResForm({...resForm, author: e.target.value})} className="w-full p-2 border rounded text-xs bg-slate-50" readOnly />
                 </div>
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Voting Close Date *</label>
+                <input
+                  type="date"
+                  value={resForm.endDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setResForm({ ...resForm, endDate: e.target.value })}
+                  className="w-full p-2 border rounded text-xs"
+                  required
+                />
+              </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
-                <button onClick={handleDraftResolutionSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Submit Draft</button>
+                <button disabled={isSavingResolution} onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingResolution} onClick={handleDraftResolutionSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                  {isSavingResolution ? 'Saving...' : 'Create Voting Poll'}
+                </button>
               </div>
             </div>
           </div>
@@ -5233,52 +5298,6 @@ export default function OfficialPages({
         </div>
       )}
 
-      {/* 8. Document Review & Sign-Off Approval Modal */}
-      {showApprovalDocModal && selectedDoc && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
-            <div className="bg-[#091d64] text-white p-6">
-              <h3 className="font-sans font-bold text-lg">Digital Approval Workflow</h3>
-              <p className="text-xs text-slate-300 mt-1">Review, approve, or reject document with notes.</p>
-            </div>
-            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700">
-              <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
-                <span className="text-[10px] font-bold text-amber-800 uppercase block mb-1">Awaiting Sign-Off</span>
-                <p className="font-bold text-slate-900 text-xs">{selectedDoc.title}</p>
-                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{selectedDoc.resolutionNumber || selectedDoc.id} • Uploaded by {selectedDoc.uploadedBy}</p>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Audit & Sign-Off Remarks / Notes</label>
-                <textarea 
-                  value={docApprovalNotes} 
-                  onChange={(e) => setDocApprovalNotes(e.target.value)} 
-                  rows={3} 
-                  placeholder="Provide approval notes, council session references, or rejection reasons..." 
-                  className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:ring-1 focus:ring-[#091d64] focus:outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button onClick={() => setShowApprovalDocModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
-                <button 
-                  onClick={() => handleRejectDocument(selectedDoc.id, docApprovalNotes)} 
-                  className="px-4 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold rounded-lg text-xs flex items-center gap-1"
-                >
-                  <X className="w-3.5 h-3.5" /> Reject
-                </button>
-                <button 
-                  onClick={() => handleApproveDocument(selectedDoc.id, docApprovalNotes)} 
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs flex items-center gap-1"
-                >
-                  <Check className="w-3.5 h-3.5" /> Approve & Sign Off
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 9. Edit Document Details Modal */}
       {showEditDocModal && selectedDoc && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -5333,12 +5352,12 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select 
-                  value={selectedDoc.designatedApprover || 'Hon. Zaldy D. Bragais Jr. (SK Chairperson)'} 
+                  value={selectedDoc.designatedApprover || currentTenant?.chairperson || 'SK Chairperson'} 
                   onChange={(e) => setSelectedDoc({ ...selectedDoc, designatedApprover: e.target.value })} 
                   className="w-full p-2 border border-slate-200 rounded text-xs font-semibold text-[#091d64]"
                 >
-                  <option value="Hon. Zaldy D. Bragais Jr. (SK Chairperson)">1. Hon. Zaldy D. Bragais Jr. (SK Chairperson / Barangay Admin)</option>
-                  <option value="Hon. Francis O. Martinez (SK Treasurer)">2. Hon. Francis O. Martinez (SK Treasurer)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
@@ -5530,8 +5549,8 @@ export default function OfficialPages({
                 </div>
                 <div className="p-4 bg-violet-50/60 border border-violet-100 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-violet-800 uppercase block">Zones Covered</span>
-                  <h4 className="text-2xl font-black text-violet-900">4 Zones</h4>
-                  <span className="text-[10px] text-slate-400 block">100% Purok Coverage</span>
+                  <h4 className="text-2xl font-black text-violet-900">{new Set(localYouthProfiles.map(profile => profile.zone).filter(Boolean)).size}</h4>
+                  <span className="text-[10px] text-slate-400 block">Registered zones</span>
                 </div>
               </div>
 
@@ -5587,7 +5606,7 @@ export default function OfficialPages({
                   <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
                     <span className="text-[10px] text-slate-400 font-bold uppercase block">Vocational / Out-of-School</span>
                     <span className="text-lg font-bold text-slate-800 block mt-1">
-                      {localYouthProfiles.filter(y => y.educationalLevel?.includes('Vocational') || y.educationalLevel?.includes('OSY')).length || 12}
+                      {localYouthProfiles.filter(y => y.educationalLevel?.includes('Vocational') || y.educationalLevel?.includes('OSY')).length}
                     </span>
                   </div>
                 </div>

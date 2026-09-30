@@ -415,14 +415,15 @@ export function getComplianceIssues(
   programs: Program[],
   documents: DocumentRecord[],
   expenses: ExpenseRecord[]
-): Array<{ level: 'Urgent' | 'Warning' | 'Info'; message: string; action: string }> {
-  const issues: Array<{ level: 'Urgent' | 'Warning' | 'Info'; message: string; action: string }> = [];
+): Array<{ level: 'Urgent' | 'Warning' | 'Info'; code: string; message: string; action: string }> {
+  const issues: Array<{ level: 'Urgent' | 'Warning' | 'Info'; code: string; message: string; action: string }> = [];
 
   // Check A: Pending youth profile approvals
   const pendingCount = profiles.filter(p => p.status === 'Pending').length;
   if (pendingCount > 0) {
     issues.push({
       level: 'Urgent',
+      code: 'PENDING_YOUTH_APPROVALS',
       message: `Registration Backlog: There are ${pendingCount} pending youth registrations awaiting official SK validation.`,
       action: 'Validate registration applications'
     });
@@ -443,6 +444,7 @@ export function getComplianceIssues(
     if (!hasAccomplishment) {
       issues.push({
         level: 'Warning',
+        code: `MISSING_ACCOMPLISHMENT_${prog.id}`,
         message: `Missing Document: No accomplishment report uploaded for the completed program "${prog.title}".`,
         action: 'Draft and upload Accomplishment Report'
       });
@@ -450,6 +452,7 @@ export function getComplianceIssues(
     if (!hasLiquidation) {
       issues.push({
         level: 'Warning',
+        code: `MISSING_LIQUIDATION_${prog.id}`,
         message: `Missing Liquidation: Financial liquidation details for completed initiative "${prog.title}" are outstanding.`,
         action: 'Submit Liquidation Document Package'
       });
@@ -461,6 +464,7 @@ export function getComplianceIssues(
   if (pendingExpenses > 0) {
     issues.push({
       level: 'Urgent',
+      code: 'PENDING_EXPENSE_APPROVALS',
       message: `Unauthorized Ledgers: ${pendingExpenses} expense ledger logs are pending approval from the Treasurer/Chairperson.`,
       action: 'Review pending financial vouchers'
     });
@@ -471,6 +475,7 @@ export function getComplianceIssues(
   if (!hasBudgetDoc) {
     issues.push({
       level: 'Urgent',
+      code: 'MISSING_BUDGET_DOCUMENT',
       message: `Absolute Statutory Notice: No active Annual budget resolution (.pdf) is archived in your compliance folder.`,
       action: 'Upload official SK Annual Budget Resolution'
     });
@@ -569,8 +574,6 @@ export function getMostRequestedProgramTrends(feedbacks: FeedbackRecord[]): Arra
         requests++;
       }
     }
-    // Add realistic base demand from demographic registry if feedback count is small
-    const totalRequests = requests > 0 ? requests + 12 : Math.floor(Math.random() * 8) + 14;
-    return { program: cat.program, requests: totalRequests, icon: cat.icon };
+    return { program: cat.program, requests, icon: cat.icon };
   }).sort((a, b) => b.requests - a.requests);
 }

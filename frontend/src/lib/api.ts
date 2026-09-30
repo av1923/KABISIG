@@ -1,10 +1,45 @@
-import { BarangayTenant, YouthProfile } from '../types';
+import { BarangayTenant, ResolutionRecord, SystemAuditLog, YouthProfile } from '../types';
 import { NAGA_BARANGAYS } from '../data';
+
+export interface AnnouncementPayload {
+  title: string;
+  content: string;
+  what: string;
+  where: string;
+  when: string;
+  hashtags: string;
+  category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
+  status: 'draft' | 'published';
+  image?: {
+    file_name: string;
+    content_type: 'image/jpeg' | 'image/png';
+    file_base64: string;
+  };
+}
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
+function toResolutionRecord(poll: any): ResolutionRecord {
+  const numberLine = String(poll.description || '').split('\n').find(line => line.startsWith('Resolution Number: '));
+  const votes = poll.vote_counts || {};
+  return {
+    id: poll.id,
+    resolutionNumber: numberLine?.replace('Resolution Number: ', '') || `POLL-${String(poll.id).slice(0, 8)}`,
+    title: poll.question,
+    content: poll.description || '',
+    status: poll.is_active ? 'Voting Open' : 'Archived',
+    validityPeriod: `${String(poll.start_date).slice(0, 10)} - ${String(poll.end_date).slice(0, 10)}`,
+    votesSupport: Number(votes.support) || 0,
+    votesOppose: Number(votes.oppose) || 0,
+    votesAbstain: 0,
+    votedUsers: Array.isArray(poll.voted_users) ? poll.voted_users : [],
+    dateCreated: poll.created_at || poll.start_date,
+  };
+}
+
 class KabisigApiClient {
   private token: string | null = null;
+  private invalidating = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -30,7 +65,7 @@ class KabisigApiClient {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any }> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -38,7 +73,7 @@ class KabisigApiClient {
 
     const token = this.getToken();
     if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
+      headers.Authorization = "Bearer " + token;
     }
 
     try {
@@ -47,12 +82,21 @@ class KabisigApiClient {
         headers,
       });
 
-      const json = await response.json();
+      const json = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        this.setToken(null);
+        if (!this.invalidating && typeof window !== 'undefined') {
+          this.invalidating = true;
+          window.dispatchEvent(new CustomEvent('kabisig:auth-invalid'));
+          window.setTimeout(() => { this.invalidating = false; }, 0);
+        }
+      }
       if (!response.ok) {
         return {
           success: false,
           message: json.message || `Request failed with status ${response.status}`,
           error: json.error || json.details || null,
+          details: json.details,
         };
       }
 
@@ -117,6 +161,7 @@ class KabisigApiClient {
   async completeProfile(data: {
     full_name: string;
     phone?: string;
+    profile_pic?: string;
     birthdate: string;
     sex: string;
     address: string;
@@ -189,6 +234,7 @@ class KabisigApiClient {
     full_name: string;
     barangay_id: string;
     phone?: string;
+    profile_pic?: string;
     birthdate: string;
     sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address: string;
@@ -231,9 +277,42 @@ class KabisigApiClient {
     });
   }
 
+  async rejectUser(userId: string, reason: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/auth/reject-user', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, reason }),
+    });
+  }
+
   async getCurrentUser(): Promise<any> {
     const res = await this.request('/auth/me', { method: 'GET' });
     return res.success ? res.data : null;
+  }
+
+  async getAnnouncements(tenantId?: string): Promise<any[]> {
+    const url = tenantId ? `/announcements?tenant_id=${encodeURIComponent(tenantId)}` : '/announcements';
+    const res = await this.request<any[]>(url, { method: 'GET' });
+    if (!res.success) throw new Error(res.message || 'Announcements could not be loaded.');
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async createAnnouncement(payload: AnnouncementPayload): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/announcements', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async updateAnnouncement(id: string, payload: Partial<AnnouncementPayload>): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteAnnouncement(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  async publishAnnouncementToFacebook(announcementId: string): Promise<{ success: boolean; data?: { id: string; post_id: string; post_url: string; posted_at: string; persisted: true }; message?: string; details?: { graph?: { code?: number; type?: string; message?: string } } }> {
+    return await this.request('/social/facebook/publish', {
+      method: 'POST',
+      body: JSON.stringify({ announcement_id: announcementId }),
+    });
   }
 
   logout() {
@@ -255,11 +334,78 @@ class KabisigApiClient {
     });
   }
 
+  async registerForProgram(programId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/programs/${encodeURIComponent(programId)}/register`, {
+      method: 'POST',
+    });
+  }
+
+  async getMyProgramRegistrations(): Promise<any[] | null> {
+    const res = await this.request<any[]>('/programs/registrations/mine', { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : null;
+  }
+
+  async getProgramRegistrations(programId: string): Promise<any[] | null> {
+    const res = await this.request<any[]>(`/programs/${encodeURIComponent(programId)}/registrations`, { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : null;
+  }
+
+  async getPolls(): Promise<ResolutionRecord[] | null> {
+    const res = await this.request<any[]>('/polls', { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data.map(toResolutionRecord) : null;
+  }
+
+  async createPoll(payload: {
+    question: string;
+    description: string;
+    options: string[];
+    start_date: string;
+    end_date: string;
+  }): Promise<{ success: boolean; data?: ResolutionRecord; message?: string }> {
+    const res = await this.request<any>('/polls', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return {
+      success: res.success,
+      data: res.success && res.data ? toResolutionRecord(res.data) : undefined,
+      message: res.message,
+    };
+  }
+
+  async voteOnPoll(pollId: string, voteChoice: 'Support' | 'Oppose'): Promise<{ success: boolean; data?: ResolutionRecord; message?: string }> {
+    const res = await this.request<any>(`/polls/${encodeURIComponent(pollId)}/vote`, {
+      method: 'POST',
+      body: JSON.stringify({ vote_choice: voteChoice }),
+    });
+    return {
+      success: res.success,
+      data: res.success && res.data ? toResolutionRecord(res.data) : undefined,
+      message: res.message,
+    };
+  }
+
+  async recordProgramAttendance(programId: string, qrPayload: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/programs/${encodeURIComponent(programId)}/attendance`, {
+      method: 'POST',
+      body: JSON.stringify({ qr_payload: qrPayload }),
+    });
+  }
+
+  async getProgramAttendance(programId: string): Promise<any[] | null> {
+    const res = await this.request<any[]>(`/programs/${encodeURIComponent(programId)}/attendance`, { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : null;
+  }
+
   async updateProgram(id: string, programData: any): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/programs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(programData),
     });
+  }
+
+  async deleteProgram(id: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request(`/programs/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   // --- DOCUMENTS ---
@@ -269,30 +415,96 @@ class KabisigApiClient {
     return res.success && res.data ? res.data : [];
   }
 
-  async uploadDocument(payload: {
-    title: string;
-    document_type: string;
-    file_url: string;
-    status?: string;
-  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
-    return await this.request('/documents', {
+  async persistComplianceIssue(payload: {
+    report_type: string;
+    fiscal_year: number;
+    status?: 'pending' | 'submitted' | 'approved' | 'rejected' | 'overdue';
+    notes?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/analytics/compliance', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   }
 
-  async approveDocument(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+  async persistBudgetAlert(payload: {
+    alert_code: string;
+    level: 'Critical' | 'Warning' | 'Info';
+    message: string;
+    link?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/analytics/budget-alerts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getDocumentDownloadUrl(id: string): Promise<{ success: boolean; data?: { url: string; expires_in: number }; message?: string }> {
+    return await this.request(`/documents/${encodeURIComponent(id)}/download`, { method: 'GET' });
+  }
+
+  async uploadDocument(payload: {
+    title: string;
+    document_type: string;
+    file: File;
+  }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    const allowedTypes = new Set([
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/jpeg',
+      'image/png',
+    ]);
+    const allowedExtensions = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']);
+    const extension = payload.file.name.toLowerCase().split('.').pop() || '';
+    if (payload.file.size < 1 || payload.file.size > 25 * 1024 * 1024) {
+      return { success: false, message: 'Files must be between 1 byte and 25 MB.' };
+    }
+    if (!allowedTypes.has(payload.file.type) || !allowedExtensions.has(extension)) {
+      return { success: false, message: 'Only PDF, Word (.doc/.docx), JPG, and PNG files are allowed.' };
+    }
+    const bytes = new Uint8Array(await payload.file.arrayBuffer());
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+
+    return await this.request('/documents/upload', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: payload.title,
+        document_type: payload.document_type,
+        file_name: payload.file.name,
+        content_type: payload.file.type || 'application/octet-stream',
+        file_base64: btoa(binary),
+      }),
+    });
+  }
+
+  async approveDocument(id: string, feedback?: string): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/documents/${id}/approve`, {
-      method: 'PUT',
+      method: 'PATCH',
+      body: JSON.stringify({ feedback }),
+    });
+  }
+
+  async rejectDocument(id: string, feedback: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/documents/${id}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify({ feedback }),
     });
   }
 
   // --- BUDGET & EXPENSES ---
-  async getBudgets(tenantId?: string): Promise<any[]> {
-    const url = tenantId ? `/budget?tenant_id=${tenantId}` : '/budget';
+  async getBudgets(tenantId?: string, fiscalYear = new Date().getFullYear()): Promise<any[]> {
+    const params = new URLSearchParams({ fiscal_year: String(fiscalYear) });
+    if (tenantId) params.set('tenant_id', tenantId);
+    const url = `/budget?${params.toString()}`;
     const res = await this.request<any>(url, { method: 'GET' });
     if (res.success && res.data) {
       if (Array.isArray(res.data)) return res.data;
+      if (Array.isArray(res.data.budgets)) return res.data.budgets;
       if (res.data.allocations && Array.isArray(res.data.allocations)) return res.data.allocations;
       return [res.data];
     }
@@ -334,17 +546,35 @@ class KabisigApiClient {
     return res.success && res.data ? res.data : null;
   }
 
+  async getAuditLogs(limit = 200): Promise<SystemAuditLog[] | null> {
+    const res = await this.request<SystemAuditLog[]>(`/admin/audit-logs?limit=${limit}`, { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : null;
+  }
+
   // --- FEEDBACK ---
   async getFeedback(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/feedback?tenant_id=${tenantId}` : '/feedback';
-    const res = await this.request<any[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    const res = await this.request<any>(url, { method: 'GET' });
+    if (!res.success || !res.data) return [];
+    if (Array.isArray(res.data)) return res.data;
+    return Array.isArray(res.data.feedbacks) ? res.data.feedbacks : [];
   }
 
   async submitFeedback(data: any): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request('/feedback', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  async respondToFeedback(
+    id: string,
+    response: string,
+    status: 'under_review' | 'resolved' | 'dismissed' = 'resolved'
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/feedback/${encodeURIComponent(id)}/respond`, {
+      method: 'PATCH',
+      body: JSON.stringify({ response, status }),
     });
   }
 
@@ -360,8 +590,12 @@ class KabisigApiClient {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
   }
 
-  async getYouthProfiles(tenantId?: string): Promise<YouthProfile[]> {
-    const url = tenantId ? `/users/youth-profiles?tenant_id=${tenantId}` : '/users/youth-profiles';
+  async getYouthProfiles(tenantId?: string, includeOfficials = false): Promise<YouthProfile[]> {
+    const params = new URLSearchParams();
+    if (tenantId) params.set('tenant_id', tenantId);
+    if (includeOfficials) params.set('include_officials', 'true');
+    const query = params.toString();
+    const url = query ? `/users/youth-profiles?${query}` : '/users/youth-profiles';
     const res = await this.request<YouthProfile[]>(url, { method: 'GET' });
     return res.success && res.data ? res.data : [];
   }

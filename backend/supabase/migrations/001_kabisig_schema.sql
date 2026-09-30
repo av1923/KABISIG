@@ -7,29 +7,13 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ------------------------------------------------------------------------------
--- CLEANUP / RESET EXISTING TABLES (Safe for fresh or re-run setup)
+-- CREATE TABLE IF NOT EXISTS preserves existing application data on reruns.
 -- ------------------------------------------------------------------------------
-DROP TABLE IF EXISTS public.program_attendance CASCADE;
-DROP TABLE IF EXISTS public.program_registrations CASCADE;
-DROP TABLE IF EXISTS public.poll_responses CASCADE;
-DROP TABLE IF EXISTS public.polls CASCADE;
-DROP TABLE IF EXISTS public.social_media_posts CASCADE;
-DROP TABLE IF EXISTS public.audit_logs CASCADE;
-DROP TABLE IF EXISTS public.feedback CASCADE;
-DROP TABLE IF EXISTS public.documents CASCADE;
-DROP TABLE IF EXISTS public.inventory CASCADE;
-DROP TABLE IF EXISTS public.expense CASCADE;
-DROP TABLE IF EXISTS public.budget CASCADE;
-DROP TABLE IF EXISTS public.program CASCADE;
-DROP TABLE IF EXISTS public.resident_profile CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
-DROP TABLE IF EXISTS public.roles CASCADE;
-DROP TABLE IF EXISTS public.barangay CASCADE;
 
 -- ------------------------------------------------------------------------------
 -- 1. BARANGAY TABLE (Multi-Tenant Root)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.barangay (
+CREATE TABLE IF NOT EXISTS public.barangay (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
     city TEXT NOT NULL DEFAULT 'Naga City',
@@ -41,7 +25,7 @@ CREATE TABLE public.barangay (
 -- ------------------------------------------------------------------------------
 -- 2. ROLES TABLE
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.roles (
+CREATE TABLE IF NOT EXISTS public.roles (
     id SERIAL PRIMARY KEY,
     role_name TEXT NOT NULL UNIQUE,
     description TEXT,
@@ -100,7 +84,7 @@ SET name = EXCLUDED.name, city = EXCLUDED.city, district = EXCLUDED.district;
 -- ------------------------------------------------------------------------------
 -- 3. USERS TABLE (Linked to Supabase auth.users)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.users (
+CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     tenant_id UUID REFERENCES public.barangay(id) ON DELETE SET NULL,
     role_id INT NOT NULL REFERENCES public.roles(id) DEFAULT 4,
@@ -113,14 +97,14 @@ CREATE TABLE public.users (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_users_tenant_id ON public.users(tenant_id);
-CREATE INDEX idx_users_role_id ON public.users(role_id);
-CREATE INDEX idx_users_status ON public.users(status);
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON public.users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_users_role_id ON public.users(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_status ON public.users(status);
 
 -- ------------------------------------------------------------------------------
 -- 4. RESIDENT_PROFILE TABLE (15-30 Youth Age Verification)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.resident_profile (
+CREATE TABLE IF NOT EXISTS public.resident_profile (
     user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     birthdate DATE NOT NULL,
@@ -135,8 +119,8 @@ CREATE TABLE public.resident_profile (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_resident_profile_tenant_id ON public.resident_profile(tenant_id);
-CREATE INDEX idx_resident_profile_digital_id ON public.resident_profile(digital_youth_id);
+CREATE INDEX IF NOT EXISTS idx_resident_profile_tenant_id ON public.resident_profile(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_resident_profile_digital_id ON public.resident_profile(digital_youth_id);
 
 -- Enforce 15-30 age requirement per Republic Act No. 10742 (SK Reform Act)
 CREATE OR REPLACE FUNCTION public.check_resident_age()
@@ -161,7 +145,7 @@ CREATE TRIGGER trg_check_resident_age
 -- ------------------------------------------------------------------------------
 -- 5. PROGRAM TABLE
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.program (
+CREATE TABLE IF NOT EXISTS public.program (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
@@ -178,13 +162,13 @@ CREATE TABLE public.program (
     CONSTRAINT chk_program_dates CHECK (end_date >= start_date)
 );
 
-CREATE INDEX idx_program_tenant_id ON public.program(tenant_id);
-CREATE INDEX idx_program_status ON public.program(status);
+CREATE INDEX IF NOT EXISTS idx_program_tenant_id ON public.program(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_program_status ON public.program(status);
 
 -- ------------------------------------------------------------------------------
 -- 6. PROGRAM_REGISTRATIONS & ATTENDANCE
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.program_registrations (
+CREATE TABLE IF NOT EXISTS public.program_registrations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     program_id UUID NOT NULL REFERENCES public.program(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -195,11 +179,11 @@ CREATE TABLE public.program_registrations (
     CONSTRAINT uq_program_user_reg UNIQUE (program_id, user_id)
 );
 
-CREATE INDEX idx_program_reg_program ON public.program_registrations(program_id);
-CREATE INDEX idx_program_reg_user ON public.program_registrations(user_id);
-CREATE INDEX idx_program_reg_tenant ON public.program_registrations(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_program_reg_program ON public.program_registrations(program_id);
+CREATE INDEX IF NOT EXISTS idx_program_reg_user ON public.program_registrations(user_id);
+CREATE INDEX IF NOT EXISTS idx_program_reg_tenant ON public.program_registrations(tenant_id);
 
-CREATE TABLE public.program_attendance (
+CREATE TABLE IF NOT EXISTS public.program_attendance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     program_id UUID NOT NULL REFERENCES public.program(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -210,14 +194,14 @@ CREATE TABLE public.program_attendance (
     CONSTRAINT uq_attendance_program_user UNIQUE (program_id, user_id) -- Duplicate check-in prevention
 );
 
-CREATE INDEX idx_attendance_program ON public.program_attendance(program_id);
-CREATE INDEX idx_attendance_user ON public.program_attendance(user_id);
-CREATE INDEX idx_attendance_tenant ON public.program_attendance(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_program ON public.program_attendance(program_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_user ON public.program_attendance(user_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_tenant ON public.program_attendance(tenant_id);
 
 -- ------------------------------------------------------------------------------
 -- 7. BUDGET & EXPENSE TABLES (With Fiscal & Tax Calculations)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.budget (
+CREATE TABLE IF NOT EXISTS public.budget (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     fiscal_year INT NOT NULL,
@@ -230,9 +214,9 @@ CREATE TABLE public.budget (
     CONSTRAINT uq_tenant_fiscal_cat UNIQUE (tenant_id, fiscal_year, category)
 );
 
-CREATE INDEX idx_budget_tenant_year ON public.budget(tenant_id, fiscal_year);
+CREATE INDEX IF NOT EXISTS idx_budget_tenant_year ON public.budget(tenant_id, fiscal_year);
 
-CREATE TABLE public.expense (
+CREATE TABLE IF NOT EXISTS public.expense (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     budget_id UUID NOT NULL REFERENCES public.budget(id) ON DELETE RESTRICT,
@@ -252,13 +236,13 @@ CREATE TABLE public.expense (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_expense_tenant_id ON public.expense(tenant_id);
-CREATE INDEX idx_expense_budget_id ON public.expense(budget_id);
+CREATE INDEX IF NOT EXISTS idx_expense_tenant_id ON public.expense(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_expense_budget_id ON public.expense(budget_id);
 
 -- ------------------------------------------------------------------------------
 -- 8. INVENTORY TABLE
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.inventory (
+CREATE TABLE IF NOT EXISTS public.inventory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     item_name TEXT NOT NULL,
@@ -271,12 +255,12 @@ CREATE TABLE public.inventory (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_inventory_tenant_id ON public.inventory(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_tenant_id ON public.inventory(tenant_id);
 
 -- ------------------------------------------------------------------------------
 -- 9. DOCUMENTS TABLE (Approval Workflow)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.documents (
+CREATE TABLE IF NOT EXISTS public.documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
@@ -290,13 +274,13 @@ CREATE TABLE public.documents (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_documents_tenant ON public.documents(tenant_id);
-CREATE INDEX idx_documents_status ON public.documents(status);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant ON public.documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON public.documents(status);
 
 -- ------------------------------------------------------------------------------
 -- 10. FEEDBACK TABLE (Boses ng Kabataan)
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.feedback (
+CREATE TABLE IF NOT EXISTS public.feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -311,13 +295,13 @@ CREATE TABLE public.feedback (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_feedback_tenant ON public.feedback(tenant_id);
-CREATE INDEX idx_feedback_sentiment ON public.feedback(sentiment);
+CREATE INDEX IF NOT EXISTS idx_feedback_tenant ON public.feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_sentiment ON public.feedback(sentiment);
 
 -- ------------------------------------------------------------------------------
 -- 11. POLLS & POLL RESPONSES
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.polls (
+CREATE TABLE IF NOT EXISTS public.polls (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     question TEXT NOT NULL,
@@ -330,7 +314,7 @@ CREATE TABLE public.polls (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE public.poll_responses (
+CREATE TABLE IF NOT EXISTS public.poll_responses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     poll_id UUID NOT NULL REFERENCES public.polls(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -343,7 +327,7 @@ CREATE TABLE public.poll_responses (
 -- ------------------------------------------------------------------------------
 -- 12. SOCIAL MEDIA POSTS
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.social_media_posts (
+CREATE TABLE IF NOT EXISTS public.social_media_posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
     platform TEXT NOT NULL,
@@ -357,7 +341,7 @@ CREATE TABLE public.social_media_posts (
 -- ------------------------------------------------------------------------------
 -- 13. AUDIT LOGS
 -- ------------------------------------------------------------------------------
-CREATE TABLE public.audit_logs (
+CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id UUID REFERENCES public.barangay(id) ON DELETE SET NULL,
     user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -369,8 +353,8 @@ CREATE TABLE public.audit_logs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_audit_logs_tenant ON public.audit_logs(tenant_id);
-CREATE INDEX idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON public.audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
 
 -- ==============================================================================
 -- 14. ROW LEVEL SECURITY (RLS) POLICIES
