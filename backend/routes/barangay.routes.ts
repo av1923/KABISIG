@@ -104,7 +104,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, city, district, created_at, updated_at')
+      .select('id, name, city, district, sk_district, created_at, updated_at')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -144,11 +144,14 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
     });
 
     // Fetch registered youth population per barangay (users with role_id = 4: YOUTH_CONSTITUENT)
-    const { data: youthUsers } = await supabaseAdmin
+    const { data: youthUsers, error: youthUsersError } = await supabaseAdmin
       .from('users')
       .select('tenant_id')
       .eq('role_id', 4)
       .eq('status', 'active');
+    if (youthUsersError) {
+      console.warn('Unable to load live youth counts for barangays:', youthUsersError.message);
+    }
 
     const youthCountMap = new Map<string, number>();
     youthUsers?.forEach((u) => {
@@ -182,10 +185,12 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         name: b.name,
         city: b.city,
         district: b.district,
+        skDistrict: b.sk_district ?? null,
         chairperson: chair?.full_name || 'Unassigned',
         chairpersonEmail: chair?.email || '',
         contact: chair?.phone || '',
         youthPopulation: youthCountMap.get(b.id) || 0,
+        youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
         totalBudget: budget.allocated,
         allocatedBudget: budget.allocated,

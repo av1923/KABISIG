@@ -20,7 +20,7 @@ router.post('/facebook/publish', authenticateUser, requireActiveUser, requireRol
     const user = req.user;
     const { data: announcement, error: announcementError } = await supabaseAdmin
         .from('announcement')
-        .select('id, tenant_id, title, content, status')
+        .select('id, tenant_id, title, content, what, where_text, event_when, hashtags, status')
         .eq('id', parsed.data.announcement_id)
         .maybeSingle();
     if (announcementError) {
@@ -41,7 +41,14 @@ router.post('/facebook/publish', authenticateUser, requireActiveUser, requireRol
     }
     const version = process.env.FACEBOOK_GRAPH_VERSION || 'v25.0';
     const graphUrl = `https://graph.facebook.com/${encodeURIComponent(version)}/${encodeURIComponent(pageId)}/feed`;
-    const message = `${announcement.title}\n\n${announcement.content}`;
+    const details = [
+        announcement.what ? `What: ${announcement.what}` : '',
+        announcement.where_text ? `Where: ${announcement.where_text}` : '',
+        announcement.event_when ? `When: ${announcement.event_when}` : '',
+        announcement.content,
+        announcement.hashtags || '',
+    ].filter(Boolean).join('\n\n');
+    const message = `${announcement.title}\n\n${details}`;
     try {
         const graphResponse = await fetch(graphUrl, {
             method: 'POST',
@@ -79,7 +86,6 @@ router.post('/facebook/publish', authenticateUser, requireActiveUser, requireRol
             post_url: postUrl,
             content: message,
             posted_at: postedAt,
-            metrics: { likes: 0, reach: 0, shares: 0, comments: 0 },
         })
             .select('id, post_url, posted_at')
             .single();

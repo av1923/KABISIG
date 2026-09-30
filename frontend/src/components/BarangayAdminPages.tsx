@@ -46,13 +46,14 @@ import {
   FileCheck,
   XCircle,
   Facebook,
+  Pencil,
   Printer,
   FileSpreadsheet,
-  Share2,
   Sparkles,
   Layers,
   HelpCircle,
-  TrendingUpIcon
+  TrendingUpIcon,
+  Trash2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -527,15 +528,20 @@ export default function BarangayAdminPages({
     void persistAlerts();
   }, [budgetAlertSignature, currentBarangay?.id, currentUser?.id]);
 
-  const [fbAutoSyncEnabled, setFbAutoSyncEnabled] = useState(true);
   const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
   const [announcementError, setAnnouncementError] = useState('');
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
 
   const [annTitle, setAnnTitle] = useState('');
-  const [annCategory, setAnnCategory] = useState('Notice');
+  const [annWhat, setAnnWhat] = useState('');
+  const [annWhere, setAnnWhere] = useState('');
+  const [annWhen, setAnnWhen] = useState('');
   const [annContent, setAnnContent] = useState('');
-  const [annTarget, setAnnTarget] = useState('All Zones');
+  const [annHashtags, setAnnHashtags] = useState('');
+  const [annImageFile, setAnnImageFile] = useState<File | null>(null);
+  const [annImagePreview, setAnnImagePreview] = useState('');
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
+  const [mutatingAnnouncementId, setMutatingAnnouncementId] = useState<string | null>(null);
   const [annPostToFb, setAnnPostToFb] = useState(false);
   const [announcementSuccess, setAnnouncementSuccess] = useState('');
   const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
@@ -545,10 +551,16 @@ export default function BarangayAdminPages({
     id: announcement.id,
     title: announcement.title,
     content: announcement.content,
+    what: announcement.what || '',
+    where: announcement.where_text || '',
+    when: announcement.event_when || '',
+    hashtags: announcement.hashtags || '',
+    imageUrl: announcement.image_url || '',
     author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
     barangay: currentBarangay?.name || 'Barangay',
     datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
     category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
+    status: announcement.status,
     attachments: [],
     facebookPostUrl: facebookPosts[announcement.id]?.post_url,
     facebookPostId: facebookPosts[announcement.id]?.post_id,
@@ -580,18 +592,48 @@ export default function BarangayAdminPages({
 
   const handlePublishAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!annTitle.trim() || !annContent.trim() || isSubmittingAnnouncement) return;
+    if (!annTitle.trim() || !annWhat.trim() || !annWhere.trim() || !annWhen.trim()
+      || !annContent.trim() || !annHashtags.trim() || isSubmittingAnnouncement) return;
     setIsSubmittingAnnouncement(true);
     setAnnouncementError('');
     setAnnouncementSuccess('');
     try {
-      const apiCategory: AnnouncementRecord['category'] = annCategory === 'Advisory' ? 'Notice' : annCategory as AnnouncementRecord['category'];
-      const result = await kabisigApi.createAnnouncement({
+      const imagePayload = annImageFile
+        ? await new Promise<{ file_name: string; content_type: 'image/jpeg' | 'image/png'; file_base64: string }>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = typeof reader.result === 'string' ? reader.result : '';
+              const base64 = dataUrl.split(',')[1];
+              if (!base64) {
+                reject(new Error('The selected pubmat could not be read.'));
+                return;
+              }
+              resolve({
+                file_name: annImageFile.name,
+                content_type: annImageFile.type as 'image/jpeg' | 'image/png',
+                file_base64: base64,
+              });
+            };
+            reader.onerror = () => reject(new Error('The selected pubmat could not be read.'));
+            reader.readAsDataURL(annImageFile);
+          })
+        : undefined;
+      const payload = {
         title: annTitle.trim(),
-        content: `${annContent.trim()}${annTarget !== 'All Zones' ? `\nTarget: ${annTarget}` : ''}`,
-        category: apiCategory,
-        status: 'published',
-      });
+        content: annContent.trim(),
+        what: annWhat.trim(),
+        where: annWhere.trim(),
+        when: annWhen.trim(),
+        hashtags: annHashtags.trim(),
+        category: 'Notice' as const,
+        status: editingAnnouncementId
+          ? announcementsList.find(item => item.id === editingAnnouncementId)?.status === 'draft' ? 'draft' as const : 'published' as const
+          : 'published' as const,
+        ...(imagePayload ? { image: imagePayload } : {}),
+      };
+      const result = editingAnnouncementId
+        ? await kabisigApi.updateAnnouncement(editingAnnouncementId, payload)
+        : await kabisigApi.createAnnouncement(payload);
       if (!result.success || !result.data) {
         const message = result.message || 'Announcement could not be saved.';
         setAnnouncementError(message.includes('not configured') || message.includes('schema cache')
@@ -599,9 +641,17 @@ export default function BarangayAdminPages({
           : message);
         return;
       }
+      const wasEditing = Boolean(editingAnnouncementId);
       setAnnTitle('');
+      setAnnWhat('');
+      setAnnWhere('');
+      setAnnWhen('');
       setAnnContent('');
-      if (annPostToFb) {
+      setAnnHashtags('');
+      setAnnImageFile(null);
+      setAnnImagePreview('');
+      setEditingAnnouncementId(null);
+      if (!wasEditing && annPostToFb) {
         const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
         if (!facebookResult.success || !facebookResult.data) {
           const graphError = facebookResult.details?.graph;
@@ -614,11 +664,63 @@ export default function BarangayAdminPages({
           setAnnouncementSuccess('Announcement published to portal and Facebook.');
         }
       } else {
-        setAnnouncementSuccess('Announcement published to the portal.');
+        setAnnouncementSuccess(wasEditing ? 'Announcement updated.' : 'Announcement published to the portal.');
       }
+      setAnnPostToFb(false);
       await refreshAnnouncements();
+    } catch (error: any) {
+      setAnnouncementError(error?.message || 'Announcement could not be saved.');
     } finally {
       setIsSubmittingAnnouncement(false);
+    }
+  };
+
+  const handleEditAnnouncement = (announcement: AnnouncementRecord) => {
+    setEditingAnnouncementId(announcement.id);
+    setAnnTitle(announcement.title);
+    setAnnWhat(announcement.what || '');
+    setAnnWhere(announcement.where || '');
+    setAnnWhen(announcement.when || '');
+    setAnnContent(announcement.content);
+    setAnnHashtags(announcement.hashtags || '');
+    setAnnImageFile(null);
+    setAnnImagePreview(announcement.imageUrl || '');
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelAnnouncementEdit = () => {
+    setEditingAnnouncementId(null);
+    setAnnTitle('');
+    setAnnWhat('');
+    setAnnWhere('');
+    setAnnWhen('');
+    setAnnContent('');
+    setAnnHashtags('');
+    setAnnImageFile(null);
+    setAnnImagePreview('');
+    setAnnouncementError('');
+  };
+
+  const handleDeleteAnnouncement = async (announcement: AnnouncementRecord) => {
+    if (!window.confirm(`Delete "${announcement.title}"? This cannot be undone.`)) return;
+    setMutatingAnnouncementId(announcement.id);
+    setAnnouncementError('');
+    setAnnouncementSuccess('');
+    try {
+      const result = await kabisigApi.deleteAnnouncement(announcement.id);
+      if (!result.success) {
+        setAnnouncementError(result.message || 'Announcement could not be deleted.');
+        return;
+      }
+      if (editingAnnouncementId === announcement.id) handleCancelAnnouncementEdit();
+      setAnnouncementSuccess(result.message || 'Announcement deleted.');
+      await refreshAnnouncements();
+    } catch (error: any) {
+      setAnnouncementError(error?.message || 'Announcement could not be deleted.');
+    } finally {
+      setMutatingAnnouncementId(null);
     }
   };
 
@@ -773,6 +875,13 @@ export default function BarangayAdminPages({
     }
     setShowCreateProgDrawer(true);
   };
+  const announcementStatusCards = [
+    { label: 'Total Published', count: announcementsList.filter(item => item.status === 'published').length, icon: Megaphone, color: 'text-blue-700', background: 'bg-blue-50' },
+    { label: 'Draft', count: announcementsList.filter(item => item.status === 'draft').length, icon: FileText, color: 'text-slate-700', background: 'bg-slate-100' },
+    { label: 'Scheduled', count: announcementsList.filter(item => item.status === 'scheduled').length, icon: Clock, color: 'text-amber-700', background: 'bg-amber-50' },
+    { label: 'Posted', count: announcementsList.filter(item => item.status === 'published').length, icon: CheckCircle2, color: 'text-emerald-700', background: 'bg-emerald-50' },
+    { label: 'Failed', count: announcementsList.filter(item => item.status === 'failed').length, icon: AlertTriangle, color: 'text-rose-700', background: 'bg-rose-50' },
+  ];
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
@@ -790,7 +899,7 @@ export default function BarangayAdminPages({
           )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
-        <button 
+        <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
         >
@@ -2005,19 +2114,9 @@ export default function BarangayAdminPages({
           {/* 7. ANNOUNCEMENTS */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6 text-left animate-in fade-in duration-200">
-              <div className="flex flex-col gap-4 rounded-2xl bg-gradient-to-r from-[#091d64] to-blue-700 p-5 text-white shadow-md sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <Facebook className="mt-0.5 h-6 w-6" />
-                  <div><h3 className="text-base font-black">Facebook Integration</h3><p className="text-xs text-blue-100">Publish portal announcements to your official Facebook page.</p></div>
-                </div>
-                <div className="flex items-center gap-4 text-xs font-bold">
-                  <span className="rounded-full bg-emerald-400/20 px-3 py-1.5 text-emerald-100"><span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-300" />Connected &amp; Active</span>
-                  <label className="flex items-center gap-2"><span>Auto-Sync</span><input type="checkbox" checked={fbAutoSyncEnabled} onChange={e => setFbAutoSyncEnabled(e.target.checked)} className="h-4 w-4 rounded border-white/40 text-blue-700" /></label>
-                </div>
-              </div>
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,.85fr)]">
               <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
-                <h4 className="mb-5 flex items-center gap-2 text-sm font-black text-slate-800"><Megaphone className="h-4 w-4 text-[#091d64]" />Compose Announcement</h4>
+                <h4 className="mb-5 flex items-center gap-2 text-sm font-black text-slate-800"><Megaphone className="h-4 w-4 text-[#091d64]" />{editingAnnouncementId ? 'Edit Announcement' : 'Compose Announcement'}</h4>
                 <form onSubmit={handlePublishAnnouncement} className="space-y-4 text-xs font-semibold">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Announcement Title *</label>
@@ -2030,49 +2129,106 @@ export default function BarangayAdminPages({
                       required
                     />
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Category</label><select value={annCategory} onChange={e => setAnnCategory(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>Notice</option><option>Opportunity</option><option>Emergency</option><option>Event</option></select></div>
-                    <div><label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Target audience</label><select value={annTarget} onChange={e => setAnnTarget(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5"><option>All Zones</option><option>Zone 1</option><option>Zone 2</option><option>Zone 3</option></select></div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">What *</label>
+                      <input value={annWhat} onChange={e => setAnnWhat(e.target.value)} placeholder="What is happening?" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Where *</label>
+                      <input value={annWhere} onChange={e => setAnnWhere(e.target.value)} placeholder="Venue or location" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">When *</label>
+                      <input value={annWhen} onChange={e => setAnnWhen(e.target.value)} placeholder="Date and time" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" required />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Body Content *</label>
                     <textarea 
                       value={annContent}
                       onChange={(e) => setAnnContent(e.target.value)}
-                      rows={4} 
+                      rows={5}
                       placeholder="Type announcement details..." 
                       className="w-full p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#091d64] bg-slate-50 focus:bg-white"
                       required
                     />
                   </div>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Hashtags *</label>
+                    <input value={annHashtags} onChange={e => setAnnHashtags(e.target.value)} placeholder="#KABISIG #Kabataan" className="w-full p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:bg-white" required />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Announcement Pubmat (JPG or PNG)</label>
                     <input
-                      type="checkbox"
-                      checked={annPostToFb}
-                      onChange={(e) => setAnnPostToFb(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                      type="file"
+                      accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                      onChange={event => {
+                        const file = event.currentTarget.files?.[0] || null;
+                        if (!file) return;
+                        const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
+                        const validExtension = /\.(jpe?g|png)$/i.test(file.name);
+                        if (!validMime || !validExtension || file.size > 10 * 1024 * 1024) {
+                          setAnnouncementError('Select a JPG or PNG image no larger than 10 MB.');
+                          event.currentTarget.value = '';
+                          return;
+                        }
+                        setAnnouncementError('');
+                        setAnnImageFile(file);
+                        setAnnImagePreview('');
+                      }}
+                      className="block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-[#091d64]"
                     />
-                    Also publish to Facebook
-                    <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
-                  </label>
-                  <button 
-                    type="submit"
-                    disabled={isSubmittingAnnouncement}
-                    className="py-2.5 px-5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs cursor-pointer shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isSubmittingAnnouncement ? 'Publishing...' : 'Publish Announcement'}
-                  </button>
+                    {annImageFile && <p className="mt-1 text-[10px] text-slate-500">{annImageFile.name}</p>}
+                    {!annImageFile && annImagePreview && (
+                      <img src={annImagePreview} alt="Current announcement pubmat" className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain" />
+                    )}
+                  </div>
+                  {!editingAnnouncementId && (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={annPostToFb}
+                        onChange={(e) => setAnnPostToFb(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                      />
+                      Also publish to Facebook
+                      <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAnnouncement}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#091d64] px-5 py-2.5 text-xs font-bold text-white shadow-xs transition-all hover:bg-opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isSubmittingAnnouncement ? 'Saving...' : editingAnnouncementId ? 'Update Announcement' : 'Publish Announcement'}
+                    </button>
+                    {editingAnnouncementId && (
+                      <button type="button" onClick={handleCancelAnnouncementEdit} disabled={isSubmittingAnnouncement} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-50">
+                        Cancel edit
+                      </button>
+                    )}
+                  </div>
                   {announcementSuccess && <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{announcementSuccess}</p>}
                   {announcementError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{announcementError}</p>}
                 </form>
               </div>
               <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  {[['Total Published', String(announcementsList.length), Megaphone, 'Persisted portal posts'], ['Facebook Reach', 'No data', Users, 'No synced metrics'], ['Social Engagement', 'No data', Share2, 'No synced metrics']].map(([label, value, Icon, note]: any) => <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm"><Icon className="mb-3 h-4 w-4 text-blue-600" /><p className="text-xl font-black text-[#091d64]">{value}</p><p className="mt-1 text-[10px] font-bold uppercase text-slate-400">{label}</p><p className="mt-1 text-[9px] font-medium text-slate-400">{note}</p></div>)}
+                <div className="grid grid-cols-2 gap-3">
+                  {announcementStatusCards.map(({ label, count, icon: Icon, color, background }) => (
+                    <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                      <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${background}`}>
+                        <Icon className={`h-4 w-4 ${color}`} />
+                      </div>
+                      <p className="text-xl font-black text-[#091d64]">{count}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                    </div>
+                  ))}
                 </div>
                 <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">
-                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Active broadcasts</h5>
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">Announcements</h5>
                     <button type="button" onClick={() => void refreshAnnouncements()} className="text-[10px] font-bold text-[#091d64] hover:underline">{isLoadingAnnouncements ? 'Refreshing...' : 'Refresh'}</button>
                   </div>
                   {announcementsList.length ? (
@@ -2080,10 +2236,33 @@ export default function BarangayAdminPages({
                       {announcementsList.map((announcement: AnnouncementRecord) => (
                         <article key={announcement.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                           <div className="flex items-start justify-between gap-3">
-                            <h6 className="text-xs font-extrabold text-slate-800">{announcement.title}</h6>
-                            <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                            <div className="min-w-0">
+                              <h6 className="text-sm font-black text-slate-900">{announcement.title}</h6>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                <span className="rounded bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                                <span className={`rounded px-2 py-0.5 text-[9px] font-bold uppercase ${announcement.status === 'published' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{announcement.status || 'published'}</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 gap-1">
+                              <button type="button" aria-label={`Edit ${announcement.title}`} onClick={() => handleEditAnnouncement(announcement)} className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-700">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button type="button" aria-label={`Delete ${announcement.title}`} onClick={() => void handleDeleteAnnouncement(announcement)} disabled={mutatingAnnouncementId === announcement.id} className="rounded-md border border-slate-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <p className="mt-1 whitespace-pre-line text-[11px] font-medium text-slate-600">{announcement.content}</p>
+                          {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-64 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
+                          <div className="mt-3 space-y-2 text-[11px]">
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
+                            <p className="text-slate-600"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
+                            <div className="border-t border-slate-200 pt-2">
+                              <p className="font-bold text-slate-700">Body Content</p>
+                              <p className="mt-1 whitespace-pre-line font-medium text-slate-600">{announcement.content}</p>
+                            </div>
+                            {announcement.hashtags && <p className="border-t border-slate-200 pt-2 font-semibold text-blue-700">{announcement.hashtags}</p>}
+                          </div>
                           <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted} · {announcement.author}</p>
                           {(facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl) && <a href={facebookPosts[announcement.id]?.post_url || announcement.facebookPostUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:underline"><Facebook className="h-3 w-3" />View Facebook post</a>}
                         </article>

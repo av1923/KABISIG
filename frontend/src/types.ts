@@ -18,6 +18,7 @@ export interface BarangayTenant {
   name: string;
   chairperson: string;
   youthPopulation: number;
+  youthPopulationAvailable?: boolean;
   activePrograms: number;
   totalBudget: number;
   spentBudget: number;
@@ -27,6 +28,7 @@ export interface BarangayTenant {
   logo?: string;
   dateCreated?: string;
   district?: string;
+  skDistrict?: string | null;
   city?: string;
   chairpersonEmail?: string;
   mustChangePassword?: boolean;
@@ -198,9 +200,15 @@ export interface AnnouncementRecord {
   id: string;
   title: string;
   content: string;
+  what?: string;
+  where?: string;
+  when?: string;
+  hashtags?: string;
+  imageUrl?: string;
   author: string;
   barangay: string;
   datePosted: string;
+  status?: string;
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   attachments?: string[];
   facebookPostUrl?: string;

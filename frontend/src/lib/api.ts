@@ -1,6 +1,22 @@
 import { BarangayTenant, ResolutionRecord, SystemAuditLog, YouthProfile } from '../types';
 import { NAGA_BARANGAYS } from '../data';
 
+export interface AnnouncementPayload {
+  title: string;
+  content: string;
+  what: string;
+  where: string;
+  when: string;
+  hashtags: string;
+  category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
+  status: 'draft' | 'published';
+  image?: {
+    file_name: string;
+    content_type: 'image/jpeg' | 'image/png';
+    file_base64: string;
+  };
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 function toResolutionRecord(poll: any): ResolutionRecord {
@@ -280,8 +296,16 @@ class KabisigApiClient {
     return Array.isArray(res.data) ? res.data : [];
   }
 
-  async createAnnouncement(payload: { title: string; content: string; category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event'; status?: 'draft' | 'published' }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async createAnnouncement(payload: AnnouncementPayload): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request('/announcements', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async updateAnnouncement(id: string, payload: Partial<AnnouncementPayload>): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteAnnouncement(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   async publishAnnouncementToFacebook(announcementId: string): Promise<{ success: boolean; data?: { id: string; post_id: string; post_url: string; posted_at: string; persisted: true }; message?: string; details?: { graph?: { code?: number; type?: string; message?: string } } }> {

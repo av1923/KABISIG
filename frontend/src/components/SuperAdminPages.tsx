@@ -12,8 +12,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { BarangayTenant, DocumentRecord, Program, SystemAuditLog } from '../types';
-import { DEFAULT_BARANGAY_LOGOS, BARANGAY_DISTRICTS } from '../data';
+import { BarangayTenant, Program, SystemAuditLog } from '../types';
+import { DEFAULT_BARANGAY_LOGOS, BARANGAY_SK_DISTRICTS } from '../data';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProgramTrendD3 from './charts/ProgramTrendD3';
@@ -22,12 +22,10 @@ import { kabisigApi } from '../lib/api';
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
   programs: Program[];
-  documents: DocumentRecord[];
   auditLogs: SystemAuditLog[];
   onSyncBarangay: (id: string, updates: Partial<BarangayTenant>) => void;
   onUpdateBarangay: (id: string, updated: Partial<BarangayTenant>) => Promise<void> | void;
   onRefreshAuditLogs: () => Promise<void>;
-  onReviewDocument: (id: string, decision: 'approved' | 'rejected', notes: string) => Promise<DocumentRecord>;
   onLogout: () => void;
   userEmail: string;
 }
@@ -35,12 +33,10 @@ interface SuperAdminPagesProps {
 export default function SuperAdminPages({
   barangays,
   programs,
-  documents,
   auditLogs,
   onSyncBarangay,
   onUpdateBarangay,
   onRefreshAuditLogs,
-  onReviewDocument,
   onLogout,
   userEmail
 }: SuperAdminPagesProps) {
@@ -67,15 +63,11 @@ export default function SuperAdminPages({
   const [assignNotice, setAssignNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
-  const [districtFilter, setDistrictFilter] = useState<'All' | 'District 1' | 'District 2'>('All');
+  const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
+  const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
   const [federationAnalytics, setFederationAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState('');
-  const [documentReviewTarget, setDocumentReviewTarget] = useState<DocumentRecord | null>(null);
-  const [documentReviewDecision, setDocumentReviewDecision] = useState<'approved' | 'rejected'>('approved');
-  const [documentReviewNotes, setDocumentReviewNotes] = useState('');
-  const [isReviewingDocument, setIsReviewingDocument] = useState(false);
-  const [documentReviewError, setDocumentReviewError] = useState('');
 
   // Tenant Provisioning Modals
   const [showModal, setShowModal] = useState(false);
@@ -156,12 +148,15 @@ export default function SuperAdminPages({
 
   // Filtered Barangays list
   const filteredBarangays = sortedBarangays.filter(b => {
-    const bgyDistrict = b.district || BARANGAY_DISTRICTS[b.name] || 'District 1';
+    const bgyDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name];
     const matchesSearch = b.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           b.chairperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (b.chairpersonEmail && b.chairpersonEmail.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesDistrict = districtFilter === 'All' || bgyDistrict === districtFilter;
-    return matchesSearch && matchesDistrict;
+    const isAssigned = Boolean(b.chairperson?.trim() && b.chairperson.toLowerCase() !== 'unassigned');
+    const matchesChairperson = chairpersonFilter === 'All'
+      || (chairpersonFilter === 'Assigned' ? isAssigned : !isAssigned);
+    return matchesSearch && matchesDistrict && matchesChairperson;
   });
 
   const handleOpenAssignModal = (b?: BarangayTenant) => {
@@ -295,18 +290,6 @@ export default function SuperAdminPages({
     }
   };
 
-  const handleRefreshAnalytics = async () => {
-    setAnalyticsLoading(true);
-    const analytics = await kabisigApi.getFederationAnalytics();
-    if (analytics) {
-      setFederationAnalytics(analytics);
-      setAnalyticsError('');
-    } else {
-      setAnalyticsError('Live federation analytics could not be refreshed. Showing the last available data.');
-    }
-    setAnalyticsLoading(false);
-  };
-
   const handleDownloadLydpReport = () => {
     const reportWindow = window.open('', '_blank', 'width=1000,height=760');
     if (!reportWindow) {
@@ -330,38 +313,7 @@ export default function SuperAdminPages({
     reportWindow.print();
   };
 
-  const handleSuperAdminDocumentReview = async () => {
-    if (!documentReviewTarget) return;
-    if (documentReviewDecision === 'rejected' && documentReviewNotes.trim().length < 5) {
-      setDocumentReviewError('Enter at least five characters explaining the rejection.');
-      return;
-    }
-    setIsReviewingDocument(true);
-    setDocumentReviewError('');
-    try {
-      await onReviewDocument(documentReviewTarget.id, documentReviewDecision, documentReviewNotes.trim());
-      setDocumentReviewTarget(null);
-      setDocumentReviewNotes('');
-    } catch (error: any) {
-      setDocumentReviewError(error.message || 'Document review could not be saved.');
-    } finally {
-      setIsReviewingDocument(false);
-    }
-  };
-
-  const approvedBarangayCount = (terms: string[]) => new Set(
-    documents
-      .filter(doc => doc.status.toLowerCase() === 'approved' && terms.some(term => `${doc.title} ${doc.category}`.toLowerCase().includes(term)))
-      .map(doc => doc.barangayId)
-      .filter((id): id is string => Boolean(id))
-  ).size;
-  const complianceMetrics = [
-    { label: 'ABYIP Records', description: 'Approved documents matching ABYIP or annual investment plan terms', count: approvedBarangayCount(['abyip', 'annual barangay youth investment']) },
-    { label: 'Financial Records', description: 'Approved documents matching financial, liquidation, or voucher terms', count: approvedBarangayCount(['financial', 'liquidation', 'voucher']) },
-    { label: 'CBYDP Records', description: 'Approved documents matching CBYDP or youth development plan terms', count: approvedBarangayCount(['cbydp', 'comprehensive barangay youth development']) },
-  ];
-  const approvedDocumentCount = documents.filter(doc => doc.status.toLowerCase() === 'approved').length;
-  const coveragePercent = (count: number) => barangays.length > 0 ? Math.round((count / barangays.length) * 100) : 0;
+  const displayBarangayName = (name: string) => name === 'Igualdad Interior' ? 'Igualdad' : name;
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
@@ -565,7 +517,6 @@ export default function SuperAdminPages({
 
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registered Youth</span>
                     <div className="p-2 rounded-xl bg-indigo-50 text-indigo-700">
                       <Users className="w-5 h-5" />
                     </div>
@@ -629,14 +580,6 @@ export default function SuperAdminPages({
                   >
                     <ShieldCheck className="w-4 h-4" /> Assign Chairperson
                   </button>
-                  <button
-                    onClick={handleRefreshAnalytics}
-                    disabled={analyticsLoading}
-                    className="px-4 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${analyticsLoading ? 'animate-spin' : ''}`} /> Refresh Metrics
-                  </button>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Registered Youth</span>
                   <button 
                     onClick={() => setShowLydpModal(true)}
                     className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
@@ -740,7 +683,6 @@ export default function SuperAdminPages({
                         <th className="p-3">Total AIP Budget</th>
                         <th className="p-3">Budget Spent</th>
                         <th className="p-3">Utilization Rate</th>
-                        <th className="p-3">Approved Documents</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
@@ -750,7 +692,6 @@ export default function SuperAdminPages({
                         const totalBudget = toNumber(liveRow?.budget_allocated ?? b.totalBudget);
                         const spent = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
-                        const approvedDocuments = documents.filter(doc => doc.barangayId === b.id && doc.status.toLowerCase() === 'approved').length;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64]">
@@ -762,7 +703,7 @@ export default function SuperAdminPages({
                                     {b.name.charAt(0)}
                                   </div>
                                 )}
-                                <span>Brgy. {b.name}</span>
+                                <span>Brgy. {displayBarangayName(b.name)}</span>
                               </div>
                             </td>
                             <td className="p-3 font-semibold">
@@ -792,11 +733,6 @@ export default function SuperAdminPages({
                                 </div>
                                 <span className={`text-[11px] font-bold ${rate > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>{rate}%</span>
                               </div>
-                            </td>
-                            <td className="p-3">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                                {approvedDocuments}
-                              </span>
                             </td>
                           </tr>
                         );
@@ -833,9 +769,21 @@ export default function SuperAdminPages({
                     onChange={(e) => setDistrictFilter(e.target.value as any)}
                     className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64] cursor-pointer"
                   >
-                    <option value="All">All Districts</option>
-                    <option value="District 1">District 1 (11 Barangays)</option>
-                    <option value="District 2">District 2 (16 Barangays)</option>
+                    <option value="All">All SK Districts</option>
+                    <option value="North">North (8 Barangays)</option>
+                    <option value="South">South (6 Barangays)</option>
+                    <option value="West">West (7 Barangays)</option>
+                    <option value="East">East (6 Barangays)</option>
+                  </select>
+                  <select
+                    value={chairpersonFilter}
+                    onChange={(e) => setChairpersonFilter(e.target.value as typeof chairpersonFilter)}
+                    aria-label="Filter barangays by SK Chairperson assignment"
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64] cursor-pointer"
+                  >
+                    <option value="All">All Chairperson statuses</option>
+                    <option value="Assigned">Chairperson assigned</option>
+                    <option value="Unassigned">No Chairperson assigned</option>
                   </select>
 
                 </div>
@@ -846,14 +794,14 @@ export default function SuperAdminPages({
                 </div>
               </div>
 
-              {/* DATA TABLE: BARANGAY NAME | DISTRICT | ASSIGNED CHAIRPERSON | STATUS | ACTION */}
+              {/* DATA TABLE: BARANGAY NAME | SK DISTRICT | ASSIGNED CHAIRPERSON | STATUS | ACTION */}
               <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs text-slate-700">
                     <thead className="bg-slate-50/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
                       <tr>
                         <th className="py-3.5 px-4 font-bold">Barangay Name</th>
-                        <th className="py-3.5 px-4 font-bold">District</th>
+                        <th className="py-3.5 px-4 font-bold">SK District</th>
                         <th className="py-3.5 px-4 font-bold">Assigned Chairperson</th>
                         <th className="py-3.5 px-4 font-bold">Status</th>
                         <th className="py-3.5 px-4 text-right font-bold">Action</th>
@@ -861,7 +809,7 @@ export default function SuperAdminPages({
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {filteredBarangays.map(b => {
-                        const bDistrict = b.district || BARANGAY_DISTRICTS[b.name] || 'District 1';
+                        const bDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name] || 'Unassigned';
                         const isAssigned = b.chairperson && b.chairperson.trim() !== '' && b.chairperson.toLowerCase() !== 'unassigned';
 
                         return (
@@ -881,7 +829,7 @@ export default function SuperAdminPages({
                                   </div>
                                 )}
                                 <div>
-                                  <span className="font-bold text-slate-900 block text-xs">Brgy. {b.name}</span>
+                                  <span className="font-bold text-slate-900 block text-xs">Brgy. {displayBarangayName(b.name)}</span>
                                   <span className="text-[10px] text-slate-400 font-mono">ID: {b.id.slice(0, 8)}...</span>
                                 </div>
                               </div>
@@ -890,7 +838,7 @@ export default function SuperAdminPages({
                             {/* District */}
                             <td className="py-3.5 px-4">
                               <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                                bDistrict === 'District 1'
+                                bDistrict === 'North'
                                   ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
                                   : 'bg-indigo-50 text-indigo-700 border border-indigo-200/80'
                               }`}>
@@ -1069,7 +1017,7 @@ export default function SuperAdminPages({
                         const rate = totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-[#091d64]">Brgy. {b.name}</td>
+                            <td className="p-3 font-bold text-[#091d64]">Brgy. {displayBarangayName(b.name)}</td>
                             <td className="p-3 font-semibold">{b.chairperson}</td>
                             <td className="p-3 font-mono">{registeredYouth.toLocaleString()}</td>
                             <td className="p-3 font-mono font-bold text-slate-800">₱{totalBudget.toLocaleString()}</td>
@@ -1092,60 +1040,6 @@ export default function SuperAdminPages({
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
               {/* COMPLIANCE TRACKING DASHBOARD PANEL */}
-              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
-                <div className="border-b border-slate-100 pb-3 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-sans font-bold text-slate-800 text-sm">Approved Document Coverage</h4>
-                    <p className="text-xs text-slate-400">Counts are based on approved document titles and categories currently loaded</p>
-                  </div>
-                  <span className="px-3 py-1 bg-slate-100 text-slate-500 border border-slate-200 font-extrabold text-[10px] rounded-full uppercase">
-                    {approvedDocumentCount} approved of {documents.length} loaded
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {complianceMetrics.map((metric, index) => (
-                    <div key={metric.label} className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{metric.label}</span>
-                      <span className={`text-2xl font-black mt-1 block ${index === 0 ? 'text-emerald-600' : index === 1 ? 'text-blue-600' : 'text-violet-700'}`}>
-                        {coveragePercent(metric.count)}% ({metric.count}/{barangays.length})
-                      </span>
-                      <span className="text-[11px] text-slate-500 mt-1 block">{metric.description}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {documents.some(document => document.status === 'Pending') && (
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
-                  <div>
-                    <h4 className="font-sans font-bold text-slate-800 text-sm">Pending Document Reviews</h4>
-                    <p className="text-xs text-slate-400">Review documents submitted across the federation.</p>
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {documents.filter(document => document.status === 'Pending').map(document => (
-                      <div key={document.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3">
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">{document.title}</p>
-                          <p className="text-[10px] text-slate-500">{barangays.find(barangay => barangay.id === document.barangayId)?.name || 'Barangay'} · {document.category}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDocumentReviewTarget(document);
-                            setDocumentReviewDecision('approved');
-                            setDocumentReviewNotes('');
-                            setDocumentReviewError('');
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-[#091d64] text-white text-[10px] font-bold"
-                        >
-                          Review
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* AUDIT LOGS TABLE */}
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
@@ -1215,34 +1109,6 @@ export default function SuperAdminPages({
 
         </div>
       </div>
-
-      {documentReviewTarget && (
-        <div className="fixed inset-0 bg-slate-900/50 z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl">
-            <div className="bg-[#091d64] text-white p-5">
-              <h3 className="font-bold text-base">Review Document</h3>
-              <p className="text-xs text-blue-100 mt-1">{documentReviewTarget.title}</p>
-            </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setDocumentReviewDecision('approved')} className={`rounded-lg border px-3 py-2 text-xs font-bold ${documentReviewDecision === 'approved' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-slate-600 border-slate-200'}`}>Approve</button>
-                <button type="button" onClick={() => setDocumentReviewDecision('rejected')} className={`rounded-lg border px-3 py-2 text-xs font-bold ${documentReviewDecision === 'rejected' ? 'bg-rose-700 text-white border-rose-700' : 'bg-white text-slate-600 border-slate-200'}`}>Reject</button>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">{documentReviewDecision === 'rejected' ? 'Rejection reason (required)' : 'Review notes (optional)'}</label>
-                <textarea value={documentReviewNotes} onChange={event => setDocumentReviewNotes(event.target.value)} rows={3} className="w-full rounded-lg border border-slate-200 p-2.5 text-xs" />
-              </div>
-              {documentReviewError && <p role="alert" className="text-xs text-rose-700">{documentReviewError}</p>}
-              <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                <button type="button" disabled={isReviewingDocument} onClick={() => setDocumentReviewTarget(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold disabled:opacity-50">Cancel</button>
-                <button type="button" disabled={isReviewingDocument} onClick={handleSuperAdminDocumentReview} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
-                  {isReviewingDocument ? 'Saving...' : `Confirm ${documentReviewDecision}`}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* LYDP REPORT GENERATOR PREVIEW MODAL */}
       {showLydpModal && (
@@ -1350,7 +1216,7 @@ export default function SuperAdminPages({
 
                   <div className="text-right">
                     <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {assigningBarangay.district || BARANGAY_DISTRICTS[assigningBarangay.name] || 'District 1'}
+                      {assigningBarangay.skDistrict || BARANGAY_SK_DISTRICTS[assigningBarangay.name] || 'Unassigned'}
                     </span>
                   </div>
                 </div>

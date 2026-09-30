@@ -50,7 +50,8 @@ import {
   Registration, 
   FeedbackRecord, 
   ResolutionRecord,
-  BarangayTenant
+  BarangayTenant,
+  AnnouncementRecord
 } from '../types';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import { 
@@ -69,6 +70,7 @@ interface YouthPagesProps {
   registrations: Registration[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
+  announcements: AnnouncementRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
   onRegisterProgram: (pId: string) => Promise<Registration>;
@@ -84,6 +86,7 @@ export default function YouthPages({
   registrations,
   feedback,
   resolutions,
+  announcements = [],
   currentTenant,
   tenants = [],
   onRegisterProgram,
@@ -646,9 +649,15 @@ export default function YouthPages({
                       <Users className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Barangay Youth</span>
-                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">—</h4>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-1">Live registry count unavailable</p>
+                      <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Youth in this barangay</span>
+                      <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">
+                        {resolvedTenant?.youthPopulationAvailable ? resolvedTenant.youthPopulation : '—'}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-1">
+                        {resolvedTenant?.youthPopulationAvailable
+                          ? 'Active Youth Constituent accounts'
+                          : 'Live registry count unavailable'}
+                      </p>
                     </div>
                   </div>
 
@@ -1409,33 +1418,33 @@ export default function YouthPages({
                 </div>
                 
                 <div className="space-y-4">
-                  <div className="p-5 border border-slate-100 rounded-xl bg-white space-y-2 shadow-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-0.5 rounded border border-amber-100">Official Notice</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">Today at 10:00 AM</span>
-                    </div>
-                    <h4 className="font-bold text-slate-800 text-sm mt-2 leading-tight">Annual Youth Assembly 2025: Strategic Planning</h4>
-                    <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
-                      We invite all Katipunan ng Kabataan registered members of Barangay Pacol to join our upcoming general assembly to formulate next year's Annual Investment Program. Your participation ensures inclusive governance.
-                    </p>
-                    <div className="text-[10px] font-bold text-slate-400 pt-3 flex items-center gap-1 border-t border-slate-50 mt-2">
-                      <span>Published by:</span> <span className="text-[#091d64]">SK Chairperson's Office</span>
-                    </div>
-                  </div>
-
-                  <div className="p-5 border border-slate-100 rounded-xl bg-white space-y-2 shadow-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-0.5 rounded border border-blue-100">Development Aid</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">Posted June 28, 2026</span>
-                    </div>
-                    <h4 className="font-bold text-[#091d64] text-sm mt-2 leading-tight">City-Wide Educational Assistance Enrollment</h4>
-                    <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
-                      The SK Federation is opening applications for local educational aid. Verified KK members are encouraged to coordinate with the SK Secretary for document validation and submission of requirements.
-                    </p>
-                    <div className="text-[10px] font-bold text-slate-400 pt-3 flex items-center gap-1 border-t border-slate-50 mt-2">
-                      <span>Published by:</span> <span className="text-[#091d64]">SK Federation Secretariat</span>
-                    </div>
-                  </div>
+                  {announcements.filter(announcement => announcement.status === 'published').map(announcement => (
+                    <article key={announcement.id} className="rounded-xl border border-slate-100 bg-white p-5 shadow-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="rounded border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[10px] font-bold uppercase text-blue-700">{announcement.category}</span>
+                        <span className="text-[10px] font-semibold text-slate-400">{announcement.datePosted}</span>
+                      </div>
+                      <h4 className="mt-3 text-sm font-black leading-tight text-slate-900">{announcement.title}</h4>
+                      {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-80 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
+                      <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+                        {announcement.what && <p><strong className="text-slate-800">What:</strong> {announcement.what}</p>}
+                        {announcement.where && <p><strong className="text-slate-800">Where:</strong> {announcement.where}</p>}
+                        {announcement.when && <p><strong className="text-slate-800">When:</strong> {announcement.when}</p>}
+                      </div>
+                      <div className="mt-3 border-t border-slate-100 pt-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</p>
+                        <p className="mt-1 whitespace-pre-line text-xs font-medium leading-relaxed text-slate-600">{announcement.content}</p>
+                      </div>
+                      {announcement.hashtags && <p className="mt-3 border-t border-slate-100 pt-3 text-xs font-semibold text-blue-700">{announcement.hashtags}</p>}
+                      <div className="mt-3 border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-400">
+                        Published by <span className="text-[#091d64]">{announcement.author}</span>
+                        {announcement.barangay && <span> · {announcement.barangay}</span>}
+                      </div>
+                    </article>
+                  ))}
+                  {announcements.filter(announcement => announcement.status === 'published').length === 0 && (
+                    <p className="py-8 text-center text-xs font-semibold text-slate-400">No published announcements for your Barangay yet.</p>
+                  )}
                 </div>
               </div>
             </div>

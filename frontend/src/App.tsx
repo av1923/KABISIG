@@ -60,6 +60,31 @@ export default function App() {
   const [currentEmail, setCurrentEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
 
+  useEffect(() => {
+    if (!currentRole || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    kabisigApi.getAnnouncements().then(rows => {
+      if (!isMounted) return;
+      setAnnouncements(rows.map((announcement: any): AnnouncementRecord => ({
+        id: announcement.id,
+        title: announcement.title,
+        content: announcement.content || '',
+        what: announcement.what || '',
+        where: announcement.where_text || '',
+        when: announcement.event_when || '',
+        hashtags: announcement.hashtags || '',
+        imageUrl: announcement.image_url || '',
+        author: announcement.author?.full_name || 'SK Official',
+        barangay: tenants.find(tenant => tenant.id === announcement.tenant_id)?.name || 'Barangay',
+        datePosted: (announcement.published_at || announcement.created_at || '').split('T')[0],
+        category: announcement.category || 'Notice',
+        status: announcement.status,
+        attachments: [],
+      })));
+    }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
+    return () => { isMounted = false; };
+  }, [currentRole, currentTenant?.id]);
+
   // --- PUBLIC PAGES NAVIGATION STATE ---
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('login');
 
@@ -90,6 +115,7 @@ export default function App() {
               ...existing,
               ...backendBarangay,
               youthPopulation: backendBarangay.youthPopulation ?? existing.youthPopulation ?? 0,
+              youthPopulationAvailable: backendBarangay.youthPopulationAvailable ?? false,
               activePrograms: backendBarangay.activePrograms ?? existing.activePrograms ?? 0,
               totalBudget: backendBarangay.totalBudget ?? existing.totalBudget ?? 0,
               allocatedBudget: backendBarangay.allocatedBudget ?? existing.allocatedBudget ?? 0,
@@ -174,8 +200,14 @@ export default function App() {
           programTitle: e.program?.title || e.title,
           category: e.budget?.category || 'Supplies',
           amount: Number(e.gross_amount) || Number(e.amount) || 0,
+          supplier: e.payee || e.supplier || e.title || '',
+          taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
+          vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
+          withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
+          netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
           description: e.description || '',
           date: e.expense_date || (e.created_at ? e.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+          dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
           voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
           status: e.status === 'approved' ? 'Approved' : 'Pending',
           payee: e.payee || e.title,
@@ -207,21 +239,6 @@ export default function App() {
     kabisigApi.getAuditLogs().then((logs) => {
       if (logs) setAuditLogs(logs);
     }).catch(console.warn);
-
-    (kabisigApi.getToken() ? kabisigApi.getAnnouncements() : Promise.resolve([])).then((rows) => {
-      if (rows.length) {
-        setAnnouncements(rows.map((a: any): AnnouncementRecord => ({
-          id: a.id,
-          title: a.title,
-          content: a.content,
-          author: a.author?.full_name || 'SK Official',
-          barangay: a.tenant_id || 'Barangay',
-          datePosted: (a.published_at || a.created_at || '').split('T')[0],
-          category: a.category,
-          attachments: [],
-        })));
-      }
-    }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
 
     // Invitation links must never reuse an existing Super Admin/browser session.
     const inviteParams = typeof window !== 'undefined'
@@ -750,6 +767,10 @@ export default function App() {
       id: persistedExpense.id,
       budgetId: persistedExpense.budget_id,
       amount: Number(persistedExpense.gross_amount),
+      taxType: persistedExpense.tax_type === 'EXEMPT' ? 'Exempt' : persistedExpense.tax_type || newE.taxType,
+      vatAmount: Number(persistedExpense.vat_amount ?? (persistedExpense.tax_type === 'VAT' ? persistedExpense.tax_amount : newE.vatAmount)) || 0,
+      withholdingTax: Number(persistedExpense.withholding_tax ?? newE.withholdingTax) || 0,
+      netAmount: Number(persistedExpense.net_amount ?? newE.netAmount ?? persistedExpense.gross_amount) || 0,
       status: persistedExpense.status === 'approved' ? 'Approved' : 'Pending',
       date: persistedExpense.expense_date,
       dateLogged: persistedExpense.expense_date,
@@ -796,29 +817,6 @@ export default function App() {
         : registration
     ));
     return persistedRecord;
-  };
-
-  const handleReviewDocument = async (
-    id: string,
-    decision: 'approved' | 'rejected',
-    notes: string
-  ): Promise<DocumentRecord> => {
-    const result = decision === 'approved'
-      ? await kabisigApi.approveDocument(id, notes)
-      : await kabisigApi.rejectDocument(id, notes);
-    if (!result.success || !result.data) {
-      throw new Error(result.message || `Document ${decision} failed.`);
-    }
-
-    const existing = documents.find(document => document.id === id);
-    if (!existing) throw new Error('The document is no longer in the loaded repository. Refresh and retry.');
-    const reviewed: DocumentRecord = {
-      ...existing,
-      status: decision === 'approved' ? 'Approved' : 'Rejected',
-      reviewFeedback: result.data.feedback || notes,
-    };
-    setDocuments(previous => previous.map(document => document.id === id ? reviewed : document));
-    return reviewed;
   };
 
   // --- YOUTH CONSTITUENT WORKFLOWS ---
@@ -913,7 +911,6 @@ export default function App() {
         <SuperAdminPages 
           barangays={tenants}
           programs={programs}
-          documents={documents}
           auditLogs={auditLogs}
           onSyncBarangay={(id, updates) => {
             setTenants(prev => prev.map(tenant => tenant.id === id ? { ...tenant, ...updates } : tenant));
@@ -922,7 +919,6 @@ export default function App() {
             const logs = await kabisigApi.getAuditLogs();
             if (logs) setAuditLogs(logs);
           }}
-          onReviewDocument={handleReviewDocument}
           onUpdateBarangay={async (id, updated) => {
             // Only explicitly saved, supported settings are sent to the backend.
             const configPayload: any = {
@@ -1038,7 +1034,7 @@ export default function App() {
           feedback={feedback}
           resolutions={resolutions}
           expenses={expenses}
-          announcements={announcements}
+          announcements={announcements.filter(announcement => announcement.status === 'published')}
           currentTenant={currentTenant}
           tenants={tenants}
           currentUser={currentUser}
@@ -1060,6 +1056,7 @@ export default function App() {
           
           feedback={feedback}
           resolutions={resolutions}
+          announcements={announcements.filter(announcement => announcement.status === 'published')}
           tenants={tenants}
           onSubmitFeedback={(feed) => setFeedback(prev => [feed, ...prev])}
           onVoteResolution={handleVoteResolution}
@@ -1088,7 +1085,7 @@ export default function App() {
           documents={documents}
           resolutions={resolutions}
           expenses={expenses}
-          announcements={announcements}
+          announcements={announcements.filter(announcement => announcement.status === 'published')}
           onLogout={handleLogout}
           onNavigateSignUp={() => {
             setCurrentRole(null);

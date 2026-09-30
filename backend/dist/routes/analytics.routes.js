@@ -232,7 +232,7 @@ router.get('/barangay', authenticateUser, async (req, res) => {
 router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN'), async (req, res) => {
     const { data: barangays, error: bgyError } = await supabaseAdmin
         .from('barangay')
-        .select('id, name, district')
+        .select('id, name, sk_district')
         .order('name', { ascending: true });
     if (bgyError) {
         sendError(res, `Failed to load barangays: ${bgyError.message}`, 500);
@@ -292,13 +292,14 @@ router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN'), async (
         negative: allFeedbacks?.filter((f) => f.sentiment === 'negative').length || 0,
         total: allFeedbacks?.length || 0,
     };
-    const barangayMatrix = barangays.map((b) => {
+    const loadedBarangays = barangays || [];
+    const barangayMatrix = loadedBarangays.map((b) => {
         const bgyBudget = budgetPerBarangay[b.id] || { allocated: 0, spent: 0 };
         const utilization = bgyBudget.allocated > 0 ? Math.round((bgyBudget.spent / bgyBudget.allocated) * 100) : 0;
         return {
             id: b.id,
             name: b.name,
-            district: b.district,
+            sk_district: b.sk_district ?? null,
             registered_youth: youthPerBarangay[b.id] || 0,
             active_programs: programPerBarangay[b.id] || 0,
             budget_allocated: bgyBudget.allocated,
@@ -311,7 +312,7 @@ router.get('/federation', authenticateUser, requireRoles('SUPER_ADMIN'), async (
         city: 'Naga City',
         fiscal_year: currentYear,
         citywide_totals: {
-            total_barangays: barangays.length,
+            total_barangays: loadedBarangays.length,
             total_registered_youth: youthCounts?.length || 0,
             total_budget_allocated: cityTotalAllocated,
             total_budget_spent: cityTotalSpent,

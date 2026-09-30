@@ -38,6 +38,7 @@ export interface Barangay {
   name: string;
   city: string;
   district: 'District 1' | 'District 2';
+  sk_district: string | null;
   created_at?: string;
   updated_at?: string;
 }

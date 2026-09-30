@@ -1374,8 +1374,15 @@ export default function OfficialPages({
                     {announcements.slice(0, 4).map(announcement => (
                       <article key={announcement.id} className="rounded-lg border border-white bg-white p-3">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">{announcement.category}</p>
-                        <h4 className="mt-1 text-xs font-extrabold text-slate-800">{announcement.title}</h4>
-                        <p className="mt-1 line-clamp-3 text-[11px] text-slate-600">{announcement.content}</p>
+                        <h4 className="mt-1 text-sm font-black text-slate-900">{announcement.title}</h4>
+                        {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-2 max-h-48 w-full rounded-md bg-slate-50 object-contain" />}
+                        <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                          {announcement.what && <p><strong>What:</strong> {announcement.what}</p>}
+                          {announcement.where && <p><strong>Where:</strong> {announcement.where}</p>}
+                          {announcement.when && <p><strong>When:</strong> {announcement.when}</p>}
+                          <p className="line-clamp-3 whitespace-pre-line">{announcement.content}</p>
+                          {announcement.hashtags && <p className="font-semibold text-blue-700">{announcement.hashtags}</p>}
+                        </div>
                         <p className="mt-2 text-[10px] text-slate-400">{announcement.datePosted}</p>
                       </article>
                     ))}
@@ -3180,7 +3187,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">BIR Tax Withholdings</span>
                         <Tag className="w-4 h-4 text-amber-600" />
                       </div>
-                      <h4 className="text-xl font-black text-amber-700">₱{expenses.reduce((a,c)=>a+c.withholdingTax, 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-amber-700">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Audited deductions for BIR remittance</p>
                     </div>
                   </div>
@@ -3503,12 +3510,12 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-rose-600 uppercase">Total Tax Withheld (BIR)</span>
-                          <h4 className="text-xl font-black text-rose-600">₱{expenses.reduce((a,c)=>a+c.withholdingTax,0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-rose-600">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Government withholding compliance</p>
                         </div>
                         <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Payables Remitted</span>
-                          <h4 className="text-xl font-black text-emerald-700">₱{expenses.reduce((a,c)=>a+c.netAmount,0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-emerald-700">₱{expenses.reduce((a,c)=>a + (Number(c.netAmount ?? c.amount) || 0), 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Net disbursed to suppliers</p>
                         </div>
                       </div>
@@ -3534,8 +3541,8 @@ export default function OfficialPages({
                                 <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-semibold">{exp.supplier}</td>
                                 <td className="px-5 py-3.5 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold">-₱{exp.withholdingTax.toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm">₱{exp.netAmount.toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center">{exp.dateLogged}</td>
                               </tr>
                             ))}
@@ -4620,8 +4627,8 @@ export default function OfficialPages({
                           <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
                           <td className="px-5 py-4 text-slate-600 font-semibold">{exp.supplier}</td>
                           <td className="px-5 py-4 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold">-₱{exp.withholdingTax.toLocaleString()}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm">₱{exp.netAmount.toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
                           <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic">{exp.dateLogged}</td>
                         </tr>
                       ))}
