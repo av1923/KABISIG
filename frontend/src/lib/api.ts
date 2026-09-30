@@ -18,6 +18,16 @@ export interface AnnouncementPayload {
   };
 }
 
+export interface SystemNotification {
+  id: string;
+  notification_type: string;
+  title: string;
+  message: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 function toResolutionRecord(poll: any): ResolutionRecord {
@@ -472,6 +482,21 @@ class KabisigApiClient {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  async getNotifications(): Promise<SystemNotification[]> {
+    const res = await this.request<SystemNotification[]>('/notifications', { method: 'GET' });
+    return res.success && Array.isArray(res.data) ? res.data : [];
+  }
+
+  async markNotificationRead(id: string): Promise<boolean> {
+    const res = await this.request(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+    return res.success;
+  }
+
+  async markAllNotificationsRead(): Promise<boolean> {
+    const res = await this.request('/notifications/read-all', { method: 'PATCH' });
+    return res.success;
   }
 
   async getDocumentDownloadUrl(id: string): Promise<{ success: boolean; data?: { url: string; expires_in: number }; message?: string }> {

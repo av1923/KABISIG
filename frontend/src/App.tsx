@@ -771,6 +771,7 @@ export default function App() {
       gross_amount: newE.amount,
       tax_type: taxType,
       tax_rate: taxRate,
+      expense_date: newE.date,
     });
 
     if (!result.success || !result.data?.expense) {
@@ -1005,6 +1006,7 @@ export default function App() {
             resolutions={resolutions}
             onApproveYouth={handleApproveYouth}
             onRejectYouth={handleRejectYouth}
+            onAddExpense={handleLogExpense}
             onApproveDocument={async (id, notes) => {
               const result = await kabisigApi.approveDocument(id, notes);
               if (!result.success || !result.data) throw new Error(result.message || 'Document approval failed.');

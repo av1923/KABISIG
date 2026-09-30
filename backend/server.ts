@@ -2,6 +2,13 @@ import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Resolve environment variables from .env.local or standard .env
+dotenv.config({ path: '.env.local' });
+dotenv.config(); // Fallback to root .env if .env.local doesn't supply all keys
+
 import authRoutes from './routes/auth.routes.js';
 import programRoutes from './routes/program.routes.js';
 import budgetRoutes from './routes/budget.routes.js';
@@ -14,17 +21,43 @@ import userRoutes from './routes/user.routes.js';
 import pollRoutes from './routes/poll.routes.js';
 import announcementRoutes from './routes/announcement.routes.js';
 import socialRoutes from './routes/social.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import { supabase } from './services/supabase.service.js';
+import { startProgramReminderScheduler } from './services/program-reminder.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
-
-dotenv.config({ path: '.env.local' });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middlewares
-app.use(cors());
+// Specific Allowed Origins
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+];
+
+// CORS Configuration with Credentials and Header Allowlist
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or Postman)
+      const isLocalDevelopmentOrigin = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || '');
+      if (!origin || allowedOrigins.includes(origin) || isLocalDevelopmentOrigin) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked request from origin: ${origin}`));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  })
+);
+
+// Payload parsers
 app.use(express.json({ limit: '35mb' }));
+app.use(express.urlencoded({ extended: true, limit: '35mb' }));
 
 // Root Endpoint
 app.get('/', (req: Request, res: Response) => {
@@ -46,6 +79,7 @@ app.get('/', (req: Request, res: Response) => {
         documents: '/api/documents',
         analytics: '/api/analytics',
         polls: '/api/polls',
+        announcements: '/api/announcements',
         socialFacebookPublish: '/api/social/facebook/publish',
       },
     },
@@ -63,11 +97,12 @@ app.use('/api/budget', budgetRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.use('/api/polls', pollRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/social', socialRoutes);
 
-// Health Check Routes
+// Health Check Route
 app.get('/api/health', (req: Request, res: Response) => {
   sendSuccess(
     res,
@@ -81,32 +116,34 @@ app.get('/api/health', (req: Request, res: Response) => {
   );
 });
 
-// Database Connection Health Check
+// Database Connection Check
 app.get('/api/db-check', async (req: Request, res: Response) => {
-  const { error, count } = await supabase
-    .from('barangay')
-    .select('*', { count: 'exact', head: true });
+  try {
+    const { error, count } = await supabase
+      .from('barangay')
+      .select('*', { count: 'exact', head: true });
 
-  if (error) {
-    sendError(
+    if (error) {
+      sendError(
+        res,
+        'Failed to connect to Supabase PostgreSQL database',
+        500,
+        { error: error.message }
+      );
+      return;
+    }
+
+    sendSuccess(
       res,
-      'Failed to connect to Supabase PostgreSQL database',
-      500,
-      { error: error.message }
+      { total_count: count },
+      'Successfully connected to Supabase PostgreSQL database!'
     );
-    return;
+  } catch (err: any) {
+    sendError(res, 'Database check threw an exception', 500, { error: err.message });
   }
-
-  sendSuccess(
-    res,
-    {
-      total_count: count,
-    },
-    'Successfully connected to Supabase PostgreSQL database!'
-  );
 });
 
-// 404 Fallback Route
+// 404 Fallback
 app.use((req: Request, res: Response) => {
   sendError(res, `Route ${req.method} ${req.originalUrl} not found.`, 404);
 });
@@ -119,10 +156,12 @@ app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
   sendError(res, message, status, err.details || null);
 });
 
+// Start Server
 app.listen(PORT, () => {
   console.log(`=======================================================`);
   console.log(`KABISIG Backend Server running on http://localhost:${PORT}`);
   console.log(`=======================================================`);
+  startProgramReminderScheduler();
 });
 
 export default app;

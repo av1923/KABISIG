@@ -94,6 +94,7 @@ import {
 } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
+import NotificationMenu from './NotificationMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
@@ -1186,12 +1187,15 @@ export default function OfficialPages({
           )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">{currentRole}</span>
         </div>
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
-        >
-          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationMenu buttonClassName="text-white hover:bg-white/10 hover:text-white" onNavigate={() => setActiveMenu('programs')} />
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
       {/* MOBILE DRAWER OVERLAY */}
@@ -1347,6 +1351,7 @@ export default function OfficialPages({
           </div>
 
           <div className="flex items-center gap-5">
+            <NotificationMenu onNavigate={() => setActiveMenu('programs')} />
             <UserMenu 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
