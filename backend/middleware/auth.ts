@@ -79,8 +79,8 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
     } = await supabaseAdmin.auth.getUser(token);
 
     if (authError || !authUser) {
-      (req as AuthRequest).user = undefined;
-      return next();
+      sendError(res, 'Invalid or expired authentication token.', 401);
+      return;
     }
 
     const { data: profile, error: profileError } = await supabaseAdmin
@@ -90,8 +90,8 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
       .single();
 
     if (profileError || !profile) {
-      (req as AuthRequest).user = undefined;
-      return next();
+      sendError(res, 'User profile record not found in system.', 403);
+      return;
     }
 
     const roleRecord = profile.roles as unknown as { role_name: RoleName } | { role_name: RoleName }[] | null;
@@ -118,9 +118,8 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
 
     (req as AuthRequest).user = authenticatedUser;
     next();
-  } catch (err) {
-    (req as AuthRequest).user = undefined;
-    next();
+  } catch (err: any) {
+    sendError(res, 'Authentication internal error: ' + (err.message || 'Unknown error'), 500);
   }
 }
 

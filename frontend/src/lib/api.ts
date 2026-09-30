@@ -10,6 +10,7 @@ export interface AnnouncementPayload {
   hashtags: string;
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   status: 'draft' | 'published';
+  image_path?: string | null;
   image?: {
     file_name: string;
     content_type: 'image/jpeg' | 'image/png';
@@ -315,6 +316,40 @@ class KabisigApiClient {
     });
   }
 
+  async getFacebookIntegration(): Promise<{
+    success: boolean;
+    data?: { id: string; page_id: string; page_name: string; is_active: boolean; last_verified_at: string | null } | null;
+    message?: string;
+  }> {
+    return await this.request('/social/facebook/integration', { method: 'GET' });
+  }
+
+  async testFacebookIntegration(pageId: string, pageAccessToken: string): Promise<{
+    success: boolean;
+    data?: { page_id: string; page_name: string };
+    message?: string;
+  }> {
+    return await this.request('/social/facebook/integration/test', {
+      method: 'POST',
+      body: JSON.stringify({ page_id: pageId, page_access_token: pageAccessToken }),
+    });
+  }
+
+  async connectFacebookIntegration(pageId: string, pageAccessToken: string): Promise<{
+    success: boolean;
+    data?: { id: string; page_id: string; page_name: string; is_active: boolean; last_verified_at: string | null };
+    message?: string;
+  }> {
+    return await this.request('/social/facebook/integration', {
+      method: 'POST',
+      body: JSON.stringify({ page_id: pageId, page_access_token: pageAccessToken }),
+    });
+  }
+
+  async disconnectFacebookIntegration(): Promise<{ success: boolean; message?: string }> {
+    return await this.request('/social/facebook/integration', { method: 'DELETE' });
+  }
+
   logout() {
     this.request('/auth/logout', { method: 'POST' }).catch(() => {});
     this.setToken(null);
@@ -590,14 +625,20 @@ class KabisigApiClient {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
   }
 
-  async getYouthProfiles(tenantId?: string, includeOfficials = false): Promise<YouthProfile[]> {
+  async getYouthProfiles(includeOfficials = false, scope?: 'all'): Promise<{ data: YouthProfile[] | null; error: string | null }> {
     const params = new URLSearchParams();
-    if (tenantId) params.set('tenant_id', tenantId);
     if (includeOfficials) params.set('include_officials', 'true');
+    if (scope) params.set('scope', scope);
     const query = params.toString();
     const url = query ? `/users/youth-profiles?${query}` : '/users/youth-profiles';
     const res = await this.request<YouthProfile[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    if (!res.success) {
+      return { data: null, error: res.message || 'Unable to load youth profiles.' };
+    }
+    if (!Array.isArray(res.data)) {
+      return { data: null, error: 'The server returned an invalid youth profile response.' };
+    }
+    return { data: res.data, error: null };
   }
 }
 

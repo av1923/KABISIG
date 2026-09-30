@@ -205,6 +205,7 @@ export interface AnnouncementRecord {
   when?: string;
   hashtags?: string;
   imageUrl?: string;
+  imagePath?: string;
   author: string;
   barangay: string;
   datePosted: string;

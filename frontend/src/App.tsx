@@ -44,6 +44,9 @@ export default function App() {
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
   const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>(INITIAL_YOUTH_PROFILES);
+  const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
+  const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
+  const [youthProfilesRetryCount, setYouthProfilesRetryCount] = useState(0);
   const [registrations, setRegistrations] = useState<Registration[]>(INITIAL_REGISTRATIONS);
   const [feedback, setFeedback] = useState<FeedbackRecord[]>(INITIAL_FEEDBACK);
   const [resolutions, setResolutions] = useState<ResolutionRecord[]>(INITIAL_RESOLUTIONS);
@@ -143,77 +146,6 @@ export default function App() {
         } else {
           setAuthReady(true);
         }
-      }
-    }).catch(console.warn);
-
-    // Load live programs from database
-    kabisigApi.getPrograms().then((progs) => {
-      if (progs) {
-        const formatted: Program[] = progs.map((p: any) => ({
-          id: p.id,
-          title: p.title,
-          description: p.description || '',
-          startDate: p.start_date ? p.start_date.split('T')[0] : '2026-05-20',
-          endDate: p.end_date ? p.end_date.split('T')[0] : '2026-05-22',
-          location: p.location || 'Barangay Hall',
-          maxParticipants: Number(p.total_slots) || 0,
-          budgetAllocation: Number(p.budget_allocation) || 0,
-          spentBudget: 0,
-          aipReference: p.aip_reference || '',
-          category: p.category || 'Environmental Protection',
-          status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
-          registeredCount: p.program_registrations?.[0]?.count || 0
-        }));
-        setPrograms(formatted);
-      }
-    }).catch(console.warn);
-
-    // Load live documents from database
-    kabisigApi.getDocuments().then((docs) => {
-      if (docs && docs.length > 0) {
-        const formatted: DocumentRecord[] = docs.map((d: any) => ({
-          id: d.id,
-          title: d.title,
-          category: d.document_type || 'Other',
-          uploadedBy: d.submitter?.full_name || 'Official',
-          uploadedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
-          fileSize: '1.2 MB',
-          status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
-          resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
-          description: d.description || '',
-          fileUrl: d.file_url,
-          reviewFeedback: d.feedback || '',
-          designatedApprover: 'Hon. SK Chairperson',
-          barangayId: d.tenant_id
-        }));
-        setDocuments(formatted);
-      }
-    }).catch(console.warn);
-
-    // Load live expenses from database
-    kabisigApi.getExpenses().then((exps) => {
-      if (exps) {
-        const formatted: ExpenseRecord[] = exps.map((e: any) => ({
-          id: e.id,
-          programId: e.program_id || '',
-          budgetId: e.budget_id,
-          programTitle: e.program?.title || e.title,
-          category: e.budget?.category || 'Supplies',
-          amount: Number(e.gross_amount) || Number(e.amount) || 0,
-          supplier: e.payee || e.supplier || e.title || '',
-          taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
-          vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
-          withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-          netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
-          description: e.description || '',
-          date: e.expense_date || (e.created_at ? e.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
-          dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
-          voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
-          status: e.status === 'approved' ? 'Approved' : 'Pending',
-          payee: e.payee || e.title,
-          barangayId: e.tenant_id
-        }));
-        setExpenses(formatted);
       }
     }).catch(console.warn);
 
@@ -353,21 +285,87 @@ export default function App() {
       }).catch(console.warn);
     }
 
-    // Load registered youth constituents from database
-    kabisigApi.getYouthProfiles().then((profiles) => {
-      if (profiles && profiles.length > 0) {
-        setYouthProfiles(prev => {
-          const merged = [...profiles];
-          prev.forEach(p => {
-            if (!merged.some(m => m.id === p.id || m.email.toLowerCase() === p.email.toLowerCase())) {
-              merged.push(p);
-            }
-          });
-          return merged;
-        });
-      }
-    }).catch(console.warn);
   }, []);
+
+  useEffect(() => {
+    if (!currentRole) {
+      setPrograms([]);
+      setDocuments([]);
+      setExpenses([]);
+      return;
+    }
+
+    let isMounted = true;
+    setPrograms([]);
+    setDocuments([]);
+    setExpenses([]);
+
+    kabisigApi.getPrograms().then(progs => {
+      if (!isMounted) return;
+      setPrograms(progs.map((p: any): Program => ({
+        id: p.id,
+        title: p.title,
+        description: p.description || '',
+        startDate: p.start_date ? p.start_date.split('T')[0] : '',
+        endDate: p.end_date ? p.end_date.split('T')[0] : '',
+        location: p.location || '',
+        maxParticipants: Number(p.total_slots) || 0,
+        budgetAllocation: Number(p.budget_allocation) || 0,
+        spentBudget: 0,
+        aipReference: p.aip_reference || '',
+        category: p.category || 'Other',
+        status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
+        registeredCount: p.program_registrations?.[0]?.count || 0,
+      })));
+    }).catch(error => console.warn('Unable to load programs for active role:', error));
+
+    kabisigApi.getDocuments().then(docs => {
+      if (!isMounted) return;
+      setDocuments(docs.map((d: any): DocumentRecord => ({
+        id: d.id,
+        title: d.title,
+        category: d.document_type || 'Other',
+        uploadedBy: d.submitter?.full_name || 'Official',
+        uploadedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : '',
+        fileSize: '',
+        status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
+        resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
+        description: d.description || '',
+        fileUrl: d.file_url,
+        reviewFeedback: d.feedback || '',
+        designatedApprover: 'Hon. SK Chairperson',
+        barangayId: d.tenant_id,
+      })));
+    }).catch(error => console.warn('Unable to load documents for active role:', error));
+
+    if (currentRole !== 'Viewer') {
+      kabisigApi.getExpenses().then(exps => {
+        if (!isMounted) return;
+        setExpenses(exps.map((e: any): ExpenseRecord => ({
+          id: e.id,
+          programId: e.program_id || '',
+          budgetId: e.budget_id,
+          programTitle: e.program?.title || e.title,
+          category: e.budget?.category || 'Supplies',
+          amount: Number(e.gross_amount) || Number(e.amount) || 0,
+          supplier: e.payee || e.supplier || e.title || '',
+          taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
+          vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
+          withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
+          netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
+          description: e.description || '',
+          date: e.expense_date || e.created_at?.split('T')[0] || '',
+          dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
+          voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
+          status: e.status === 'approved' ? 'Approved' : 'Pending',
+          payee: e.payee || e.title,
+          barangayId: e.tenant_id,
+        })));
+      }).catch(error => console.warn('Unable to load expenses for active role:', error));
+    }
+
+    return () => { isMounted = false; };
+  }, [currentRole, currentTenant?.id]);
 
   useEffect(() => {
     const officialOrAdmin =
@@ -376,14 +374,32 @@ export default function App() {
       currentRole === 'SK Kagawad' ||
       currentRole === 'SK Secretary' ||
       currentRole === 'SK Treasurer';
-    if (!officialOrAdmin) return;
+    if (!officialOrAdmin) {
+      setYouthProfilesLoading(false);
+      setYouthProfilesError(null);
+      return;
+    }
 
-    kabisigApi.getYouthProfiles(currentTenant?.id, true).then((profiles) => {
-      setYouthProfiles(profiles);
-    }).catch((error: any) => {
-      console.warn('Unable to refresh youth management records:', error?.message || error);
+    let isMounted = true;
+    setYouthProfilesLoading(true);
+    setYouthProfilesError(null);
+    kabisigApi.getYouthProfiles(true).then(({ data, error }) => {
+      if (!isMounted) return;
+      if (error || data === null) {
+        setYouthProfilesError(error || 'Unable to load youth profiles.');
+        return;
+      }
+      setYouthProfiles(data);
+    }).catch((error: unknown) => {
+      if (!isMounted) return;
+      const message = error instanceof Error ? error.message : 'Unable to load youth profiles.';
+      setYouthProfilesError(message);
+      console.warn('Unable to refresh youth management records:', message);
+    }).finally(() => {
+      if (isMounted) setYouthProfilesLoading(false);
     });
-  }, [currentRole, currentTenant?.id]);
+    return () => { isMounted = false; };
+  }, [currentRole, currentTenant?.id, youthProfilesRetryCount]);
 
   useEffect(() => {
     if (!currentRole || currentRole === 'Viewer') return;
@@ -978,6 +994,9 @@ export default function App() {
             currentUser={currentUser}
             programs={programs}
             youthProfiles={youthProfiles}
+            youthProfilesLoading={youthProfilesLoading}
+            youthProfilesError={youthProfilesError}
+            onRetryYouthProfiles={() => setYouthProfilesRetryCount(count => count + 1)}
             documents={documents}
             auditLogs={auditLogs}
             registrations={registrations}

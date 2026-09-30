@@ -10,8 +10,11 @@ const announcementFields = {
     content: z.string().trim().min(1).max(10000),
     what: z.string().trim().max(2000).optional(),
     where: z.string().trim().max(1000).optional(),
+    where_text: z.string().trim().max(1000).optional(),
     when: z.string().trim().max(500).optional(),
+    event_when: z.string().trim().max(500).optional(),
     hashtags: z.string().trim().max(1000).optional(),
+    image_path: z.string().trim().max(1024).nullable().optional(),
     category: z.enum(['Opportunity', 'Notice', 'Emergency', 'Event']),
     status: z.enum(['draft', 'published']),
     image: z.object({
@@ -29,13 +32,24 @@ const MAX_PUBMAT_BYTES = 10 * 1024 * 1024;
 const PUBMAT_BUCKET = 'announcement-pubmats';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 function missingTable(error) {
-    return error?.code === '42P01' || /schema cache|does not exist/i.test(error?.message || '');
+    return error?.code === '42P01'
+        || error?.code === 'PGRST205'
+        || /relation ["']?(?:public\.)?announcement["']? does not exist/i.test(error?.message || '');
 }
 function missingAnnouncementDetails(error) {
-    return /column .*?(what|where_text|event_when|hashtags|image_path).*?does not exist|could not find the .*?(what|where_text|event_when|hashtags|image_path).*?column/i.test(error?.message || '');
+    return /column .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?does not exist|could not find the .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?column/i.test(error?.message || '');
 }
 function safeFileName(fileName) {
     return fileName.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') || 'announcement-pubmat';
+}
+function belongsToTenantStoragePath(imagePath, tenantId) {
+    const [pathTenantId, uploadId, fileName, ...extraSegments] = imagePath.split('/');
+    return pathTenantId?.toLowerCase() === tenantId.toLowerCase()
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uploadId || '')
+        && typeof fileName === 'string'
+        && fileName.length > 0
+        && !extraSegments.length
+        && !fileName.includes('..');
 }
 function decodePubmat(image) {
     if (!image)
@@ -132,17 +146,26 @@ router.post('/', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADM
         sendError(res, 'User has no assigned Barangay tenant.', 400);
         return;
     }
+    if (parsed.data.image_path && !belongsToTenantStoragePath(parsed.data.image_path, user.tenant_id)) {
+        sendError(res, 'Announcement image path must point to an uploaded file in your Barangay folder.', 403);
+        return;
+    }
+    if (parsed.data.image_path && parsed.data.image) {
+        sendError(res, 'Provide either an uploaded image path or a legacy image payload, not both.', 400);
+        return;
+    }
     const upload = await uploadPubmat(user.tenant_id, parsed.data.image);
     if (upload.error) {
         sendError(res, upload.error, upload.error.startsWith('Upload a valid') ? 415 : 502);
         return;
     }
-    const { image: _image, when, ...fields } = parsed.data;
+    const { image: _image, where, where_text, when, event_when, image_path, ...fields } = parsed.data;
     const status = fields.status;
     const { data, error } = await supabaseAdmin.from('announcement').insert({
         ...fields,
-        event_when: when || null,
-        image_path: upload.path || null,
+        where_text: where_text ?? where ?? null,
+        event_when: event_when ?? when ?? null,
+        image_path: image_path ?? upload.path ?? null,
         tenant_id: user.tenant_id,
         author_id: user.id,
         published_at: status === 'published' ? new Date().toISOString() : null,
@@ -193,16 +216,30 @@ router.patch('/:id', authenticateUser, requireActiveUser, requireRoles('BARANGAY
         sendError(res, 'Announcement not found in your Barangay.', 404);
         return;
     }
+    if (parsed.data.image_path && !belongsToTenantStoragePath(parsed.data.image_path, existing.tenant_id)) {
+        sendError(res, 'Announcement image path must point to an uploaded file in its Barangay folder.', 403);
+        return;
+    }
+    if (parsed.data.image_path && parsed.data.image) {
+        sendError(res, 'Provide either an uploaded image path or a legacy image payload, not both.', 400);
+        return;
+    }
     const upload = await uploadPubmat(existing.tenant_id, parsed.data.image);
     if (upload.error) {
         sendError(res, upload.error, upload.error.startsWith('Upload a valid') ? 415 : 502);
         return;
     }
-    const { image: _image, when, ...fields } = parsed.data;
+    const { image: _image, where, where_text, when, event_when, image_path, ...fields } = parsed.data;
     const changes = { ...fields, updated_at: new Date().toISOString() };
-    if (when !== undefined)
-        changes.event_when = when || null;
-    if (upload.path)
+    if (where !== undefined || where_text !== undefined) {
+        changes.where_text = where_text ?? where ?? null;
+    }
+    if (when !== undefined || event_when !== undefined) {
+        changes.event_when = event_when ?? when ?? null;
+    }
+    if (image_path !== undefined)
+        changes.image_path = image_path;
+    else if (upload.path)
         changes.image_path = upload.path;
     if (fields.status) {
         changes.published_at = fields.status === 'published'
@@ -219,7 +256,12 @@ router.patch('/:id', authenticateUser, requireActiveUser, requireRoles('BARANGAY
             if (cleanupError)
                 console.error('Failed to clean up pubmat after announcement update failed:', cleanupError);
         }
-        sendError(res, error?.message || 'Announcement could not be updated.', 500);
+        const configurationError = missingTable(error)
+            ? 'Announcements are not configured. Apply migration 003_add_announcements.sql.'
+            : missingAnnouncementDetails(error)
+                ? 'Structured announcements are not configured. Apply migration 008_add_announcement_details.sql.'
+                : null;
+        sendError(res, configurationError || error?.message || 'Announcement could not be updated.', configurationError ? 503 : 500);
         return;
     }
     const signed = await signPubmat(data);
@@ -227,7 +269,7 @@ router.patch('/:id', authenticateUser, requireActiveUser, requireRoles('BARANGAY
         sendError(res, signed.error, 502);
         return;
     }
-    if (upload.path && existing.image_path) {
+    if ((upload.path || image_path !== undefined) && existing.image_path && existing.image_path !== data.image_path) {
         const cleanupError = await deletePubmat(existing.image_path);
         if (cleanupError) {
             console.error('Updated announcement pubmat but could not remove replaced image:', cleanupError);

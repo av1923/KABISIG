@@ -57,8 +57,8 @@ export async function optionalAuthenticateUser(req, res, next) {
     try {
         const { data: { user: authUser }, error: authError, } = await supabaseAdmin.auth.getUser(token);
         if (authError || !authUser) {
-            req.user = undefined;
-            return next();
+            sendError(res, 'Invalid or expired authentication token.', 401);
+            return;
         }
         const { data: profile, error: profileError } = await supabaseAdmin
             .from('users')
@@ -66,8 +66,8 @@ export async function optionalAuthenticateUser(req, res, next) {
             .eq('id', authUser.id)
             .single();
         if (profileError || !profile) {
-            req.user = undefined;
-            return next();
+            sendError(res, 'User profile record not found in system.', 403);
+            return;
         }
         const roleRecord = profile.roles;
         const barangayRecord = profile.barangay;
@@ -91,8 +91,7 @@ export async function optionalAuthenticateUser(req, res, next) {
         next();
     }
     catch (err) {
-        req.user = undefined;
-        next();
+        sendError(res, 'Authentication internal error: ' + (err.message || 'Unknown error'), 500);
     }
 }
 export function requireActiveUser(req, res, next) {

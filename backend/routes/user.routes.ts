@@ -215,81 +215,30 @@ function normalizeEmploymentStatus(status?: string | null): 'Employed' | 'Unempl
   return 'Student';
 }
 
-async function resolveUserRecord(req: Request): Promise<{ id: string; email?: string | undefined; tenant_id?: string | null | undefined; full_name?: string | undefined } | null> {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-
-  if (token) {
-    try {
-      const { data: { user: authUser } } = await supabaseAdmin.auth.getUser(token);
-      if (authUser) {
-        const { data: dbUser } = await supabaseAdmin
-          .from('users')
-          .select('id, email, tenant_id, full_name')
-          .eq('id', authUser.id)
-          .maybeSingle();
-        if (dbUser) return dbUser;
-        return { id: authUser.id, email: authUser.email };
-      }
-    } catch {
-      // Fallback
-    }
-  }
-
-  const candidateId = req.body?.user_id || req.body?.id || req.query?.user_id || req.query?.id;
-  const candidateEmail = req.body?.email || req.query?.email;
-
-  if (candidateId && typeof candidateId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId)) {
-    const { data: userById } = await supabaseAdmin
-      .from('users')
-      .select('id, email, tenant_id, full_name')
-      .eq('id', candidateId)
-      .maybeSingle();
-    if (userById) return userById;
-  }
-
-  if (candidateEmail && typeof candidateEmail === 'string' && candidateEmail.includes('@')) {
-    const { data: userByEmail } = await supabaseAdmin
-      .from('users')
-      .select('id, email, tenant_id, full_name')
-      .eq('email', candidateEmail.trim().toLowerCase())
-      .maybeSingle();
-    if (userByEmail) return userByEmail;
-  }
-
-  if (candidateId && typeof candidateId === 'string') {
-    const { data: resident } = await supabaseAdmin
-      .from('resident_profile')
-      .select('user_id')
-      .eq('digital_youth_id', candidateId)
-      .maybeSingle();
-    if (resident) {
-      const { data: userByRes } = await supabaseAdmin
-        .from('users')
-        .select('id, email, tenant_id, full_name')
-        .eq('id', resident.user_id)
-        .maybeSingle();
-      if (userByRes) return userByRes;
-    }
-  }
-
-  return null;
-}
-
 /**
  * PUT /api/users/profile
  * Updates Constituent / Youth Profile in public.users, public.resident_profile,
  * and permanently saves all 20 Katipunan ng Kabataan profile fields in Supabase Auth user_metadata.
  */
-router.put('/profile', async (req: Request, res: Response): Promise<void> => {
+router.put('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await resolveUserRecord(req);
+    const authenticatedUser = (req as AuthRequest).user!;
+    const userId = authenticatedUser.id;
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, tenant_id, full_name')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (userError) {
+      sendError(res, `Failed to retrieve authenticated user profile: ${userError.message}`, 500);
+      return;
+    }
     if (!user) {
-      sendError(res, 'User record not found. Please log in or provide email.', 404);
+      sendError(res, 'Authenticated user profile not found.', 404);
       return;
     }
 
-    const userId = user.id;
     const body = req.body || {};
 
     // 1. Update public.users
@@ -303,7 +252,11 @@ router.put('/profile', async (req: Request, res: Response): Promise<void> => {
       userUpdates.phone = (body.mobile || body.phone).trim();
     }
 
-    await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
+    const { error: userUpdateError } = await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
+    if (userUpdateError) {
+      sendError(res, `Failed to update user profile: ${userUpdateError.message}`, 500);
+      return;
+    }
 
     // 2. Fetch or update resident_profile
     const { data: existingProfile } = await supabaseAdmin
@@ -318,7 +271,7 @@ router.put('/profile', async (req: Request, res: Response): Promise<void> => {
       .eq('id', userId)
       .single();
 
-    const tenantId = dbUser?.tenant_id || body.barangayId || existingProfile?.tenant_id;
+    const tenantId = dbUser?.tenant_id || existingProfile?.tenant_id || authenticatedUser.tenant_id;
     const birthdate = body.birthdate || existingProfile?.birthdate || '2005-01-01';
     const sex = body.sex || existingProfile?.sex || 'Female';
     const address = body.address || existingProfile?.address || 'Naga City';
@@ -425,9 +378,37 @@ router.put('/profile', async (req: Request, res: Response): Promise<void> => {
  * GET /api/users/profile
  * Returns the current user's complete KK profile from database.
  */
-router.get('/profile', async (req: Request, res: Response): Promise<void> => {
+router.get('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await resolveUserRecord(req);
+    const authenticatedUser = (req as AuthRequest).user!;
+    const requestedUserId = req.query.id;
+    const adminScope = req.query.scope === 'admin';
+    let userId = authenticatedUser.id;
+
+    if (adminScope) {
+      if (authenticatedUser.role !== 'SUPER_ADMIN') {
+        sendError(res, 'Only a Super Admin may use administrative profile lookup.', 403);
+        return;
+      }
+      if (typeof requestedUserId !== 'string' || !z.string().uuid().safeParse(requestedUserId).success) {
+        sendError(res, 'A valid user ID is required for administrative profile lookup.', 400);
+        return;
+      }
+      userId = requestedUserId;
+    } else if (requestedUserId !== undefined && requestedUserId !== authenticatedUser.id) {
+      sendError(res, 'You cannot access another user’s profile.', 403);
+      return;
+    }
+
+    const { data: user, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+    if (userError) {
+      sendError(res, `Failed to retrieve user profile: ${userError.message}`, 500);
+      return;
+    }
     if (!user) {
       sendError(res, 'User profile not found.', 404);
       return;
@@ -436,15 +417,15 @@ router.get('/profile', async (req: Request, res: Response): Promise<void> => {
     const { data: dbUser } = await supabaseAdmin
       .from('users')
       .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
-    const { data: authData } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
     const meta = authData?.user?.user_metadata || {};
     const resident = dbUser?.resident_profile || {};
 
     const fullProfile = {
-      id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
+      id: meta.id || resident.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
       name: dbUser?.full_name || meta.name || meta.full_name || '',
       sex: resident.sex || meta.sex || 'Female',
       birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
@@ -482,9 +463,17 @@ router.get('/profile', async (req: Request, res: Response): Promise<void> => {
  * GET /api/users/youth-profiles
  * Returns all Katipunan ng Kabataan constituents for a barangay.
  */
-router.get('/youth-profiles', async (req: Request, res: Response): Promise<void> => {
+router.get('/youth-profiles', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
-    const tenantId = req.query.tenant_id as string | undefined;
+    const user = (req as AuthRequest).user!;
+    const isSuperAdmin = user.role === 'SUPER_ADMIN';
+    const allTenantsRequested = req.query.scope === 'all';
+
+    if (!user.tenant_id && !(isSuperAdmin && allTenantsRequested)) {
+      sendError(res, 'A barangay tenant context is required to load youth constituents.', 403);
+      return;
+    }
+
     const includeOfficials = req.query.include_officials === 'true';
 
     let query = supabaseAdmin
@@ -493,8 +482,8 @@ router.get('/youth-profiles', async (req: Request, res: Response): Promise<void>
 
     query = includeOfficials ? query.in('role_id', [3, 4]) : query.eq('role_id', 4);
 
-    if (tenantId) {
-      query = query.eq('tenant_id', tenantId);
+    if (!(isSuperAdmin && allTenantsRequested)) {
+      query = query.eq('tenant_id', user.tenant_id);
     }
 
     const { data: users, error } = await query;
