@@ -94,7 +94,13 @@ function createAnnouncementStorageClient(accessToken: string) {
   }
 
   return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+    auth: {
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      flowType: 'pkce',
+    },
     global: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
 }
@@ -155,6 +161,7 @@ export default function BarangayAdminPages({
   >('dashboard');
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('executive');
   const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
 
   const generatePDFReport = (reportTitle: string = 'COA Annual Audit & AIP Financial Performance Report') => {
@@ -427,6 +434,12 @@ export default function BarangayAdminPages({
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
 
   const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
+
+  // Keep localDocs in sync with the parent `documents` prop when it changes
+  // (initial mount happens before App.tsx finishes loading /api/documents).
+  useEffect(() => {
+    setLocalDocs(documents);
+  }, [documents]);
 
   const handleReviewDocument = async () => {
     if (!selectedDocForApprove) return;
@@ -1021,15 +1034,7 @@ export default function BarangayAdminPages({
     }
     setShowCreateProgDrawer(true);
   };
-  const announcementStatusCards = [
-    { label: 'Total Published', count: announcementsList.filter(item => item.status === 'published').length, icon: Megaphone, color: 'text-blue-700', background: 'bg-blue-50' },
-    { label: 'Draft', count: announcementsList.filter(item => item.status === 'draft').length, icon: FileText, color: 'text-slate-700', background: 'bg-slate-100' },
-    { label: 'Scheduled', count: announcementsList.filter(item => item.status === 'scheduled').length, icon: Clock, color: 'text-amber-700', background: 'bg-amber-50' },
-    { label: 'Posted', count: announcementsList.filter(item => item.status === 'published').length, icon: CheckCircle2, color: 'text-emerald-700', background: 'bg-emerald-50' },
-    { label: 'Failed', count: announcementsList.filter(item => item.status === 'failed').length, icon: AlertTriangle, color: 'text-rose-700', background: 'bg-rose-50' },
-  ];
-
-  return (
+return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       
       {/* MOBILE HEADER */}
@@ -1587,7 +1592,7 @@ export default function BarangayAdminPages({
                   <div className="flex justify-between items-center mb-4">
                     <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider flex items-center gap-2">
                       <ShieldAlert className="w-4 h-4 text-amber-500" />
-                      Smart Compliance Tracker
+                      Compliance Tracker
                     </h4>
                     <span className="text-[9px] bg-amber-50 text-amber-800 font-extrabold px-2 py-0.5 rounded-full">
                       DILG Statutory Audit
@@ -1636,7 +1641,7 @@ export default function BarangayAdminPages({
                   <div className="flex justify-between items-center mb-4">
                     <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider flex items-center gap-2">
                       <Coins className="w-4 h-4 text-[#091d64]" />
-                      Smart Budget Auditor & Alerts
+                      Budget Auditor & Alerts
                     </h4>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
                       intelligentBudget.consumptionTrend === 'Accelerated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
@@ -1861,7 +1866,7 @@ export default function BarangayAdminPages({
                           <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">
                             {calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                           </span>
-                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">›</button>
+                          <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">&gt;</button>
                         </div>
                       </div>
                       <div className="grid grid-cols-7 border-l border-t border-slate-200">
@@ -1946,47 +1951,21 @@ export default function BarangayAdminPages({
                     </div>
 
                     <form onSubmit={handleCreateProgramSubmit} className="space-y-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Program Title</label>
-                        <input 
-                          type="text" 
-                          value={newProgForm.title}
-                          onChange={(e) => setNewProgForm({...newProgForm, title: e.target.value})}
-                          placeholder="Enter program title"
-                          className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
-                          required
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Description</label>
-                        <textarea 
-                          value={newProgForm.description}
-                          onChange={(e) => setNewProgForm({...newProgForm, description: e.target.value})}
-                          placeholder="Enter program description"
-                          className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          rows={3}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
+                      {/* SECTION: Program Details */}
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-[#091d64] uppercase tracking-widest border-b border-slate-100 pb-1">Program Details</p>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Start Date</label>
-                          <input 
-                            type="date" 
-                            value={newProgForm.startDate}
-                            onChange={(e) => setNewProgForm({...newProgForm, startDate: e.target.value})}
-                            className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
-                          />
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Program Title <span className="text-rose-500">*</span></label>
+                          <input type="text" value={newProgForm.title} onChange={(e) => setNewProgForm({...newProgForm, title: e.target.value})} placeholder="e.g. Basketball League 2026" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 font-semibold" required />
+                          <p className="text-[10px] text-slate-400 mt-1">Short, descriptive name shown to youth constituents.</p>
                         </div>
-
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Program Category</label>
-                          <select
-                            value={newProgForm.category}
-                            onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })}
-                            className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
-                          >
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Description</label>
+                          <textarea value={newProgForm.description} onChange={(e) => setNewProgForm({...newProgForm, description: e.target.value})} placeholder="What is this program about? Who can join?" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none" rows={3} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Category <span className="text-rose-500">*</span></label>
+                          <select value={newProgForm.category} onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })} className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" required>
                             <option>Health & Nutrition</option>
                             <option>Education & Scholarship</option>
                             <option>Sports Development</option>
@@ -1995,64 +1974,54 @@ export default function BarangayAdminPages({
                             <option>Environmental Protection</option>
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">End Date</label>
-                          <input 
-                            type="date" 
-                            value={newProgForm.endDate}
-                            onChange={(e) => setNewProgForm({...newProgForm, endDate: e.target.value})}
-                            className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none font-bold"
-                          />
-                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Budget</label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₱</span>
-                          <input 
-                            type="number" 
-                            value={newProgForm.budgetAllocation ?? ''}
-                            onChange={(e) => setNewProgForm({
-                              ...newProgForm,
-                              budgetAllocation: e.target.value === '' ? null : Number(e.target.value)
-                            })}
-                            placeholder="Enter budget amount"
-                            className="w-full border border-slate-200 rounded-lg pl-7 pr-3 p-2 text-xs focus:outline-none font-bold"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Location</label>
-                          <input type="text" required value={newProgForm.location} onChange={(e) => setNewProgForm({ ...newProgForm, location: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                      {/* SECTION: Schedule */}
+                      <div className="space-y-3 pt-2">
+                        <p className="text-[10px] font-bold text-[#091d64] uppercase tracking-widest border-b border-slate-100 pb-1">Schedule</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Start Date <span className="text-rose-500">*</span></label>
+                            <input type="date" value={newProgForm.startDate} onChange={(e) => setNewProgForm({...newProgForm, startDate: e.target.value})} className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" required />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">End Date <span className="text-rose-500">*</span></label>
+                            <input type="date" value={newProgForm.endDate} onChange={(e) => setNewProgForm({...newProgForm, endDate: e.target.value})} className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" required />
+                          </div>
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Total slots</label>
-                          <input type="number" min="1" required value={newProgForm.maxParticipants || ''} onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-bold" />
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Venue / Location <span className="text-rose-500">*</span></label>
+                          <input type="text" required value={newProgForm.location} onChange={(e) => setNewProgForm({ ...newProgForm, location: e.target.value })} placeholder="e.g. Barangay Hall Multi-Purpose Court" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" />
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">AIP reference code</label>
-                        <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono" />
+                      {/* SECTION: Budget & Slots */}
+                      <div className="space-y-3 pt-2">
+                        <p className="text-[10px] font-bold text-[#091d64] uppercase tracking-widest border-b border-slate-100 pb-1">Budget & Slots</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Budget Allocation</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₱</span>
+                              <input type="number" value={newProgForm.budgetAllocation ?? ''} onChange={(e) => setNewProgForm({...newProgForm, budgetAllocation: e.target.value === '' ? null : Number(e.target.value)})} placeholder="0" className="w-full border border-slate-200 rounded-lg pl-7 pr-3 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Max Slots <span className="text-rose-500">*</span></label>
+                            <input type="number" min="1" required value={newProgForm.maxParticipants || ''} onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })} placeholder="e.g. 50" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">AIP Reference Code</label>
+                          <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} placeholder="e.g. AIP-2026-001" className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                          <p className="text-[10px] text-slate-400 mt-1">Optional. Link this program to its Annual Investment Program line.</p>
+                        </div>
                       </div>
 
-                      <div className="flex gap-2 pt-2 border-t">
-                        <button 
-                          type="button"
-                          onClick={() => { setShowCreateProgDrawer(false); }}
-                          className="flex-1 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 font-bold cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button 
-                          type="submit"
-                          className="flex-1 py-2 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold cursor-pointer"
-                        >
-                          {editingProgram ? 'Save Changes' : 'Create Program'}
-                        </button>
+                      {/* Sticky Footer */}
+                      <div className="flex gap-2 pt-3 border-t border-slate-200 sticky bottom-0 bg-white">
+                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="flex-1 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-bold cursor-pointer transition-colors">Cancel</button>
+                        <button type="submit" className="flex-1 py-2 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
                       </div>
                     </form>
                   </div>
@@ -2088,15 +2057,26 @@ export default function BarangayAdminPages({
               {(() => {
                 const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
                 const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
-                const filteredRemaining = Math.max(0, filteredAllocated - filteredSpent);
-                const filteredRate = filteredAllocated > 0 ? (filteredSpent / filteredAllocated) * 100 : 0;
+                const isAllPrograms = budgetProgramFilter === 'All Programs';
+                const barangayTotalBudget = Number(currentBarangay?.totalBudget) || 0;
+                const useBudgetTable = isAllPrograms;
+                const displaySpent = useBudgetTable ? (Number(currentBarangay?.spentBudget) || 0) : filteredSpent;
+                const displayBase = useBudgetTable ? barangayTotalBudget : filteredAllocated;
+                const filteredRemaining = Math.max(0, displayBase - displaySpent);
+                const filteredRate = displayBase > 0 ? (displaySpent / displayBase) * 100 : 0;
                 const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
                 return (
                   <>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {isAllPrograms && barangayTotalBudget === 0 && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
+                        No FY {new Date().getFullYear()} budget has been configured for this barangay yet. The SK Federation (Super Admin) sets the total budget.
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                       {[
-                        ['Total allocated', filteredAllocated, Briefcase, 'text-blue-600 bg-blue-50'],
-                        ['Total spent', filteredSpent, Coins, 'text-amber-600 bg-amber-50'],
+                        [isAllPrograms ? 'Total budget' : 'Program budget', displayBase, Coins, 'text-[#091d64] bg-blue-50'],
+                        ['Allocated to programs', filteredAllocated, Briefcase, 'text-blue-600 bg-blue-50'],
+                        ['Total spent', displaySpent, Coins, 'text-amber-600 bg-amber-50'],
                         ['Remaining balance', filteredRemaining, DollarSign, 'text-emerald-600 bg-emerald-50'],
                       ].map(([label, value, Icon, iconClass]) => (
                         <div key={String(label)} className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
@@ -2291,23 +2271,101 @@ export default function BarangayAdminPages({
           {/* 6. REPORTS */}
           {activeMenu === 'reports' && (
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
-              <div className="bg-[#091d64] p-6 rounded-2xl text-white shadow-md flex justify-between items-center">
-                <div>
-                  <h3 className="text-2xl font-black font-sans tracking-tight">Executive Reports & Decision Analytics Center</h3>
-                  <p className="text-xs text-blue-100 mt-1 max-w-2xl">
-                    Synchronized live governance database across Barangay {currentBarangay?.name || 'Barangay'}.
-                  </p>
+              <div className="bg-white p-6 rounded-xl border border-slate-100 space-y-6">
+                <div className="border-b border-slate-100 pb-4 flex justify-between items-start">
+                  <div>
+                    <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">GOVERNANCE REPORTS - AYDP ALIGNED</span>
+                    <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Executive Reports & Decision Analytics Center</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Live governance database synced across Barangay {currentBarangay?.name || 'Barangay'}.</p>
+                  </div>
+                  <button onClick={() => generatePDFReport('Executive Summary & COA Financial Performance Report')} className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-xl text-xs flex items-center gap-2"><Printer className="w-4 h-4" /> Export Master PDF</button>
                 </div>
-                <button 
-                  onClick={() => generatePDFReport('Executive Summary & COA Financial Performance Report')}
-                  className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-sm transition-all cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  Export Master PDF Report
-                </button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{youthProfiles.length.toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Active Programs</span><ClipboardList className="w-4 h-4 text-blue-600" /></div><h4 className="text-xl font-black text-blue-600">{programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length}</h4><p className="text-[10px] text-slate-500">Upcoming & ongoing</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">₱{programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Documents</span><Folder className="w-4 h-4 text-amber-600" /></div><h4 className="text-xl font-black text-amber-600">{documents.length}</h4><p className="text-[10px] text-slate-500">Repository records</p></div>
+                </div>
+
+                <div className="flex gap-2 border-b border-slate-100 pb-2 overflow-x-auto">
+                  <button onClick={() => setReportSubTab('executive')} className={reportSubTab === 'executive' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Executive</button>
+                  <button onClick={() => setReportSubTab('attendance')} className={reportSubTab === 'attendance' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Attendance</button>
+                  <button onClick={() => setReportSubTab('accomplishments')} className={reportSubTab === 'accomplishments' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Accomplishments</button>
+                  <button onClick={() => setReportSubTab('beneficiaries')} className={reportSubTab === 'beneficiaries' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Beneficiaries</button>
+                  <button onClick={() => setReportSubTab('demographics')} className={reportSubTab === 'demographics' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Demographics</button>
+                  <button onClick={() => setReportSubTab('financial')} className={reportSubTab === 'financial' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Financial</button>
+                </div>
+                {reportSubTab === 'executive' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3">Category</th><th className="px-4 py-3 text-right">Allocated</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-center">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">No programs yet.</td></tr> : programs.map(p => <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-slate-500">{p.category}</td><td className="px-4 py-3 text-right font-mono">₱{(Number(p.budgetAllocation) || 0).toLocaleString()}</td><td className="px-4 py-3 text-right font-mono">{p.registeredCount || 0} / {p.maxParticipants || 0}</td><td className="px-4 py-3 text-center"><span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[9px] font-black rounded uppercase">{p.status}</span></td></tr>)}</tbody></table></div>)}
+                {reportSubTab === 'attendance' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-right">Slots</th><th className="px-4 py-3 text-right">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">{reg}</td><td className="px-4 py-3 text-right font-mono">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64]">{((reg / max) * 100).toFixed(0)}%</td></tr>; })}</tbody></table></div>)}
+                {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{programs.reduce((s, p) => s + (p.registeredCount || 0), 0)}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
+                {reportSubTab === 'beneficiaries' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Zone</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold">{y.name}</td><td className="px-4 py-3 text-slate-500">{y.zone}</td><td className="px-4 py-3">{y.status}</td></tr>)}</tbody></table></div>)}
+                                {reportSubTab === 'demographics' && (
+                  <div className="space-y-4">
+                    <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                      <h4 className="font-bold text-slate-800 text-sm">Katipunan ng Kabataan Demographics</h4>
+                      <p className="text-xs text-slate-400 mt-0.5">Aggregated from {youthProfiles.length} registered youth in Barangay {currentBarangay?.name || 'Barangay'}.</p>
+                    </div>
+                    {(() => {
+                      const byGender: Record<string, number> = {};
+                      const byAge: Record<string, number> = { '15-17': 0, '18-24': 0, '25-30': 0 };
+                      const byEdu: Record<string, number> = {};
+                      const byEmp: Record<string, number> = {};
+                      youthProfiles.forEach(y => {
+                        const g = y.sex || 'Unspecified';
+                        byGender[g] = (byGender[g] || 0) + 1;
+                        const a = Number(y.age) || 0;
+                        if (a >= 15 && a <= 17) byAge['15-17']++;
+                        else if (a >= 18 && a <= 24) byAge['18-24']++;
+                        else if (a >= 25 && a <= 30) byAge['25-30']++;
+                        const e = y.educationalLevel || 'Not Specified';
+                        byEdu[e] = (byEdu[e] || 0) + 1;
+                        const em = y.employmentStatus || 'Not Specified';
+                        byEmp[em] = (byEmp[em] || 0) + 1;
+                      });
+                      const total = youthProfiles.length || 1;
+                      const colors = ['#091d64', '#2563eb', '#10b981', '#f59e0b', '#d32f2f', '#7c3aed'];
+                      const panel = (title: string, data: Record<string, number>) => (
+                        <div className="p-5 rounded-xl border border-slate-100 bg-white space-y-3">
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">{title}</h5>
+                          {Object.keys(data).length === 0 ? (
+                            <p className="text-[11px] text-slate-400">No data yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {Object.entries(data).sort((a, b) => b[1] - a[1]).map(([k, v], i) => {
+                                const pct = (v / total) * 100;
+                                return (
+                                  <div key={k}>
+                                    <div className="flex justify-between text-[11px] mb-1">
+                                      <span className="text-slate-600 font-semibold">{k}</span>
+                                      <span className="font-mono font-bold text-[#091d64]">{v} ({pct.toFixed(0)}%)</span>
+                                    </div>
+                                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                      <div className="h-full rounded-full" style={{ width: pct + "%", backgroundColor: colors[i % colors.length] }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {panel('Gender Distribution', byGender)}
+                          {panel('Age Bracket (RA 10742)', byAge)}
+                          {panel('Educational Level', byEdu)}
+                          {panel('Employment Status', byEmp)}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+                {reportSubTab === 'financial' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Allocated</th><th className="px-4 py-3 text-right">Cost per Slot</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; const slots = p.maxParticipants || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">₱{alloc.toLocaleString()}</td><td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">₱{(slots > 0 ? Math.round(alloc / slots) : 0).toLocaleString()}</td></tr>; })}</tbody></table></div>)}
               </div>
             </div>
           )}
+
 
           {/* 7. ANNOUNCEMENTS */}
           {activeMenu === 'announcements' && (
@@ -2408,15 +2466,7 @@ export default function BarangayAdminPages({
               </div>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {announcementStatusCards.map(({ label, count, icon: Icon, color, background }) => (
-                    <div key={label} className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                      <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-lg ${background}`}>
-                        <Icon className={`h-4 w-4 ${color}`} />
-                      </div>
-                      <p className="text-xl font-black text-[#091d64]">{count}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</p>
-                    </div>
-                  ))}
+                  
                 </div>
                 <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
                   <div className="mb-3 flex items-center justify-between">

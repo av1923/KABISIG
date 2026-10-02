@@ -1,0 +1,1131 @@
+﻿ROUTES WITHOUT authenticateUser:
+auth.routes.ts:136: router.post('/register-youth', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:491: router.post('/login', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:534: router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:565: router.post('/register-official', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:727: router.get('/check-chairperson-invite', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:795: router.post('/setup-chairperson-password', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:988: router.post('/logout', async (req: Request, res: Response): Promise<void> => {
+barangay.routes.ts:103: router.get('/', async (_req: Request, res: Response): Promise<void> => {
+barangay.routes.ts:213: router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+document.routes.ts:170: router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
+program.routes.ts:30: router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
+
+EVERY supabaseAdmin QUERY AND ITS TENANT FILTER:
+--- admin.routes.ts:27
+.from('audit_logs')
+.select('id, tenant_id, user_id, action, entity_name, entity_id, details, created_at, users(full_name, roles(role_name)), barangay(name)')
+.order('created_at', { ascending: false })
+.limit(limit);
+
+// Tenant scoping: only SUPER_ADMIN sees all tenants
+const authReq = req as unknown as { user?: { role?: string; tenant_id?: string } };
+--- admin.routes.ts:113
+.from('users')
+.select('id, email, tenant_id, role_id, full_name, status')
+.eq('email', cleanEmail)
+.maybeSingle();
+
+// 3. Check Supabase Auth users too, since invite/create may fail if the auth user already exists
+const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
+--- admin.routes.ts:168
+.from('users')
+.update({
+id: targetUserId,
+tenant_id: barangay_id,
+role_id: 2,
+full_name: existingUser.full_name || 'Pending Invitation',
+email: cleanEmail,
+--- admin.routes.ts:188
+.from('users')
+.update({
+tenant_id: barangay_id,
+role_id: 2, // BARANGAY_ADMIN
+status: 'active',
+approved_by: admin.id,
+updated_at: new Date().toISOString(),
+--- admin.routes.ts:208
+const { error: insertUserErr } = await supabaseAdmin.from('users').upsert(
+{
+id: targetUserId,
+tenant_id: barangay_id,
+role_id: 2,
+full_name: existingAuthUser.user_metadata?.full_name || '',
+email: cleanEmail,
+--- admin.routes.ts:267
+const { error: insertUserErr } = await supabaseAdmin.from('users').upsert(
+{
+id: targetUserId,
+tenant_id: barangay_id,
+role_id: 2, // BARANGAY_ADMIN
+full_name: 'Pending Invitation',
+email: cleanEmail,
+--- analytics.routes.ts:40
+.from('users')
+.select('id')
+.eq('tenant_id', user.tenant_id)
+.in('role_id', [2, 3]);
+
+if (recipientError) {
+sendError(res, `Failed to find budget alert recipients: ${recipientError.message}`, 500);
+--- analytics.routes.ts:59
+.from('notifications')
+.select('user_id')
+.eq('tenant_id', user.tenant_id)
+.eq('notification_type', notificationType)
+.eq('link', link)
+.eq('is_read', false)
+.in('user_id', recipientIds);
+--- analytics.routes.ts:90
+const { error: insertError } = await supabaseAdmin.from('notifications').insert(notifications);
+if (insertError) {
+sendError(res, `Failed to persist budget alert notifications: ${insertError.message}`, 500);
+return;
+}
+
+sendSuccess(res, { inserted: notifications.length }, 'Budget alert notifications persisted.');
+--- analytics.routes.ts:176
+.from('resident_profile')
+.select('birthdate, sex, educational_status, employment_status, is_registered_voter, users!inner(role_id)')
+.eq('tenant_id', tenantId)
+.eq('users.role_id', 4);
+
+const totalRegisteredYouth = profiles?.length || 0;
+let votersCount = 0;
+--- analytics.routes.ts:211
+.from('budget')
+.select('allocated_amount, remaining_amount')
+.eq('tenant_id', tenantId)
+.eq('fiscal_year', currentYear);
+
+const totalAllocated = budgets?.reduce((acc, b) => acc + Number(b.allocated_amount), 0) || 0;
+const totalRemaining = budgets?.reduce((acc, b) => acc + Number(b.remaining_amount), 0) || 0;
+--- analytics.routes.ts:222
+.from('program')
+.select('*', { count: 'exact', head: true })
+.eq('tenant_id', tenantId);
+
+const { count: totalAttendees } = await supabaseAdmin
+.from('program_attendance')
+.select('*', { count: 'exact', head: true })
+--- analytics.routes.ts:227
+.from('program_attendance')
+.select('*', { count: 'exact', head: true })
+.eq('tenant_id', tenantId);
+
+const { data: feedbacks } = await supabaseAdmin
+.from('feedback')
+.select('sentiment, status, category')
+--- analytics.routes.ts:232
+.from('feedback')
+.select('sentiment, status, category')
+.eq('tenant_id', tenantId);
+
+const feedbackSummary = {
+total: feedbacks?.length || 0,
+positive: feedbacks?.filter((f) => f.sentiment === 'positive').length || 0,
+--- analytics.routes.ts:290
+.from('users')
+.select('tenant_id, role_id')
+.eq('role_id', 4)
+.eq('status', 'active');
+
+const youthPerBarangay: Record<string, number> = {};
+youthCounts?.forEach((y) => {
+--- analytics.routes.ts:304
+.from('budget')
+.select('tenant_id, category, allocated_amount, remaining_amount')
+.eq('fiscal_year', currentYear);
+
+const budgetPerBarangay: Record<string, { allocated: number; spent: number }> = {};
+const budgetByCategory: Record<string, number> = {};
+let cityTotalAllocated = 0;
+--- analytics.routes.ts:328
+.from('program')
+.select('tenant_id, status');
+
+const activeProgramStatuses = new Set(['upcoming', 'ongoing']);
+const programPerBarangay: Record<string, number> = {};
+cityPrograms?.forEach((program) => {
+if (activeProgramStatuses.has(program.status)) {
+--- analytics.routes.ts:340
+.from('program_attendance')
+.select('*', { count: 'exact', head: true });
+
+const { data: allFeedbacks } = await supabaseAdmin
+.from('feedback')
+.select('sentiment');
+
+--- analytics.routes.ts:344
+.from('feedback')
+.select('sentiment');
+
+const sentimentOverview = {
+positive: allFeedbacks?.filter((f) => f.sentiment === 'positive').length || 0,
+neutral: allFeedbacks?.filter((f) => f.sentiment === 'neutral').length || 0,
+negative: allFeedbacks?.filter((f) => f.sentiment === 'negative').length || 0,
+--- announcement.routes.ts:118
+let query = supabaseAdmin.from('announcement').select('*').order('created_at', { ascending: false });
+if (user.role !== 'SUPER_ADMIN' && user.role !== 'VIEWER') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 400);
+return;
+}
+query = query.eq('tenant_id', user.tenant_id);
+--- announcement.routes.ts:188
+const { data, error } = await supabaseAdmin.from('announcement').insert({
+...fields,
+where_text: where_text ?? where ?? null,
+event_when: event_when ?? when ?? null,
+image_path: image_path ?? upload.path ?? null,
+tenant_id: user.tenant_id,
+author_id: user.id,
+--- announcement.routes.ts:232
+let existingQuery = supabaseAdmin.from('announcement').select('*').eq('id', idResult.data);
+if (user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 400);
+return;
+}
+existingQuery = existingQuery.eq('tenant_id', user.tenant_id);
+--- announcement.routes.ts:287
+let updateQuery = supabaseAdmin.from('announcement').update(changes).eq('id', idResult.data);
+if (user.role !== 'SUPER_ADMIN') updateQuery = updateQuery.eq('tenant_id', user.tenant_id);
+const { data, error } = await updateQuery.select('*').maybeSingle();
+if (error || !data) {
+if (upload.path) {
+const cleanupError = await deletePubmat(upload.path);
+if (cleanupError) console.error('Failed to clean up pubmat after announcement update failed:', cleanupError);
+--- announcement.routes.ts:331
+let deleteQuery = supabaseAdmin.from('announcement').delete().eq('id', idResult.data).select('id, image_path');
+if (user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 400);
+return;
+}
+deleteQuery = deleteQuery.eq('tenant_id', user.tenant_id);
+--- auth.routes.ts:191
+.from('users')
+.select('id, status, role_id, tenant_id')
+.ilike('email', normalizedEmail)
+.maybeSingle();
+
+if (existingUserError) {
+console.error('Failed to check existing youth user record:', existingUserError);
+--- auth.routes.ts:232
+const { error: userError } = await supabaseAdmin.from('users').insert([
+{
+id: userId,
+tenant_id: barangay_id,
+role_id: ROLE_IDS.YOUTH_CONSTITUENT, // Integer ID (4)
+full_name,
+email: normalizedEmail,
+--- auth.routes.ts:262
+const { error: profileError } = await supabaseAdmin.from('resident_profile').insert([
+{
+user_id: userId,
+tenant_id: barangay_id,
+birthdate,
+sex,
+address,
+--- auth.routes.ts:280
+await supabaseAdmin.from('users').delete().eq('id', userId);
+await supabaseAdmin.auth.admin.deleteUser(userId);
+
+sendError(res, `Failed to create resident profile: ${profileError.message}`, 500, profileError);
+return;
+}
+
+--- auth.routes.ts:328
+.from('users')
+.select('id, full_name, email, tenant_id, status, barangay(name)')
+.eq('id', user_id)
+.single();
+
+if (fetchError || !targetUser) {
+sendError(res, 'Target user not found.', 404);
+--- auth.routes.ts:377
+.from('users')
+.update({
+status: 'active',
+approved_by: admin.id,
+updated_at: new Date().toISOString(),
+})
+.eq('id', targetUser.id);
+--- auth.routes.ts:391
+.from('resident_profile')
+.update({
+digital_youth_id: digitalYouthId,
+qr_code_url: qrCodeDataUrl,
+updated_at: new Date().toISOString(),
+})
+.eq('user_id', targetUser.id);
+--- auth.routes.ts:444
+.from('users')
+.select('id, full_name, email, tenant_id, status')
+.eq('id', user_id)
+.single();
+
+if (fetchError || !targetUser) {
+sendError(res, 'Target user not found.', 404);
+--- auth.routes.ts:463
+.from('users')
+.update({ status: 'rejected', updated_at: new Date().toISOString() })
+.eq('id', targetUser.id)
+.select('id, full_name, email, tenant_id, status')
+.single();
+
+if (updateError || !rejectedUser) {
+--- auth.routes.ts:511
+.from('users')
+.select('*, roles(role_name), barangay(name), resident_profile(*)')
+.eq('id', data.user.id)
+.single();
+
+const userMeta = data.user.user_metadata || {};
+const enrichedUser = {
+--- auth.routes.ts:608
+.from('users')
+.select('id, email, tenant_id, role_id, status')
+.eq('email', normalizedEmail)
+.maybeSingle();
+
+let userId: string;
+
+--- auth.routes.ts:631
+.from('users')
+.update({
+full_name,
+tenant_id: barangay_id,
+role_id: roleId,
+phone: phone || null,
+status,
+--- auth.routes.ts:679
+const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
+id: userId,
+tenant_id: barangay_id,
+role_id: roleId,
+full_name,
+email: normalizedEmail,
+phone: phone || null,
+--- auth.routes.ts:737
+.from('users')
+.select('id, email, tenant_id, role_id, full_name, status, barangay(name, city, district)')
+.eq('email', normalizedEmail)
+.maybeSingle();
+
+if (user && user.role_id === ROLE_IDS.BARANGAY_ADMIN) {
+const barangayInfo = (user as any).barangay || {};
+--- auth.routes.ts:812
+.from('users')
+.select('id, tenant_id, role_id, full_name, status, barangay(name)')
+.eq('email', normalizedEmail)
+.maybeSingle();
+
+const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
+const existingAuthUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
+--- auth.routes.ts:873
+const { error: userUpsertErr } = await supabaseAdmin.from('users').upsert(
+{
+id: userId,
+tenant_id: tenantId,
+role_id: ROLE_IDS.BARANGAY_ADMIN,
+full_name: cleanFullName,
+email: normalizedEmail,
+--- auth.routes.ts:891
+const { error: profileUpsertErr } = await supabaseAdmin.from('resident_profile').upsert(
+{
+user_id: userId,
+tenant_id: tenantId,
+birthdate: '2001-01-01',
+sex: 'Female',
+address: 'Barangay Hall, Naga City',
+--- auth.routes.ts:935
+.from('users')
+.select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+.eq('id', userId)
+.single();
+
+const enrichedUser = {
+...(profile || {}),
+--- auth.routes.ts:976
+.from('users')
+.select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+.eq('id', user.id)
+.single();
+
+const { data: authData } = await supabaseAdmin.auth.admin.getUserById(user.id);
+const userMeta = authData?.user?.user_metadata || {};
+--- barangay.routes.ts:117
+.from('users')
+.select('id, full_name, email, phone, tenant_id, status, updated_at')
+.eq('role_id', 2)
+.eq('status', 'active')
+.order('updated_at', { ascending: false });
+
+const chairMap = new Map<string, { full_name: string; email: string; phone: string | null }>();
+--- barangay.routes.ts:136
+.from('program')
+.select('tenant_id, status');
+
+const progCountMap = new Map<string, number>();
+programs?.forEach((p) => {
+if (p.status === 'ongoing' || p.status === 'upcoming') {
+progCountMap.set(p.tenant_id, (progCountMap.get(p.tenant_id) || 0) + 1);
+--- barangay.routes.ts:148
+.from('users')
+.select('tenant_id')
+.eq('role_id', 4)
+.eq('status', 'active');
+if (youthUsersError) {
+console.warn('Unable to load live youth counts for barangays:', youthUsersError.message);
+}
+--- barangay.routes.ts:166
+.from('budget')
+.select('tenant_id, allocated_amount, remaining_amount')
+.eq('fiscal_year', currentYear);
+
+const budgetMap = new Map<string, { allocated: number; spent: number }>();
+budgets?.forEach((b) => {
+const existing = budgetMap.get(b.tenant_id) || { allocated: 0, spent: 0 };
+--- barangay.routes.ts:229
+.from('users')
+.select('id, full_name, email, phone, status')
+.eq('tenant_id', id)
+.eq('role_id', 2)
+.eq('status', 'active')
+.maybeSingle();
+
+--- barangay.routes.ts:281
+.from('budget')
+.select('id, allocated_amount, remaining_amount')
+.eq('tenant_id', id)
+.eq('fiscal_year', currentYear)
+.eq('category', 'General Youth Development Fund')
+.maybeSingle();
+
+--- barangay.routes.ts:313
+? await supabaseAdmin.from('budget').update(budgetValues).eq('id', currentBudget.id)
+: await supabaseAdmin.from('budget').insert({
+tenant_id: id,
+fiscal_year: currentYear,
+category: 'General Youth Development Fund',
+...budgetValues,
+});
+--- barangay.routes.ts:314
+: await supabaseAdmin.from('budget').insert({
+tenant_id: id,
+fiscal_year: currentYear,
+category: 'General Youth Development Fund',
+...budgetValues,
+});
+
+--- barangay.routes.ts:333
+.from('users')
+.select('id, email, full_name, tenant_id')
+.eq('email', resolvedChairEmail)
+.maybeSingle();
+
+if (existingUser) {
+resolvedChairName = resolvedChairName || existingUser.full_name || 'Hon. SK Chairperson';
+--- barangay.routes.ts:343
+.from('users')
+.update({ role_id: 4, updated_at: new Date().toISOString() })
+.eq('tenant_id', id)
+.eq('role_id', 2)
+.neq('id', existingUser.id);
+
+await supabaseAdmin
+--- barangay.routes.ts:350
+.from('users')
+.update({
+full_name: resolvedChairName,
+tenant_id: id,
+role_id: 2, // BARANGAY_ADMIN
+status: 'active',
+approved_by: admin.id,
+--- barangay.routes.ts:374
+.from('users')
+.update({ role_id: 4, updated_at: new Date().toISOString() })
+.eq('tenant_id', id)
+.eq('role_id', 2);
+
+await supabaseAdmin.from('users').upsert({
+id: authData.user.id,
+--- barangay.routes.ts:379
+await supabaseAdmin.from('users').upsert({
+id: authData.user.id,
+tenant_id: id,
+role_id: 2, // BARANGAY_ADMIN
+full_name: resolvedChairName,
+email: resolvedChairEmail,
+phone: phone || null,
+--- barangay.routes.ts:394
+.from('users')
+.select('id, email')
+.eq('tenant_id', id)
+.eq('role_id', 2)
+.maybeSingle();
+
+if (currentChair) {
+--- barangay.routes.ts:403
+.from('users')
+.update({
+full_name: resolvedChairName,
+phone: phone || null,
+updated_at: new Date().toISOString(),
+})
+.eq('id', currentChair.id);
+--- barangay.routes.ts:416
+.from('users')
+.select('full_name, email, phone')
+.eq('tenant_id', id)
+.eq('role_id', 2)
+.eq('status', 'active')
+.order('updated_at', { ascending: false })
+.limit(1)
+--- barangay.routes.ts:492
+.from('users')
+.select('id, email, tenant_id, role_id')
+.eq('email', email)
+.maybeSingle();
+
+if (existingUser) {
+const { error: updateErr } = await supabaseAdmin
+--- barangay.routes.ts:499
+.from('users')
+.update({
+full_name,
+tenant_id: id,
+role_id: 2, // BARANGAY_ADMIN
+status: 'active',
+approved_by: admin.id,
+--- barangay.routes.ts:529
+const { error: insertUserErr } = await supabaseAdmin.from('users').insert([
+{
+id: authData.user.id,
+tenant_id: id,
+role_id: 2, // BARANGAY_ADMIN
+full_name,
+email,
+--- budget.routes.ts:38
+let query = supabaseAdmin.from('budget').select('*, barangay(name)');
+
+if (user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 403);
+return;
+}
+--- budget.routes.ts:103
+.from('budget')
+.select('id')
+.eq('tenant_id', tenantId)
+.eq('fiscal_year', fiscal_year)
+.ilike('category', category)
+.maybeSingle();
+
+--- budget.routes.ts:120
+.from('budget')
+.insert([
+{
+tenant_id: tenantId,
+fiscal_year,
+category,
+allocated_amount,
+--- budget.routes.ts:158
+.from('expense')
+.select('*, budget(category, fiscal_year), program(title)');
+
+if (user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 403);
+return;
+--- budget.routes.ts:215
+.from('budget')
+.select('*')
+.eq('id', budget_id)
+.single();
+
+if (budgetError || !budget) {
+sendError(res, 'Target budget allocation not found.', 404);
+--- budget.routes.ts:271
+.from('expense')
+.insert([
+{
+tenant_id: budget.tenant_id,
+budget_id,
+program_id: program_id || null,
+title,
+--- budget.routes.ts:300
+.from('budget')
+.update({
+remaining_amount: updatedRemaining,
+updated_at: new Date().toISOString(),
+})
+.eq('id', budget_id);
+
+--- document.routes.ts:77
+.from('documents')
+.createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+
+if (error || !data?.signedUrl) {
+throw new Error(`Failed to generate a signed document URL: ${error?.message || 'URL was not returned.'}`);
+}
+
+--- document.routes.ts:122
+const storage = supabaseAdmin.storage.from('documents');
+const { error: uploadError } = await storage.upload(objectPath, fileBuffer, {
+contentType: normalizedContentType,
+upsert: false,
+});
+
+if (uploadError) {
+--- document.routes.ts:138
+.from('documents')
+.insert({
+tenant_id: tenantId,
+title,
+document_type,
+file_url: objectPath,
+status: 'pending_approval',
+--- document.routes.ts:175
+.from('documents')
+.select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)');
+
+if (user && user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 403);
+return;
+--- document.routes.ts:218
+.from('documents')
+.select('id, tenant_id, file_url')
+.eq('id', id)
+.single();
+
+if (error || !document) {
+sendError(res, 'Document not found.', 404);
+--- document.routes.ts:249
+.from('documents')
+.select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)')
+.eq('id', id)
+.single();
+
+if (error || !document) {
+sendError(res, 'Document not found.', 404);
+--- document.routes.ts:293
+.from('documents')
+.insert([
+{
+tenant_id: tenantId,
+title,
+document_type,
+file_url,
+--- document.routes.ts:341
+.from('documents')
+.select('id, tenant_id, title, status')
+.eq('id', id)
+.single();
+
+if (fetchError || !existing) {
+sendError(res, 'Document not found.', 404);
+--- document.routes.ts:379
+.from('documents')
+.update({
+status: 'approved',
+reviewed_by: reviewer.id,
+feedback: approvalFeedback || 'Approved by Barangay Administrator',
+updated_at: new Date().toISOString(),
+})
+--- document.routes.ts:427
+.from('documents')
+.select('id, tenant_id, title')
+.eq('id', id)
+.single();
+
+if (fetchError || !existing) {
+sendError(res, 'Document not found.', 404);
+--- document.routes.ts:457
+.from('documents')
+.update({
+status: 'rejected',
+reviewed_by: reviewer.id,
+feedback,
+updated_at: new Date().toISOString(),
+})
+--- feedback.routes.ts:114
+.from('feedback')
+.insert([
+{
+tenant_id: user.tenant_id,
+user_id: is_anonymous ? null : user.id,
+is_anonymous,
+subject,
+--- feedback.routes.ts:147
+await supabaseAdmin.from('feedback').delete().eq('id', newFeedback.id);
+console.error('Failed to persist sentiment analysis; feedback row rolled back:', analysisError);
+sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}`, 500);
+return;
+}
+
+sendCreated(
+--- feedback.routes.ts:178
+.from('feedback')
+.select('*, barangay(name), users(full_name)');
+
+if (user.role === 'YOUTH_CONSTITUENT') {
+if (!user.tenant_id) {
+sendError(res, 'Your account is not linked to a barangay.', 403);
+return;
+--- feedback.routes.ts:253
+.from('feedback')
+.select('id, tenant_id, subject')
+.eq('id', id)
+.single();
+
+if (fetchError || !existing) {
+sendError(res, 'Feedback not found.', 404);
+--- feedback.routes.ts:269
+.from('feedback')
+.update({
+response,
+status,
+updated_at: new Date().toISOString(),
+})
+.eq('id', id)
+--- poll.routes.ts:39
+.from('polls')
+.select('*, poll_responses(user_id, selected_option)')
+.eq('is_active', true)
+.gt('end_date', new Date().toISOString());
+
+if (user.role !== 'SUPER_ADMIN') {
+query = query.eq('tenant_id', user.tenant_id);
+--- poll.routes.ts:93
+.from('polls')
+.insert({
+tenant_id: user.tenant_id,
+question: parsed.data.question,
+description: authoredDescription,
+options: parsed.data.options,
+start_date: parsed.data.start_date,
+--- poll.routes.ts:130
+.from('polls')
+.select('id, tenant_id, options, end_date, is_active')
+.eq('id', pollId)
+.single();
+
+if (pollError || !poll) {
+sendError(res, 'Poll not found.', 404);
+--- program.routes.ts:35
+.from('program')
+.select('*, barangay(name), program_registrations(count)', { count: 'exact' });
+
+if (user && user.role !== 'SUPER_ADMIN') {
+if (!user.tenant_id) {
+sendError(res, 'User has no assigned Barangay tenant.', 403);
+return;
+--- program.routes.ts:71
+.from('program_registrations')
+.select('id, program_id, tenant_id, status, registered_at, program(title)')
+.eq('user_id', user.id)
+.neq('status', 'cancelled')
+.order('registered_at', { ascending: false });
+
+if (error) {
+--- program.routes.ts:90
+.from('program')
+.select('*, barangay(name)')
+.eq('id', id)
+.single();
+
+if (error || !program) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:106
+.from('program_registrations')
+.select('*', { count: 'exact', head: true })
+.eq('program_id', id)
+.neq('status', 'cancelled');
+
+const { data: userReg } = await supabaseAdmin
+.from('program_registrations')
+--- program.routes.ts:112
+.from('program_registrations')
+.select('id, status, registered_at')
+.eq('program_id', id)
+.eq('user_id', user.id)
+.maybeSingle();
+
+const totalRegistered = registeredCount || 0;
+--- program.routes.ts:143
+.from('program')
+.select('id, tenant_id')
+.eq('id', programId)
+.single();
+
+if (programError || !program) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:158
+.from('program_registrations')
+.select('id, program_id, user_id, tenant_id, status, registered_at, users(full_name, email)')
+.eq('program_id', programId)
+.neq('status', 'cancelled')
+.order('registered_at', { ascending: true });
+
+if (error) {
+--- program.routes.ts:199
+.from('program')
+.insert([
+{
+...programData,
+tenant_id: tenantId,
+created_by: user.id,
+},
+--- program.routes.ts:245
+.from('program')
+.select('id, tenant_id')
+.eq('id', id)
+.single();
+
+if (fetchError || !existing) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:261
+.from('program')
+.update({
+...parseResult.data,
+updated_at: new Date().toISOString(),
+})
+.eq('id', id)
+.select()
+--- program.routes.ts:289
+.from('program')
+.select('id, tenant_id, title')
+.eq('id', id)
+.single();
+
+if (fetchError || !existing) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:304
+const { error: deleteError } = await supabaseAdmin.from('program').delete().eq('id', id);
+
+if (deleteError) {
+sendError(res, `Failed to delete program: ${deleteError.message}`, 500);
+return;
+}
+
+--- program.routes.ts:334
+.from('program')
+.select('id, title, tenant_id, total_slots, status')
+.eq('id', programId)
+.single();
+
+if (progError || !program) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:355
+.from('program_registrations')
+.select('id, status')
+.eq('program_id', programId)
+.eq('user_id', user.id)
+.maybeSingle();
+
+if (existingReg && existingReg.status !== 'cancelled') {
+--- program.routes.ts:367
+.from('program_registrations')
+.select('*', { count: 'exact', head: true })
+.eq('program_id', programId)
+.neq('status', 'cancelled');
+
+const totalActiveRegistrations = currentCount || 0;
+
+--- program.routes.ts:385
+.from('program_registrations')
+.insert([
+{
+program_id: programId,
+user_id: user.id,
+tenant_id: program.tenant_id,
+status: 'registered',
+--- program.routes.ts:433
+.from('program')
+.select('id, title, tenant_id')
+.eq('id', programId)
+.single();
+
+if (progError || !program) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:463
+let residentQuery = supabaseAdmin.from('resident_profile').select('user_id, digital_youth_id, users(full_name, email)');
+
+if (attendeeUserId) {
+residentQuery = residentQuery.eq('user_id', attendeeUserId);
+} else if (digitalYouthId) {
+residentQuery = residentQuery.eq('digital_youth_id', digitalYouthId);
+}
+--- program.routes.ts:483
+.from('program_attendance')
+.select('id, checked_in_at')
+.eq('program_id', programId)
+.eq('user_id', resolvedUserId)
+.maybeSingle();
+
+if (existingAttendance) {
+--- program.routes.ts:500
+.from('program_registrations')
+.select('id, status')
+.eq('program_id', programId)
+.eq('user_id', resolvedUserId)
+.maybeSingle();
+
+if (!registration) {
+--- program.routes.ts:513
+.from('program_attendance')
+.insert([
+{
+program_id: programId,
+user_id: resolvedUserId,
+tenant_id: program.tenant_id,
+checked_in_at: checkInTime,
+--- program.routes.ts:533
+.from('program_registrations')
+.update({ status: 'attended' })
+.eq('id', registration.id);
+
+sendSuccess(
+res,
+{
+--- program.routes.ts:560
+.from('program')
+.select('id, tenant_id')
+.eq('id', programId)
+.single();
+
+if (programError || !program) {
+sendError(res, 'Program not found.', 404);
+--- program.routes.ts:575
+.from('program_attendance')
+.select('id, program_id, user_id, tenant_id, checked_in_at, qr_payload, users(full_name)')
+.eq('program_id', programId)
+.order('checked_in_at', { ascending: false });
+
+if (error) {
+sendError(res, `Failed to retrieve program attendance: ${error.message}`, 500);
+--- social.routes.ts:241
+.from('announcement')
+.select('id, tenant_id, title, content, what, where_text, event_when, hashtags, image_path, status')
+.eq('id', parsed.data.announcement_id)
+.maybeSingle();
+
+if (announcementError) {
+sendError(res, 'Unable to load the announcement for Facebook publishing.', 500);
+--- user.routes.ts:90
+.from('users')
+.select('tenant_id')
+.eq('id', user.id)
+.single();
+if (dbUser?.tenant_id) {
+tenantId = dbUser.tenant_id;
+}
+--- user.routes.ts:106
+.from('users')
+.update({
+full_name: full_name.trim(),
+phone: phone ? phone.trim() : null,
+updated_at: new Date().toISOString(),
+})
+.eq('id', user.id);
+--- user.routes.ts:121
+.from('resident_profile')
+.upsert(
+{
+user_id: user.id,
+tenant_id: tenantId,
+birthdate,
+sex,
+--- user.routes.ts:173
+.from('users')
+.select('*, roles(role_name), barangay(name, city, district), resident_profile(birthdate, sex, address, digital_youth_id, qr_code_url)')
+.eq('id', user.id)
+.single();
+
+sendSuccess(
+res,
+--- user.routes.ts:228
+.from('users')
+.select('id, email, tenant_id, full_name')
+.eq('id', userId)
+.maybeSingle();
+
+if (userError) {
+sendError(res, `Failed to retrieve authenticated user profile: ${userError.message}`, 500);
+--- user.routes.ts:255
+const { error: userUpdateError } = await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
+if (userUpdateError) {
+sendError(res, `Failed to update user profile: ${userUpdateError.message}`, 500);
+return;
+}
+
+// 2. Fetch or update resident_profile
+--- user.routes.ts:263
+.from('resident_profile')
+.select('*')
+.eq('user_id', userId)
+.maybeSingle();
+
+const { data: dbUser } = await supabaseAdmin
+.from('users')
+--- user.routes.ts:269
+.from('users')
+.select('tenant_id, email, full_name')
+.eq('id', userId)
+.single();
+
+const tenantId = dbUser?.tenant_id || existingProfile?.tenant_id || authenticatedUser.tenant_id;
+const birthdate = body.birthdate || existingProfile?.birthdate || '2005-01-01';
+--- user.routes.ts:302
+.from('resident_profile')
+.upsert(residentPayload, { onConflict: 'user_id' });
+
+if (profileUpsertErr) {
+console.warn('Resident Profile Upsert Notice:', profileUpsertErr.message);
+}
+
+--- user.routes.ts:405
+.from('users')
+.select('id')
+.eq('id', userId)
+.maybeSingle();
+if (userError) {
+sendError(res, `Failed to retrieve user profile: ${userError.message}`, 500);
+return;
+--- user.routes.ts:419
+.from('users')
+.select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+.eq('id', userId)
+.single();
+
+const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+const meta = authData?.user?.user_metadata || {};
+--- user.routes.ts:481
+.from('users')
+.select('*, resident_profile(*)');
+
+query = includeOfficials ? query.in('role_id', [3, 4]) : query.eq('role_id', 4);
+
+if (!(isSuperAdmin && allTenantsRequested)) {
+query = query.eq('tenant_id', user.tenant_id);
+
+FRONTEND: how data is scoped to the tenant
+App.tsx:27: BarangayTenant,
+App.tsx:44: const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
+App.tsx:45: const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
+App.tsx:54: const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
+App.tsx:62: const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
+App.tsx:82: barangay: tenants.find(tenant => tenant.id === announcement.tenant_id)?.name || 'Barangay',
+App.tsx:90: }, [currentRole, currentTenant?.id, currentUser?.id]);
+App.tsx:101: setCurrentTenant(null);
+App.tsx:113: setTenants(prev => {
+App.tsx:133: // If user already restored with tenant_id, sync currentTenant with backend data
+App.tsx:137: if (user?.tenant_id) {
+App.tsx:138: const matchedBgy = data.find(b => b.id === user.tenant_id);
+App.tsx:140: setCurrentTenant({
+App.tsx:167: setCurrentTenant(null);
+App.tsx:194: if (user.tenant_id) {
+App.tsx:195: const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+App.tsx:197: setCurrentTenant({
+App.tsx:212: if (user.tenant_id) {
+App.tsx:213: const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+App.tsx:215: setCurrentTenant({
+App.tsx:223: if (user.tenant_id) {
+App.tsx:224: const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+App.tsx:226: setCurrentTenant({
+App.tsx:259: barangayId: user.tenant_id || '',
+App.tsx:274: setPrograms([]);
+App.tsx:276: setExpenses([]);
+App.tsx:281: setPrograms([]);
+App.tsx:283: setExpenses([]);
+App.tsx:285: kabisigApi.getPrograms().then(progs => {
+App.tsx:287: setPrograms(progs.map((p: any): Program => ({
+App.tsx:319: barangayId: d.tenant_id,
+App.tsx:324: kabisigApi.getExpenses().then(exps => {
+App.tsx:326: setExpenses(exps.map((e: any): ExpenseRecord => ({
+App.tsx:344: barangayId: e.tenant_id,
+App.tsx:350: }, [currentRole, currentTenant?.id]);
+App.tsx:384: }, [currentRole, currentTenant?.id, youthProfilesRetryCount]);
+App.tsx:396: console.warn('Unable to load polls for active tenant:', error);
+App.tsx:399: }, [currentRole, currentTenant?.id, currentUser?.id]);
+App.tsx:422: }, [currentRole, currentTenant?.id, currentUser?.id]);
+App.tsx:425: const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
+App.tsx:450: // Resolve tenant with multi-tenant binding priority
+App.tsx:451: const authoritativeTenantId = userObj?.tenant_id || tenantId;
+App.tsx:452: let selectedTenant = tenants.find(t => t.id === authoritativeTenantId);
+App.tsx:453: if (!selectedTenant && emailOrName) {
+App.tsx:457: if (matchedProfile?.barangayId) {
+App.tsx:458: selectedTenant = tenants.find(t => t.id === matchedProfile.barangayId);
+App.tsx:461: if (!selectedTenant) {
+App.tsx:462: selectedTenant = tenants.find(t => t.chairpersonEmail?.toLowerCase() === emailLower);
+App.tsx:465: if (!selectedTenant) {
+App.tsx:466: selectedTenant = tenants[0];
+App.tsx:469: if (selectedTenant) {
+App.tsx:470: selectedTenant = {
+App.tsx:471: ...selectedTenant,
+App.tsx:472: logo: selectedTenant.logo || DEFAULT_BARANGAY_LOGOS[selectedTenant.name] || ''
+App.tsx:477: setCurrentTenant(selectedTenant);
+App.tsx:510: barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
+App.tsx:540: setCurrentTenant(null);
+App.tsx:550: const targetTenant = tenants.find(t => t.id === newProfile.barangayId) || tenants[0];
+App.tsx:553: barangayId: targetTenant.id
+App.tsx:569: details: `Registered as ${boundProfile.registeredRole} bound to Brgy. ${targetTenant.name} (Tenant ID: ${targetTenant.id}). Status: PENDING validation.`
+App.tsx:591: const approvedByName = currentTenant ? currentTenant.chairperson : 'SK Chairperson';
+App.tsx:605: // Update tenant counts if it's a regular constituent
+App.tsx:606: if (currentTenant && (!matchedYouth?.registeredRole || matchedYouth?.registeredRole === 'Youth Constituent')) {
+App.tsx:607: setTenants(prev => prev.map(t => t.id === currentTenant.id ? { ...t, youthPopulation: t.youthPopulation + 1 } : t));
+App.tsx:640: const approvedByName = currentTenant ? currentTenant.chairperson : 'SK Chairperson';
+App.tsx:700: location: newP.location || `Barangay ${currentTenant?.name || 'Hall'}`,
+App.tsx:707: tenant_id: currentTenant?.id
+App.tsx:722: setPrograms(prev => [persistedProgram, ...prev]);
+App.tsx:725: const authorName = currentUser?.full_name || (currentTenant?.chairperson && currentTenant.chairperson !== 'Unassigned' ? currentTenant.chairperson : 'SK Chairperson');
+App.tsx:731: barangay: currentTenant?.name || 'City-Wide',
+App.tsx:757: setPrograms(previous => previous.map(item => item.id === program.id ? program : item));
+App.tsx:767: setPrograms(previous => previous.filter(item => item.id !== programId));
+App.tsx:772: if (!currentTenant?.id) throw new Error('Select a barangay before recording an expense.');
+App.tsx:805: setExpenses(prev => [savedExpense, ...prev]);
+App.tsx:806: setPrograms(prev => prev.map(program => program.id === savedExpense.programId
+App.tsx:810: // Increment the tenant's spent budget reactively
+App.tsx:811: if (currentTenant) {
+App.tsx:812: setTenants(prev => prev.map(t => {
+App.tsx:813: if (t.name === currentTenant.name || t.id === currentTenant.id) {
+App.tsx:873: setPrograms(prev => prev.map(program => program.id === progId
+App.tsx:899: barangays={tenants}
+App.tsx:903: onLogin={(email, role, tenantId, userObj) => handleLogin(role, tenantId || '', email, userObj)}
+App.tsx:926: barangayId: partialProfile.barangayId || '',
+App.tsx:939: barangays={tenants}
+App.tsx:943: setTenants(prev => prev.map(tenant => tenant.id === id ? { ...tenant, ...updates } : tenant));
+App.tsx:968: setTenants(prev => prev.map(t => t.id === id ? { ...t, ...savedData } : t));
+App.tsx:972: setTenants(prev => prev.map(current => {
+App.tsx:989: {(currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson') && currentTenant && (
+App.tsx:992: currentBarangay={currentTenant}
+App.tsx:997: setTenants(prev => prev.map(t => t.id === currentTenant.id ? { ...t, chairperson: updatedUser.full_name, chairpersonEmail: updatedUser.email } : t));
+App.tsx:1004: currentBarangay={currentTenant}
+App.tsx:1069: currentTenant={currentTenant}
+App.tsx:1070: tenants={tenants}
+App.tsx:1091: tenants={tenants}
+App.tsx:1114: tenants={tenants}
+api.ts:1: import { BarangayTenant, ResolutionRecord, SystemAuditLog, YouthProfile } from '../types';
+api.ts:143: async getBarangays(): Promise<BarangayTenant[]> {
+api.ts:144: const res = await this.request<BarangayTenant[]>('/barangays', { method: 'GET' });
+api.ts:151: async getBarangay(id: string): Promise<BarangayTenant | null> {
+api.ts:152: const res = await this.request<BarangayTenant>(`/barangays/${id}`, { method: 'GET' });
+api.ts:159: async updateBarangaySettings(id: string, settings: Partial<BarangayTenant>): Promise<{ success: boolean; message?: string; error?: any }> {
+api.ts:175: async assignChairpersonByEmail(barangayId: string, email: string): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+api.ts:178: body: JSON.stringify({ barangay_id: barangayId, email }),
+api.ts:313: async getAnnouncements(tenantId?: string): Promise<any[]> {
+api.ts:314: const url = tenantId ? `/announcements?tenant_id=${encodeURIComponent(tenantId)}` : '/announcements';
+api.ts:379: async getPrograms(tenantId?: string): Promise<any[]> {
+api.ts:380: const url = tenantId ? `/programs?tenant_id=${tenantId}` : '/programs';
+api.ts:469: async getDocuments(tenantId?: string): Promise<any[]> {
+api.ts:470: const url = tenantId ? `/documents?tenant_id=${tenantId}` : '/documents';
+api.ts:557: async getBudgets(tenantId?: string, fiscalYear = new Date().getFullYear()): Promise<any[]> {
+api.ts:559: if (tenantId) params.set('tenant_id', tenantId);
+api.ts:571: async getExpenses(tenantId?: string): Promise<any[]> {
+api.ts:572: const url = tenantId ? `/budget/expenses?tenant_id=${tenantId}` : '/budget/expenses';
+api.ts:595: async getBarangayAnalytics(tenantId?: string): Promise<any | null> {
+api.ts:596: const url = tenantId ? `/analytics/barangay?tenant_id=${tenantId}` : '/analytics/barangay';

@@ -92,6 +92,7 @@ export interface Program {
   category: 'Health & Nutrition' | 'Education & Scholarship' | 'Sports Development' | 'Livelihood & Skills' | 'Peace & Security' | 'Environmental Protection';
   status: 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed';
   registeredCount: number;
+  barangayId?: string;
 }
 
 export interface Registration {
@@ -160,6 +161,7 @@ export interface ExpenseRecord {
 
 export interface FeedbackRecord {
   id: string;
+  userId?: string;
   type: 'Suggestion' | 'Complaint' | 'Evaluation' | 'Inquiry';
   programId?: string;
   programTitle?: string;
@@ -169,6 +171,17 @@ export interface FeedbackRecord {
   anonymous: boolean;
   status: 'Pending' | 'Reviewed' | 'Resolved';
   response?: string;
+  residentProfile?: {
+    age?: number;
+    sex?: string;
+    zone?: string;
+    address?: string;
+    educationalLevel?: string;
+    employmentStatus?: string;
+    youthSector?: string;
+    contact?: string;
+    email?: string;
+  };
   dateSubmitted: string;
   submittedBy?: string; // name (or anonymous)
 }
@@ -176,9 +189,10 @@ export interface FeedbackRecord {
 export interface ResolutionRecord {
   id: string;
   resolutionNumber: string; // e.g. Res-2026-005
+  author?: string;
   title: string;
   content: string;
-  status: 'Draft' | 'Under Review' | 'Approved' | 'Archived' | 'Voting Open';
+  status: 'Draft' | 'Under Review' | 'Approved' | 'Archived' | 'Voting Open' | 'Closed';
   validityPeriod: string; // e.g., "July 2026 - Dec 2026"
   votesSupport: number;
   votesOppose: number;

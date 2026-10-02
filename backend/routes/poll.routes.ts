@@ -78,12 +78,23 @@ router.post(
       return;
     }
 
+    // Force author server-side (ignore client-supplied "Proposed by:").
+    const rawDescription = parsed.data.description || '';
+    const strippedDescription = rawDescription
+      .split('\n')
+      .filter((line) => !line.startsWith('Proposed by: '))
+      .join('\n')
+      .trimEnd();
+    const authoredDescription = strippedDescription
+      ? `${strippedDescription}\nProposed by: ${user.full_name || 'SK Official'}`
+      : `Proposed by: ${user.full_name || 'SK Official'}`;
+
     const { data, error } = await supabaseAdmin
       .from('polls')
       .insert({
         tenant_id: user.tenant_id,
         question: parsed.data.question,
-        description: parsed.data.description || null,
+        description: authoredDescription,
         options: parsed.data.options,
         start_date: parsed.data.start_date,
         end_date: parsed.data.end_date,

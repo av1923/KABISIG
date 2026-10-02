@@ -311,10 +311,13 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     try {
       const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
       const prevMeta = authData?.user?.user_metadata || {};
+      const safePrevMeta = Object.fromEntries(
+        Object.entries(prevMeta).filter(([key]) => !['profilePic', 'qrCode', 'picture'].includes(key)),
+      );
       const calculatedAge = calculateAge(birthdate);
 
       updatedMetadata = {
-        ...prevMeta,
+        ...safePrevMeta,
         id: body.id || prevMeta.id || residentPayload.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
         name: body.name || body.full_name || prevMeta.name || userUpdates.full_name || user.full_name,
         sex: body.sex || prevMeta.sex || sex,
@@ -335,8 +338,6 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         youthSector: body.youthSector || prevMeta.youthSector || 'In-School Youth',
         guardianName: body.guardianName ?? prevMeta.guardianName ?? '',
         guardianContact: body.guardianContact ?? prevMeta.guardianContact ?? '',
-        profilePic: body.profilePic ?? prevMeta.profilePic ?? '',
-        qrCode: body.qrCode || prevMeta.qrCode || residentPayload.qr_code_url || residentPayload.digital_youth_id,
         status: body.status || prevMeta.status || 'Pending',
         barangayId: tenantId,
         dateRegistered: body.dateRegistered || prevMeta.dateRegistered || new Date().toISOString().split('T')[0],

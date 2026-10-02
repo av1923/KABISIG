@@ -204,7 +204,13 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 
   try {
     const documentsWithSignedUrls = await Promise.all((documents || []).map(withSignedDocumentUrl));
-    sendSuccess(res, documentsWithSignedUrls, 'Documents retrieved successfully.');
+    const publicSafeDocuments = user
+      ? documentsWithSignedUrls
+      : documentsWithSignedUrls.map((doc: any) => ({
+          ...doc,
+          submitter: doc.submitter ? { full_name: doc.submitter.full_name } : doc.submitter,
+        }));
+    sendSuccess(res, publicSafeDocuments, 'Documents retrieved successfully.');
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to generate document download URLs.', 502);
   }

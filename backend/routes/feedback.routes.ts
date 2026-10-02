@@ -78,7 +78,6 @@ export function analyzeSentiment(text: string): {
 }
 
 const SubmitFeedbackSchema = z.object({
-  tenant_id: z.string().uuid('Valid Barangay ID is required'),
   subject: z.string().min(3, 'Subject must be at least 3 characters'),
   message: z.string().min(5, 'Message must be at least 5 characters'),
   category: z.string().min(2, 'Category is required'),
@@ -90,26 +89,22 @@ const RespondFeedbackSchema = z.object({
   status: z.enum(['under_review', 'resolved', 'dismissed']).default('resolved'),
 });
 
-router.post('/', async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/',
+  authenticateUser,
+  requireActiveUser,
+  async (req: Request, res: Response): Promise<void> => {
   const parseResult = SubmitFeedbackSchema.safeParse(req.body);
   if (!parseResult.success) {
     sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
     return;
   }
 
-  const { tenant_id, subject, message, category, is_anonymous } = parseResult.data;
-
-  let authUserId: string | null = null;
-  const token = req.headers.authorization?.split(' ')[1];
-  if (token) {
-    try {
-      const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-      if (user && !is_anonymous) {
-        authUserId = user.id;
-      }
-    } catch {
-      // Unauthenticated / anonymous
-    }
+  const { subject, message, category, is_anonymous } = parseResult.data;
+  const user = (req as AuthRequest).user!;
+  if (!user.tenant_id) {
+    sendError(res, 'Your account is not linked to a barangay.', 403);
+    return;
   }
 
   const textToAnalyze = `${subject} ${message}`;
@@ -119,8 +114,8 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     .from('feedback')
     .insert([
       {
-        tenant_id,
-        user_id: is_anonymous ? null : authUserId,
+        tenant_id: user.tenant_id,
+        user_id: is_anonymous ? null : user.id,
         is_anonymous,
         subject,
         message,
@@ -140,7 +135,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
   const { error: analysisError } = await supabaseAdmin
     .from('sentiment_analysis')
     .insert({
-      tenant_id,
+      tenant_id: user.tenant_id,
       feedback_id: newFeedback.id,
       sentiment: sentimentResult.sentiment,
       score: sentimentResult.score,
@@ -149,15 +144,10 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     });
 
   if (analysisError) {
-    const missingSentimentTable = analysisError.code === '42P01'
-      || analysisError.message.toLowerCase().includes('sentiment_analysis')
-      || analysisError.message.toLowerCase().includes('schema cache');
-    if (!missingSentimentTable) {
-      console.error('Failed to persist sentiment analysis:', analysisError);
-      sendError(res, `Feedback was saved, but sentiment analysis could not be persisted: ${analysisError.message}`, 502);
-      return;
-    }
-    console.warn('Feedback saved without sentiment_analysis record because the optional table is unavailable:', analysisError.message);
+    await supabaseAdmin.from('feedback').delete().eq('id', newFeedback.id);
+    console.error('Failed to persist sentiment analysis; feedback row rolled back:', analysisError);
+    sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}`, 500);
+    return;
   }
 
   sendCreated(
@@ -173,20 +163,43 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
     },
     'Your voice has been heard! Feedback submitted to Boses ng Kabataan.'
   );
-});
+  }
+);
 
-router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
-  const user = (req as AuthRequest).user;
-  const { sentiment, category, status, tenant_id } = req.query;
+router.get(
+  '/',
+  authenticateUser,
+  requireActiveUser,
+  async (req: Request, res: Response): Promise<void> => {
+  const user = (req as AuthRequest).user!;
+  const { sentiment, category, status, tenant_id, scope } = req.query;
 
   let query = supabaseAdmin
     .from('feedback')
-    .select('*, barangay(name), users(full_name)');
+    .select('*, barangay(name), users(full_name, email, phone, resident_profile(birthdate, sex, address, educational_status, employment_status, is_registered_voter, digital_youth_id))');
 
-  if (user && user.role !== 'SUPER_ADMIN') {
+  if (user.role === 'YOUTH_CONSTITUENT') {
+    if (!user.tenant_id) {
+      sendError(res, 'Your account is not linked to a barangay.', 403);
+      return;
+    }
+    query = query
+      .eq('tenant_id', user.tenant_id)
+      .eq('user_id', user.id)
+      .eq('is_anonymous', false);
+  } else if (user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'Your account is not linked to a barangay.', 403);
+      return;
+    }
     query = query.eq('tenant_id', user.tenant_id);
+  } else if (scope === 'all') {
+    // Explicit federation-wide access for Super Admin only.
   } else if (tenant_id && typeof tenant_id === 'string') {
     query = query.eq('tenant_id', tenant_id);
+  } else {
+    sendError(res, 'Super Admin must specify scope=all or a tenant_id.', 400);
+    return;
   }
 
   if (sentiment && typeof sentiment === 'string') {
@@ -216,7 +229,8 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   };
 
   sendSuccess(res, { summary, feedbacks }, 'Feedback list retrieved.');
-});
+  }
+);
 
 router.patch(
   '/:id/respond',

@@ -107,6 +107,7 @@ interface OfficialPagesProps {
   documents: DocumentRecord[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
+    pollsError?: string | null;
   expenses: ExpenseRecord[];
   announcements?: AnnouncementRecord[];
   currentTenant?: BarangayTenant | null;
@@ -129,6 +130,7 @@ export default function OfficialPages({
   documents,
   feedback,
   resolutions,
+    pollsError = null,
   expenses,
   announcements = [],
   currentTenant,
@@ -158,6 +160,15 @@ export default function OfficialPages({
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
   const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
   const [inventory, setInventory] = useState<any[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    kabisigApi.getInventory().then(rows => {
+      if (!isMounted) return;
+      setInventory(rows.map((row: any) => ({ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || '' })));
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, [currentRole]);
 
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
 
@@ -919,14 +930,25 @@ export default function OfficialPages({
     }
   };
 
-  const handleRegisterInventorySubmit = () => {
+  const handleRegisterInventorySubmit = async () => {
     if (!invForm.item) return alert('Item name is required.');
-    const newItem = {
-      id: `inv-${Date.now().toString().slice(-3)}`,
-      ...invForm
-    };
-    setInventory(prev => [newItem, ...prev]);
-    setShowInvModal(false);
+    try {
+      const res = await kabisigApi.addInventoryItem({
+        item_name: invForm.item,
+        category: invForm.category,
+        condition: invForm.condition === 'Needs Repair' ? 'Fair' : invForm.condition,
+        quantity: invForm.quantity,
+        unit: 'pcs',
+        unit_cost: invForm.cost,
+        location: invForm.location,
+      });
+      if (!res.success || !res.data) throw new Error(res.message || 'Could not save asset.');
+      const row = res.data;
+      setInventory(prev => [{ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || "" }, ...prev]);
+      setShowInvModal(false);
+    } catch (error: any) {
+      alert(error.message || 'Could not save asset.');
+    }
   };
 
   const handleOpenFeedbackResponse = (fb: FeedbackRecord) => {
@@ -987,7 +1009,7 @@ export default function OfficialPages({
         programTitle: matchedTitle,
         timestamp: timeStr
       });
-      setQrMessage(`ℹ️ Venue QR Code Detected for "${matchedTitle}". Please scan a Youth Constituent ID or Ticket.`);
+      setQrMessage(` Venue QR Code Detected for "${matchedTitle}". Please scan a Youth Constituent ID or Ticket.`);
       return;
     }
 
@@ -1216,7 +1238,7 @@ export default function OfficialPages({
 
             <nav className="space-y-2">
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
-                Official SK Navigation — Brgy. {currentTenant?.name || 'Barangay'}
+                Official SK Navigation  Brgy. {currentTenant?.name || 'Barangay'}
               </div>
               {menuConfig[currentRole]?.map(menu => {
                 const Icon = menu.icon;
@@ -1341,7 +1363,7 @@ export default function OfficialPages({
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'Barangay'} SK Council ● Naga City
+                <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'Barangay'} SK Council  Naga City
               </span>
             </div>
           </div>
@@ -1430,10 +1452,10 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Attendance Rate</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Attendance Tracking</span>
                           <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">QR Verified</span>
                         </div>
-                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">88.5%</h3>
+                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">{localAttendance?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Check-ins</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Event Check-in Average</p>
                       </div>
                     </div>
@@ -1444,11 +1466,11 @@ export default function OfficialPages({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Smart Rec Engine</span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Rule-Based Matching</span>
                           <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
-                        <h3 className="text-2xl font-black text-amber-600 mt-0.5">5 <span className="text-xs font-semibold text-slate-400">Target Matches</span></h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">AI Outreach & Engagement</p>
+                        <h3 className="text-2xl font-black text-amber-600 mt-0.5">{programs?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Programs</span></h3>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">Generated from resident profiles</p>
                       </div>
                     </div>
                   </>
@@ -1463,7 +1485,7 @@ export default function OfficialPages({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">KK Youth Database</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">100% Active</span>
+                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
                         <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Residents</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Katipunan ng Kabataan (15–30 yrs)</p>
@@ -1583,7 +1605,7 @@ export default function OfficialPages({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Katipunan ng Kabataan</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">100% Active</span>
+                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
                         <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Youth</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Resident Roster</p>
@@ -1878,12 +1900,12 @@ export default function OfficialPages({
                         </div>
                       </div>
 
-                      {/* Smart Statutory Compliance Checklist (PDF Module 3 & 4) */}
+                      {/* Statutory Compliance Checklist (PDF Module 3 & 4) */}
                       <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between">
                           <h4 className="font-sans font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
                             <ShieldCheck className="w-4 h-4 text-[#091d64]" />
-                            Smart Compliance Monitor
+                            Compliance Monitor
                           </h4>
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">RA 10742</span>
                         </div>
@@ -2027,7 +2049,7 @@ export default function OfficialPages({
                     </div>
                   </div>
 
-                  {/* Section 1: Program Capacity Analytics & Intelligent Features */}
+                  {/* Section 1: Program Capacity Analytics & Rule-Based Features */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Left 2 Cols: Program Capacity & Registration Bar Chart */}
                     <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-2xs col-span-1 lg:col-span-2 space-y-4">
@@ -2066,14 +2088,14 @@ export default function OfficialPages({
                       <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">Committee activity summaries will appear when live program records are available.</div>
                     </div>
 
-                    {/* Right Col: Intelligent Features (Smart Schedule Conflict & Low Engagement Alerts) */}
+                    {/* Right Col: Rule-Based Features (Schedule Conflict & Low Engagement Alerts) */}
                     <div className="space-y-6 col-span-1">
-                      {/* Smart Venue & Schedule Conflict Alert Widget */}
+                      {/* Venue & Schedule Conflict Alert Widget */}
                       <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
                         <div className="flex items-center justify-between">
                           <h4 className="font-sans font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
                             <AlertTriangle className="w-4 h-4 text-emerald-600" />
-                            Smart Schedule Conflict Monitor
+                            Schedule Conflict Monitor
                           </h4>
                           <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">Clear</span>
                         </div>
@@ -2234,7 +2256,7 @@ export default function OfficialPages({
                         </div>
                       )}
 
-                      {/* Smart Tax Withholding Quick Summary Table */}
+                      {/* Tax Withholding Quick Summary Table */}
                       <div className="pt-2">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Latest Audit Ledger & VAT Withholding Vouchers</span>
@@ -2658,7 +2680,7 @@ export default function OfficialPages({
                         What QR codes are scanned at SK events?
                       </h6>
                       <div className="p-2.5 rounded-lg bg-white border border-blue-100/80 space-y-1">
-                        <span className="font-bold text-slate-800 block text-[11px] text-blue-900">📇 Youth Constituent Digital Resident ID QR Code</span>
+                        <span className="font-bold text-slate-800 block text-[11px] text-blue-900"> Youth Constituent Digital Resident ID QR Code</span>
                         <p className="text-[10px] text-slate-500 leading-normal">
                           Officials scan the youth's single official Digital ID QR code (e.g. <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-700">SK-2026-001</code>) displayed under <strong className="text-slate-700">My ID</strong> or <strong className="text-slate-700">Registrations</strong>. The system verifies if they have an approved registration slot for the selected program and checks them in instantly.
                         </p>
@@ -2849,14 +2871,14 @@ export default function OfficialPages({
                     </div>
                   </div>
 
-                  {/* SMART INTELLIGENT FEEDBACK ANALYTICS (PDF MODULE 4 & 5) */}
+                  {/* RULE-BASED FEEDBACK ANALYTICS (PDF MODULE 4 & 5) */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* Sentiment Analysis Widget */}
                     <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                           <BarChart3 className="w-4 h-4 text-[#091d64]" />
-                          Smart Feedback Sentiment
+                          Rule-Based Feedback Sentiment
                         </h4>
                         <span className="text-[10px] bg-blue-50 text-[#091d64] font-bold px-2 py-0.5 rounded">Rule-Based NLP</span>
                       </div>
@@ -2870,7 +2892,7 @@ export default function OfficialPages({
                         return (
                           <div className="space-y-2 pt-1">
                             <div className="flex items-center justify-between text-xs font-semibold">
-                              <span className={`${localFeedback.length > 0 ? 'text-emerald-700' : 'text-slate-400'} flex items-center gap-1.5`}>● Positive ({positiveCount})</span>
+                              <span className={`${localFeedback.length > 0 ? 'text-emerald-700' : 'text-slate-400'} flex items-center gap-1.5`}> Positive ({positiveCount})</span>
                               <span className={`font-mono ${localFeedback.length > 0 ? 'text-slate-600 font-bold' : 'text-slate-400'}`}>
                                 {localFeedback.length > 0 ? `${((positiveCount / total) * 100).toFixed(0)}%` : '0%'}
                               </span>
@@ -2997,7 +3019,7 @@ export default function OfficialPages({
                                 {fb.type}
                               </span>
 
-                              {/* Rule-Based Smart Sentiment Classification Badge */}
+                              {/* Rule-Based Sentiment Classification Badge */}
                               {(() => {
                                 const sentiment = analyzeFeedbackSentiment(fb.content);
                                 return (
@@ -3018,7 +3040,7 @@ export default function OfficialPages({
 
                               {fb.programTitle && (
                                 <span className="text-slate-400 text-xs font-bold flex items-center gap-1">
-                                  ● {fb.programTitle}
+                                   {fb.programTitle}
                                 </span>
                               )}
                             </div>
@@ -3043,7 +3065,17 @@ export default function OfficialPages({
                           <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-slate-500">
-                                Submitted by: {fb.anonymous ? '🔒 Anonymous Youth Constituent' : fb.submittedBy}
+                                Submitted by: {fb.anonymous ? ' Anonymous Youth Constituent' : fb.submittedBy}</span>
+                              {!fb.anonymous && fb.residentProfile && (
+                                <span className="inline-flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 font-medium">
+                                  {fb.residentProfile.age && <span><strong className="text-slate-600">Age:</strong> {fb.residentProfile.age}</span>}
+                                  {fb.residentProfile.sex && <span><strong className="text-slate-600">Sex:</strong> {fb.residentProfile.sex}</span>}
+                                  {fb.residentProfile.educationalLevel && <span><strong className="text-slate-600">Education:</strong> {fb.residentProfile.educationalLevel}</span>}
+                                  {fb.residentProfile.employmentStatus && <span><strong className="text-slate-600">Employment:</strong> {fb.residentProfile.employmentStatus}</span>}
+                                  {fb.residentProfile.contact && <span><strong className="text-slate-600">Contact:</strong> {fb.residentProfile.contact}</span>}
+                                </span>
+                              )}
+                              <span style={{display: 'none'}}
                               </span>
                               <div className="flex text-amber-400 gap-0.5 ml-2">
                                 {[...Array(5)].map((_, i) => (
@@ -3101,6 +3133,7 @@ export default function OfficialPages({
                   </div>
 
                   <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                    {pollsError && <p role="alert" className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">Polls could not be loaded: {pollsError}</p>}
                     <table className="w-full text-left text-sm text-slate-600">
                       <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                         <tr>
@@ -3114,9 +3147,9 @@ export default function OfficialPages({
                       <tbody className="divide-y divide-slate-50 text-xs font-medium">
                         {localResolutions.map(r => (
                           <tr key={r.id}>
-                            <td className="px-6 py-4 font-mono font-bold text-[#091d64]">{r.number}</td>
+                            <td className="px-6 py-4 font-mono font-bold text-[#091d64]">{r.resolutionNumber || r.number || ''}</td>
                             <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm">{r.title}</td>
-                            <td className="px-6 py-4 text-slate-500">{r.author}</td>
+                            <td className="px-6 py-4 text-slate-500">{r.author || ''}</td>
                             <td className="px-6 py-4 text-center">
                               <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'Approved' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700 animate-pulse'}`}>
                                 {r.status}
@@ -3127,6 +3160,9 @@ export default function OfficialPages({
                             </td>
                           </tr>
                         ))}
+                        {localResolutions.length === 0 && !pollsError && (
+                          <tr><td colSpan={5} className="px-6 py-8 text-center text-xs text-slate-400">No active polls are available for this barangay yet.</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -4843,10 +4879,14 @@ export default function OfficialPages({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
-                  <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono" />
-                </div>
+                {currentRole !== 'SK Kagawad' && (
+                  <>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
+                    <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono" />
+                  </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Max slots</label>
                   <input type="number" value={progForm.maxParticipants} onChange={(e)=>setProgForm({...progForm, maxParticipants: parseInt(e.target.value)||100})} className="w-full p-2 border rounded text-xs" />
@@ -5072,16 +5112,10 @@ export default function OfficialPages({
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Resolution Title *</label>
                 <textarea value={resForm.title} onChange={(e)=>setResForm({...resForm, title: e.target.value})} className="w-full p-2 border rounded text-xs" rows={3} placeholder="Explain the exact purpose of this council resolution..." required />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Resolution Number *</label>
                   <input type="text" value={resForm.number} onChange={(e)=>setResForm({...resForm, number: e.target.value})} className="w-full p-2 border rounded font-mono text-xs" required />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Author / Proposer</label>
-                  <input type="text" value={resForm.author} onChange={(e)=>setResForm({...resForm, author: e.target.value})} className="w-full p-2 border rounded text-xs bg-slate-50" readOnly />
-                </div>
-              </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Voting Close Date *</label>
                 <input

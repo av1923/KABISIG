@@ -16,18 +16,30 @@ const AssignChairpersonByEmailSchema = z.object({
 router.get(
   '/audit-logs',
   authenticateUser,
-  requireRoles('SUPER_ADMIN'),
+  requireRoles('SUPER_ADMIN', 'BARANGAY_ADMIN', 'SK_OFFICIAL'),
   async (req: Request, res: Response): Promise<void> => {
     const requestedLimit = Number(req.query.limit);
     const limit = Number.isInteger(requestedLimit) && requestedLimit > 0
       ? Math.min(requestedLimit, 500)
       : 200;
 
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('audit_logs')
       .select('id, tenant_id, user_id, action, entity_name, entity_id, details, created_at, users(full_name, roles(role_name)), barangay(name)')
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    // Tenant scoping: only SUPER_ADMIN sees all tenants
+    const authReq = req as unknown as { user?: { role?: string; tenant_id?: string } };
+    if (authReq.user?.role !== 'SUPER_ADMIN') {
+      if (!authReq.user?.tenant_id) {
+        sendError(res, 'Tenant scope missing from session.', 403);
+        return;
+      }
+      query = query.eq('tenant_id', authReq.user.tenant_id);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       sendError(res, `Failed to retrieve audit logs: ${error.message}`, 500);

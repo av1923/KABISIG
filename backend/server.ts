@@ -14,13 +14,15 @@ import userRoutes from './routes/user.routes.js';
 import pollRoutes from './routes/poll.routes.js';
 import announcementRoutes from './routes/announcement.routes.js';
 import socialRoutes from './routes/social.routes.js';
+import publicRoutes from './routes/public.routes.js';
+import inventoryRoutes from './routes/inventory.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
-
+import http from 'node:http';
 dotenv.config({ path: '.env.local' });
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT || 5000);
 
 // Middlewares
 app.use(cors());
@@ -66,6 +68,8 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/polls', pollRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/social', socialRoutes);
+app.use('/api/public', publicRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 // Health Check Routes
 app.get('/api/health', (req: Request, res: Response) => {
@@ -119,9 +123,15 @@ app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
   sendError(res, message, status, err.details || null);
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(
+  { maxHeaderSize: 131072 }, // 128 KB — fixes 431 Request Header Fields Too Large
+  app
+);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`=======================================================`);
   console.log(`KABISIG Backend Server running on http://localhost:${PORT}`);
+  console.log(`Also reachable on LAN at http://192.168.254.110:${PORT}`);
   console.log(`=======================================================`);
 });
 
