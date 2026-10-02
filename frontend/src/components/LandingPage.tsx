@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import {
   Users, ClipboardList, QrCode, Wallet, MessageSquare, BarChart3,
-  ChevronDown
+  ChevronDown, ShieldCheck
 } from 'lucide-react';
 import { DecorativeBackground } from './PublicPages';
 
@@ -46,6 +46,7 @@ const LOGO_SRC = '/images/Kabisig_logo.png';
 
 export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyPortal }: LandingPageProps) {
   const [scrolled, setScrolled] = useState(false);
+  const [expandedLaw, setExpandedLaw] = useState<string | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 60);
@@ -57,11 +58,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
     <div className="min-h-screen bg-white font-sans text-slate-800 overflow-x-hidden">
       {/* TOP NAV */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all ${scrolled ? 'bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100' : 'bg-transparent'}`}>
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={LOGO_SRC} alt="KABISIG" className="w-11 h-11 object-contain" />
-            <span className="font-extrabold text-lg tracking-tight text-[#091d64]">KABISIG</span>
-          </div>
+        <div className="w-full px-6 lg:px-10 py-3 flex items-center justify-end">
           <div className="flex items-center gap-1 sm:gap-2">
             <button onClick={onTransparencyPortal} className="hidden sm:inline-block px-4 py-2 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">Transparency Portal</button>
             <button onClick={onSignIn} className="px-4 py-2 text-xs font-bold rounded-lg text-[#091d64] hover:bg-slate-100 transition-colors">Sign In</button>
@@ -73,7 +70,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
       {/* HERO */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-white via-blue-50/40 to-white">
         <DecorativeBackground />
-        <div className="relative z-10 max-w-3xl mx-auto px-6 text-center pt-20 pb-16">
+        <div className="relative z-10 w-full px-6 text-center pt-20 pb-16">
           <img src={LOGO_SRC} alt="KABISIG" className="w-32 h-32 sm:w-40 sm:h-40 object-contain mx-auto mb-6" />
           <p className="text-[#091d64] font-extrabold text-[11px] tracking-[0.4em] uppercase mb-3">Naga City - Sangguniang Kabataan</p>
           <h1 className="text-[#091d64] font-black text-5xl sm:text-6xl lg:text-7xl tracking-tight leading-none mb-5">KABISIG</h1>
@@ -100,7 +97,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
 
       {/* ABOUT */}
       <section className="relative py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-14 items-center">
+        <div className="w-full px-6 lg:px-10 grid lg:grid-cols-2 gap-14 items-center">
           <div>
             <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">About the Project</p>
             <h2 className="text-3xl sm:text-4xl font-black text-[#091d64] mb-5 leading-tight">Modernizing SK governance for the youth of Naga City</h2>
@@ -110,11 +107,6 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
             <p className="text-slate-600 text-sm leading-relaxed mb-6">
               <strong className="text-[#091d64]">KABISIG</strong> centralizes these operations into a single multi-tenant platform, aligning with the SK Reform Act (RA 10742), the DILG youth database mandate (MC 2022-033), and the SK Full Public Disclosure Policy (MC 2023-068), while preserving each barangay's data isolation and privacy.
             </p>
-            <div className="flex flex-wrap gap-3 text-[11px] font-bold">
-              <span className="px-3 py-1.5 bg-blue-50 text-[#091d64] rounded-full">Multi-Tenant Architecture</span>
-              <span className="px-3 py-1.5 bg-blue-50 text-[#091d64] rounded-full">Rule-Based Analytics</span>
-              <span className="px-3 py-1.5 bg-blue-50 text-[#091d64] rounded-full">RA 10173 Compliant</span>
-            </div>
           </div>
           <div className="relative">
             <div className="absolute -inset-4 bg-gradient-to-br from-[#091d64]/5 to-amber-500/5 rounded-3xl blur-xl"></div>
@@ -130,7 +122,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
 
       {/* FEATURES */}
       <section className="py-24 bg-slate-50">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="w-full px-6 lg:px-10">
           <div className="text-center mb-14">
             <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">Core Capabilities</p>
             <h2 className="text-3xl sm:text-4xl font-black text-[#091d64] mb-4">Built for how SK actually works</h2>
@@ -140,8 +132,8 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
             {FEATURES.map((f, i) => {
               const Icon = f.icon;
               return (
-                <div key={i} className="bg-white rounded-2xl border border-slate-100 p-6 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all">
-                  <div className="w-12 h-12 rounded-xl bg-[#091d64] text-amber-400 flex items-center justify-center mb-4">
+                <div key={i} className="group bg-white rounded-2xl border border-slate-100 p-6 shadow-xs transition-all duration-500 ease-out motion-reduce:transition-none hover:z-20 hover:shadow-xl hover:-translate-y-2 hover:scale-[1.15]">
+                  <div className="w-12 h-12 rounded-xl bg-[#091d64] text-amber-400 flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110 motion-reduce:transition-none">
                     <Icon className="w-6 h-6" />
                   </div>
                   <h3 className="font-extrabold text-slate-900 text-base mb-2">{f.title}</h3>
@@ -153,88 +145,56 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
         </div>
       </section>
 
-      {/* CONSULTATION GALLERY */}
-      <section className="relative py-24 bg-white overflow-hidden">
-        <div className="max-w-6xl mx-auto px-6 relative z-10">
-          <div className="text-center mb-14">
-            <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">Grounded in Community Consultation</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-[#091d64] mb-4">Voices from the barangays</h2>
-            <p className="text-slate-500 text-sm max-w-2xl mx-auto">
-              Requirements were gathered through direct interviews with SK Chairpersons across Naga City, ensuring KABISIG reflects real SK workflows, not assumptions.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 sm:gap-4">
-            {CHAIRPERSONS.map((c) => (
-              <div key={c.file} className="group">
-                <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
-                  <img
-                    src={`/images/${c.file}`}
-                    alt={`SK Chairperson of ${c.barangay}`}
-                    className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-                    onError={(e) => {
-                      const wrapper = (e.currentTarget as HTMLImageElement).parentElement;
-                      if (wrapper) wrapper.style.display = 'none';
-                    }}
-                  />
-                </div>
-                <div className="mt-2 px-0.5">
-                  <p className="text-[9px] font-extrabold text-[#091d64] uppercase tracking-wider truncate">{c.barangay}</p>
-                  <p className="text-[10px] font-semibold text-slate-600 truncate">Hon. {c.name}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-10 text-center text-[11px] text-slate-400 font-medium">
-            Additional consultation photos: Hon. Ma. Angelica Pujado (Lerma) - Hon. Rosary D. Diaz (Pacol)
-          </p>
-        </div>
-      </section>
-
-      {/* FIELD WORK */}
-      <section className="relative py-24 bg-slate-50">
-        <div className="max-w-5xl mx-auto px-6">
+      {/* LEGAL FOUNDATIONS */}
+      <section aria-labelledby="legal-foundations-title" className="min-h-screen flex items-center py-16 bg-slate-50 border-y border-slate-200">
+        <div className="w-full px-6 lg:px-10">
           <div className="text-center mb-12">
-            <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">Field Work</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-[#091d64] mb-4">Consultation with the Sangguniang Panlungsod</h2>
-            <p className="text-slate-500 text-sm max-w-2xl mx-auto">
-              Coordination with Naga City's legislative office to validate compliance requirements and alignment with local youth development plans.
-            </p>
+            <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">Statutory &amp; Legal Foundations</p>
+            <h2 id="legal-foundations-title" className="text-3xl sm:text-4xl font-black text-[#091d64] mb-4">Built on the foundations of public service</h2>
+            <p className="text-slate-500 text-sm max-w-2xl mx-auto">Explore the laws and policies guiding youth governance, transparency, and responsible data use.</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-5xl mx-auto">
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
             {[
-              { src: '/images/CityHall_1.jpg', caption: 'Sangguniang Panlungsod - Naga City' },
-              { src: '/images/CityHall_2.jpg', caption: 'Coordination Meeting - City Hall' },
-              { src: '/images/Chairperson_Developer.jpg', caption: 'SK Chairpersons with the Developers' },
-              { src: '/images/Chairperson_Developer.jpg', caption: 'SK Chairpersons with the Developers' },
-            ].map((img, i) => (
-              <div key={i} className="rounded-xl overflow-hidden shadow-md border border-slate-100 bg-white">
-                <img
-                  src={img.src}
-                  alt={img.caption}
-                  className="w-full h-48 object-cover"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                />
-                <div className="px-4 py-2.5 border-t border-slate-100">
-                  <p className="text-[11px] text-slate-600 font-semibold">{img.caption}</p>
+              { id: 'ra-10742', law: 'RA 10742', title: 'Sangguniang Kabataan Reform Act', detail: 'Supports the role of Sangguniang Kabataan in local youth governance.' },
+              { id: 'dilg-2022-033', law: 'DILG MC 2022-033', title: 'Youth Profiling & Database Mandate', detail: 'Guides youth profiling and the maintenance of a youth database.' },
+              { id: 'dilg-2023-068', law: 'DILG MC 2023-068', title: 'Full Public Disclosure Policy', detail: 'Guides public disclosure of SK plans, budgets, and reports.' },
+              { id: 'ra-10173', law: 'RA 10173', title: 'National Data Privacy Act Compliance', detail: 'Sets requirements for responsible handling of personal information.' },
+            ].map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-expanded={expandedLaw === item.id}
+                aria-controls={`legal-detail-${item.id}`}
+                onClick={() => setExpandedLaw(expandedLaw === item.id ? null : item.id)}
+                className="group min-h-[240px] w-full rounded-2xl border border-slate-200 bg-white p-6 sm:p-7 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#091d64] focus-visible:ring-offset-2 motion-reduce:transition-none"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#091d64] text-amber-400 transition-transform duration-300 group-hover:scale-105 motion-reduce:transition-none">
+                    <ShieldCheck className="h-6 w-6" aria-hidden="true" />
+                  </span>
+                  <ChevronDown className={`mt-3 h-5 w-5 shrink-0 text-slate-400 transition-transform duration-300 ${expandedLaw === item.id ? 'rotate-180' : ''}`} aria-hidden="true" />
                 </div>
-              </div>
+                <p className="mt-6 text-sm font-extrabold text-[#091d64]">{item.law}</p>
+                <p className="mt-2 text-base font-bold leading-snug text-slate-900">{item.title}</p>
+                <div id={`legal-detail-${item.id}`} hidden={expandedLaw !== item.id} className="mt-4 border-t border-slate-100 pt-4 text-sm leading-relaxed text-slate-600">
+                  {item.detail}
+                </div>
+              </button>
             ))}
           </div>
         </div>
       </section>
 
       {/* TEAM */}
-      <section className="py-24 bg-white">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[11px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-3">The Team</p>
-            <h2 className="text-3xl sm:text-4xl font-black text-[#091d64] mb-4">Built by two BS IT students at ADNU</h2>
+      <section className="py-10 bg-white">
+        <div className="w-full px-6 lg:px-10">
+          <div className="text-center mb-7">
+            <p className="text-[10px] font-extrabold tracking-[0.3em] uppercase text-[#091d64] mb-2">The Team</p>
+            <h2 className="text-2xl sm:text-3xl font-black text-[#091d64]">Built by two BS IT students at ADNU</h2>
           </div>
-          <div className="grid sm:grid-cols-2 gap-10 max-w-3xl mx-auto">
+          <div className="grid sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
             <div className="text-center">
-              <div className="w-48 h-48 mx-auto rounded-full overflow-hidden shadow-lg border-4 border-white ring-1 ring-slate-100 mb-5">
+              <div className="w-32 h-32 mx-auto rounded-full overflow-hidden shadow-md border-4 border-white ring-1 ring-slate-100 mb-3">
                 <img
                   src="/images/Developer_pic1.jpg"
                   alt="David James B. Ignacio"
@@ -242,11 +202,11 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
               </div>
-              <p className="font-extrabold text-slate-900 text-lg">David James B. Ignacio</p>
+              <p className="font-extrabold text-slate-900 text-base">David James B. Ignacio</p>
               <p className="text-xs text-slate-500 font-semibold mt-1">BS Information Technology</p>
             </div>
             <div className="text-center">
-              <div className="w-48 h-48 mx-auto rounded-full overflow-hidden shadow-lg border-4 border-white ring-1 ring-slate-100 mb-5">
+              <div className="w-32 h-32 mx-auto rounded-full overflow-hidden shadow-md border-4 border-white ring-1 ring-slate-100 mb-3">
                 <img
                   src="/images/Developer_pic3.jpg"
                   alt="Ashley Kyla D. Vinzon"
@@ -254,11 +214,11 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
               </div>
-              <p className="font-extrabold text-slate-900 text-lg">Ashley Kyla D. Vinzon</p>
+              <p className="font-extrabold text-slate-900 text-base">Ashley Kyla D. Vinzon</p>
               <p className="text-xs text-slate-500 font-semibold mt-1">BS Information Technology</p>
             </div>
           </div>
-          <p className="text-center text-xs text-slate-500 font-semibold mt-12">
+          <p className="text-center text-[11px] text-slate-500 font-semibold mt-6">
             Ateneo de Naga University - College of Computer Studies - Department of Computer Science
           </p>
         </div>
@@ -266,7 +226,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
 
       {/* FOOTER */}
       <footer className="bg-[#061344] text-blue-200/70 py-10">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+        <div className="w-full px-6 lg:px-10 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center p-1">
               <img src={LOGO_SRC} alt="KABISIG" className="w-full h-full object-contain" />

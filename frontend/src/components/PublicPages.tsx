@@ -43,7 +43,7 @@ export function validatePassword(password: string) {
 export function DecorativeBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-      <svg className="absolute top-0 left-0 w-[55%] h-[55%] opacity-90" viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className="absolute top-0 left-0 w-[min(64vw,64vh)] aspect-square opacity-90" viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M-80 -80 C 180 -80, 260 160, 160 320 C 80 440, -80 380, -80 380 Z" fill="rgba(30, 58, 138, 0.08)" />
         <path d="M-120 -120 C 120 -120, 220 70, 120 250 C 50 350, -120 300, -120 300 Z" fill="rgba(219, 39, 119, 0.06)" />
         <path d="M-50 -50 C 80 -50, 180 200, 110 210 C 20 280, -50 220, -50 220 Z" fill="rgba(251, 191, 36, 0.05)" />
@@ -57,17 +57,17 @@ export function DecorativeBackground() {
         <line x1="60" y1="300" x2="120" y2="120" stroke="rgba(30, 58, 138, 0.15)" strokeWidth="1.5" />
       </svg>
 
-      <svg className="absolute top-0 right-0 w-[45%] h-[45%] opacity-90" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className="absolute top-0 right-0 w-[min(54vw,54vh)] aspect-square opacity-90" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M450 -50 C 280 -50, 220 120, 300 240 C 360 320, 450 280, 450 280 Z" fill="rgba(219, 39, 119, 0.06)" />
         <path d="M480 -80 C 320 -80, 250 50, 320 180 C 370 260, 480 220, 480 220 Z" fill="rgba(251, 191, 36, 0.05)" />
       </svg>
 
-      <svg className="absolute bottom-0 left-0 w-[45%] h-[45%] opacity-90" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className="absolute bottom-0 left-0 w-[min(54vw,54vh)] aspect-square opacity-90" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M-50 450 C 120 450, 180 280, 100 160 C 40 80, -50 120, -50 120 Z" fill="rgba(219, 39, 119, 0.06)" />
         <path d="M-80 480 C 80 480, 150 350, 80 220 C 30 140, -80 180, -80 180 Z" fill="rgba(251, 191, 36, 0.05)" />
       </svg>
 
-      <svg className="absolute bottom-0 right-0 w-[55%] h-[55%] opacity-90" viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg className="absolute bottom-0 right-0 w-[min(64vw,64vh)] aspect-square opacity-90" viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M580 580 C 320 580, 240 340, 340 180 C 420 60, 580 120, 580 120 Z" fill="rgba(30, 58, 138, 0.08)" />
         <path d="M620 620 C 380 620, 280 430, 380 250 C 450 150, 620 200, 620 200 Z" fill="rgba(219, 39, 119, 0.06)" />
         <path d="M550 550 C 420 550, 320 300, 390 290 C 480 220, 550 280, 550 280 Z" fill="rgba(251, 191, 36, 0.05)" />
@@ -434,34 +434,8 @@ export default function PublicPages({
     <div className="min-h-screen flex flex-col bg-slate-50 relative overflow-x-hidden">
       <main className="flex-grow">
         {(activeTab === 'home' || activeTab === 'login') && (
-          <section className="relative min-h-screen lg:grid lg:grid-cols-[2fr_3fr]">
-
-            {/* LEFT - Navy branding panel (desktop only) */}
-            <div className="hidden lg:flex relative flex-col justify-between bg-gradient-to-br from-[#091d64] via-[#0d2a80] to-[#091d64] p-12 overflow-hidden">
-              <DecorativeBackground />
-              <div className="relative z-10">
-                <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center p-2 shadow-lg">
-                  <img src={logoWBg.src} alt="KABISIG" className="w-full h-full object-contain" />
-                </div>
-              </div>
-              <div className="relative z-10 my-10">
-                <p className="text-amber-400 font-extrabold text-[10px] tracking-[0.3em] uppercase mb-3">Naga City - Sangguniang Kabataan</p>
-                <h2 className="text-white font-black text-3xl mb-4 leading-tight">Youth governance,<br />centralized.</h2>
-                <p className="text-blue-100/90 text-sm mb-8 leading-relaxed max-w-sm">Multi-tenant platform serving all 27 SK councils of Naga City - profiling, programs, budgets, and community engagement.</p>
-                <ul className="space-y-3 text-blue-100/90 text-xs font-semibold">
-                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Youth Profiling &amp; Digital Youth ID</span></li>
-                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Program, Event &amp; Attendance Management</span></li>
-                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Budget Transparency &amp; COA-Ready Reports</span></li>
-                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Federation Analytics across Barangays</span></li>
-                </ul>
-              </div>
-              <div className="relative z-10">
-                <p className="text-blue-200/60 text-[10px] font-medium leading-relaxed">Ateneo de Naga University - BS Information Technology - 2026</p>
-              </div>
-            </div>
-
-            {/* RIGHT - Form column */}
-            <div className="relative flex items-center justify-center bg-[#f8fafc] px-4 py-12">
+          <section className="relative min-h-screen">
+            <div className="relative flex min-h-screen w-full items-center justify-center bg-[#f8fafc] px-4 py-12 sm:px-8">
               <DecorativeBackground />
 
             <div className="relative z-10 w-full max-w-[440px] flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
