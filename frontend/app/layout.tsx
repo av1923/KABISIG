@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import '../src/index.css';
 import SupabaseCookieCleanup from '../src/components/SupabaseCookieCleanup';
+import GlobalFormBehavior from '../src/components/GlobalFormBehavior';
 
 export const metadata: Metadata = {
   title: 'Kabisig SK Information System',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" suppressHydrationWarning>
       <body>
         <SupabaseCookieCleanup />
+        <GlobalFormBehavior />
         {children}
       </body>
     </html>

@@ -481,7 +481,7 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
       .from('users')
       .select('*, resident_profile(*)');
 
-    query = includeOfficials ? query.in('role_id', [3, 4]) : query.eq('role_id', 4);
+    query = includeOfficials ? query.in('role_id', [3, 4]) : query.or('role_id.eq.4,and(role_id.eq.3,status.eq.pending)');
 
     if (!(isSuperAdmin && allTenantsRequested)) {
       query = query.eq('tenant_id', user.tenant_id);

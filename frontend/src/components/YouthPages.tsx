@@ -592,6 +592,45 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
+
+              {/* Latest Announcements Preview */}
+              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-[#091d64]" />
+                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Latest SK Announcements</h4>
+                  </div>
+                  <button
+                    onClick={() => setActiveMenu('announcements')}
+                    className="text-[10px] font-extrabold text-[#091d64] hover:underline bg-blue-50 px-3 py-1 rounded-full cursor-pointer"
+                  >
+                    View All &rarr;
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {announcements
+                    .filter(a => a.status === 'published')
+                    .slice(0, 3)
+                    .map(a => (
+                      <div key={a.id} className="rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="rounded border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">
+                            {a.category}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{a.datePosted}</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-800 truncate">{a.title}</p>
+                        <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">{a.content}</p>
+                      </div>
+                    ))}
+                  {announcements.filter(a => a.status === 'published').length === 0 && (
+                    <p className="py-6 text-center text-xs text-slate-400 font-semibold">
+                      No announcements yet from your SK Council.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               
               {/* TOP ROW: DIGITAL YOUTH ID CARD (LEFT) & METRIC BOXES (RIGHT) */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
@@ -888,43 +927,6 @@ export default function YouthPages({
                 </div>
               </div>
 
-              {/* Latest Announcements Preview */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Megaphone className="w-4 h-4 text-[#091d64]" />
-                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Latest SK Announcements</h4>
-                  </div>
-                  <button
-                    onClick={() => setActiveMenu('announcements')}
-                    className="text-[10px] font-extrabold text-[#091d64] hover:underline bg-blue-50 px-3 py-1 rounded-full cursor-pointer"
-                  >
-                    View All &rarr;
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {announcements
-                    .filter(a => a.status === 'published')
-                    .slice(0, 3)
-                    .map(a => (
-                      <div key={a.id} className="rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center justify-between gap-2 mb-1.5">
-                          <span className="rounded border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">
-                            {a.category}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-semibold">{a.datePosted}</span>
-                        </div>
-                        <p className="text-xs font-bold text-slate-800 truncate">{a.title}</p>
-                        <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">{a.content}</p>
-                      </div>
-                    ))}
-                  {announcements.filter(a => a.status === 'published').length === 0 && (
-                    <p className="py-6 text-center text-xs text-slate-400 font-semibold">
-                      No announcements yet from your SK Council.
-                    </p>
-                  )}
-                </div>
-              </div>
 
             </div>
           )}

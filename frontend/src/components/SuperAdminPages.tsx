@@ -159,6 +159,11 @@ export default function SuperAdminPages({
     return matchesSearch && matchesDistrict && matchesChairperson;
   });
 
+  // Filtered version of chartBarangayData for Analytics tab (respects search + district filter)
+  const analyticsChartData = filteredBarangays.length === sortedBarangays.length
+    ? chartBarangayData
+    : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.name === item.name));
+
   const handleOpenAssignModal = (b?: BarangayTenant) => {
     const target = b || sortedBarangays[0];
     setAssigningBarangay(target || null);
@@ -602,7 +607,7 @@ export default function SuperAdminPages({
                   </div>
                   <div className="h-64 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={chartBarangayData}>
+                      <BarChart data={analyticsChartData}>
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} />
                         <Tooltip />
@@ -917,6 +922,38 @@ export default function SuperAdminPages({
           {activeMenu === 'analytics' && (
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
+              {/* ANALYTICS FILTER BAR */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs flex flex-col sm:flex-row gap-3 sm:items-center">
+                <div className="relative flex-1 min-w-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search barangay name, chairperson, or email..."
+                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                  />
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {(['All', 'North', 'South', 'West', 'East'] as const).map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setDistrictFilter(d)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        districtFilter === d
+                          ? 'bg-[#091d64] text-white shadow-xs'
+                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                      }`}
+                    >
+                      {d === 'All' ? 'All Districts' : `${d} District`}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[10px] font-bold text-slate-400 whitespace-nowrap">
+                  {filteredBarangays.length} of {sortedBarangays.length} barangays
+                </div>
+              </div>
+              
               {/* LYDP REPORT GENERATOR BANNER */}
               <div className="bg-gradient-to-r from-[#091d64] via-[#102a83] to-[#1e3a8a] p-6 rounded-2xl text-white shadow-md flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div className="space-y-1">
@@ -950,7 +987,7 @@ export default function SuperAdminPages({
                   </div>
                   <div className="h-64 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={chartBarangayData}>
+                      <BarChart data={analyticsChartData}>
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} />
                         <Tooltip />
@@ -969,7 +1006,7 @@ export default function SuperAdminPages({
                   </div>
                   <div className="h-64 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={chartBarangayData}>
+                      <BarChart data={analyticsChartData}>
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
                         <YAxis stroke="#94a3b8" fontSize={10} />
                         <Tooltip formatter={(val: number) => `₱${val}k`} />

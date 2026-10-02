@@ -5,15 +5,12 @@ import kabisigApi from './lib/api';
 import { 
   NAGA_BARANGAYS, 
   DEFAULT_BARANGAY_LOGOS,
-  INITIAL_PROGRAMS, 
-  INITIAL_YOUTH_PROFILES, 
-  INITIAL_REGISTRATIONS, 
-  INITIAL_FEEDBACK, 
-  INITIAL_RESOLUTIONS, 
-  INITIAL_EXPENSES, 
-  INITIAL_ANNOUNCEMENTS,
-  INITIAL_DOCUMENTS,
-  INITIAL_AUDIT_LOGS
+
+
+
+
+
+
 } from './data';
 import PublicPages from './components/PublicPages';
 import LandingPage from './components/LandingPage';
@@ -43,19 +40,19 @@ import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
 export default function App() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
-  const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>([]);
   const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
   const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
   const [youthProfilesRetryCount, setYouthProfilesRetryCount] = useState(0);
-  const [registrations, setRegistrations] = useState<Registration[]>(INITIAL_REGISTRATIONS);
-  const [feedback, setFeedback] = useState<FeedbackRecord[]>(INITIAL_FEEDBACK);
-  const [resolutions, setResolutions] = useState<ResolutionRecord[]>(INITIAL_RESOLUTIONS);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackRecord[]>([]);
+  const [resolutions, setResolutions] = useState<ResolutionRecord[]>([]);
     const [pollsError, setPollsError] = useState<string | null>(null);
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
-  const [documents, setDocuments] = useState<DocumentRecord[]>(INITIAL_DOCUMENTS);
-  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>(INITIAL_ANNOUNCEMENTS);
-  const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([]);
 
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);

@@ -479,10 +479,9 @@ export default function BarangayAdminPages({
     district: '',
   };
 
+  // Backend already scopes by tenant_id; frontend only needs to confirm the profile belongs here.
   const isMatchBarangay = (profile: YouthProfile) =>
-    profile.barangayId === currentBarangay?.id ||
-    profile.barangayId === currentBarangay?.name ||
-    (Boolean(profile.address && currentBarangay?.name && profile.address.toLowerCase().includes(currentBarangay.name.toLowerCase())));
+    !currentBarangay?.id || profile.barangayId === currentBarangay.id;
 
   const pendingRegistrations = youthProfiles.filter(profile => profile.status === 'Pending' && isMatchBarangay(profile));
   const filteredProfiles = youthProfiles.filter(profile => {
