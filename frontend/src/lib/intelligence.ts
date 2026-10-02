@@ -470,9 +470,12 @@ export function getComplianceIssues(
     });
   }
 
-  // Check D: Absolute mandatory statutory audits (E.g. No overall Budget resolution found)
-  const hasBudgetDoc = documents.some(doc => doc.category === 'Budget');
-  if (!hasBudgetDoc) {
+  // Check D: Require an approved annual budget resolution before clearing the statutory notice.
+  const hasApprovedBudgetResolution = documents.some(doc =>
+    doc.status.toLowerCase() === 'approved' &&
+    /\b(?:annual\s+)?budget\s+resolution\b/i.test(`${doc.title} ${doc.description}`)
+  );
+  if (!hasApprovedBudgetResolution) {
     issues.push({
       level: 'Urgent',
       code: 'MISSING_BUDGET_DOCUMENT',

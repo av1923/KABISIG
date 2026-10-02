@@ -493,8 +493,8 @@ export default function SuperAdminPages({
 
           <div className="flex items-center gap-5">
             <UserMenu 
-              userName="Hon. Federation President"
-              role="SK Federation President (Super Admin)"
+              userName="Federation President"
+              role="SK Federation President"
               onLogout={onLogout}
             />
           </div>

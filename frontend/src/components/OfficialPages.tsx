@@ -94,6 +94,7 @@ import {
 } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
+import NotificationMenu from './NotificationMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
@@ -1371,6 +1372,7 @@ export default function OfficialPages({
           </div>
 
           <div className="flex items-center gap-5">
+            <NotificationMenu onNavigate={() => setActiveMenu('programs')} />
             <UserMenu 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
