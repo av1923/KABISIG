@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, requireRoles, optionalAuthenticateUser } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
@@ -99,8 +99,16 @@ function resolveBarangayLogo(id: string, name: string): string {
   return custom[id] || custom[name] || DEFAULT_BARANGAY_LOGOS[name] || '';
 }
 
+// Chairperson email/phone are only returned to the owning barangay and city-level roles.
+const CONTACT_VISIBLE_ROLES = ['SUPER_ADMIN', 'VIEWER', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'];
+function canSeeBarangayContacts(req: Request, barangayId: string): boolean {
+  const viewer = (req as unknown as { user?: { role?: string; tenant_id?: string | null } }).user;
+  if (!viewer) return false;
+  if (viewer.role && CONTACT_VISIBLE_ROLES.includes(viewer.role)) return true;
+  return Boolean(viewer.tenant_id) && viewer.tenant_id === barangayId;
+}
 // GET /api/barangays - Public/Authenticated: List all 27 Naga City permanently seeded barangays
-router.get('/', async (_req: Request, res: Response): Promise<void> => {
+router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
@@ -187,8 +195,8 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         district: b.district,
         skDistrict: b.sk_district ?? null,
         chairperson: chair?.full_name || 'Unassigned',
-        chairpersonEmail: chair?.email || '',
-        contact: chair?.phone || '',
+        chairpersonEmail: canSeeBarangayContacts(req, b.id) ? (chair?.email || '') : '',
+        contact: canSeeBarangayContacts(req, b.id) ? (chair?.phone || '') : '',
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
@@ -210,7 +218,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
 });
 
 // GET /api/barangays/:id - Get specific barangay details
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id);
 
   const { data: barangay, error } = await supabaseAdmin
@@ -236,8 +244,8 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
   sendSuccess(res, {
     ...barangay,
     chairperson: chair?.full_name || 'Unassigned',
-    chairpersonEmail: chair?.email || '',
-    contact: chair?.phone || '',
+    chairpersonEmail: canSeeBarangayContacts(req, barangay.id) ? (chair?.email || '') : '',
+    contact: canSeeBarangayContacts(req, barangay.id) ? (chair?.phone || '') : '',
     logo: resolveBarangayLogo(barangay.id, barangay.name),
   }, 'Barangay details retrieved.');
 });

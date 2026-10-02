@@ -41,10 +41,13 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
     query = query.eq('tenant_id', user.tenant_id);
-  } else if (tenant_id && typeof tenant_id === 'string') {
-    query = query.eq('tenant_id', tenant_id);
-  } else if (!user) {
-    query = query.in('status', ['upcoming', 'ongoing', 'completed']);
+  } else {
+    if (!user) {
+      query = query.in('status', ['upcoming', 'ongoing', 'completed']);
+    }
+    if (tenant_id && typeof tenant_id === 'string') {
+      query = query.eq('tenant_id', tenant_id);
+    }
   }
 
   if (category && typeof category === 'string') {
@@ -573,7 +576,7 @@ router.get(
 
     const { data, error } = await supabaseAdmin
       .from('program_attendance')
-      .select('id, program_id, user_id, tenant_id, checked_in_at, qr_payload, users(full_name)')
+      .select('id, program_id, user_id, tenant_id, checked_in_at, qr_payload, users!user_id(full_name)')
       .eq('program_id', programId)
       .order('checked_in_at', { ascending: false });
 

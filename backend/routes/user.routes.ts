@@ -311,10 +311,13 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     try {
       const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
       const prevMeta = authData?.user?.user_metadata || {};
+      const safePrevMeta = Object.fromEntries(
+        Object.entries(prevMeta).filter(([key]) => !['profilePic', 'qrCode', 'picture'].includes(key)),
+      );
       const calculatedAge = calculateAge(birthdate);
 
       updatedMetadata = {
-        ...prevMeta,
+        ...safePrevMeta,
         id: body.id || prevMeta.id || residentPayload.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
         name: body.name || body.full_name || prevMeta.name || userUpdates.full_name || user.full_name,
         sex: body.sex || prevMeta.sex || sex,
@@ -335,8 +338,6 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         youthSector: body.youthSector || prevMeta.youthSector || 'In-School Youth',
         guardianName: body.guardianName ?? prevMeta.guardianName ?? '',
         guardianContact: body.guardianContact ?? prevMeta.guardianContact ?? '',
-        profilePic: body.profilePic ?? prevMeta.profilePic ?? '',
-        qrCode: body.qrCode || prevMeta.qrCode || residentPayload.qr_code_url || residentPayload.digital_youth_id,
         status: body.status || prevMeta.status || 'Pending',
         barangayId: tenantId,
         dateRegistered: body.dateRegistered || prevMeta.dateRegistered || new Date().toISOString().split('T')[0],
@@ -480,7 +481,7 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
       .from('users')
       .select('*, resident_profile(*)');
 
-    query = includeOfficials ? query.in('role_id', [3, 4]) : query.eq('role_id', 4);
+    query = includeOfficials ? query.in('role_id', [3, 4]) : query.or('role_id.eq.4,and(role_id.eq.3,status.eq.pending)');
 
     if (!(isSuperAdmin && allTenantsRequested)) {
       query = query.eq('tenant_id', user.tenant_id);

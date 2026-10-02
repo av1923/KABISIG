@@ -1,0 +1,285 @@
+﻿
+
+===== every use of the shared figures =====
+543: const getSectorStats = (categoryName: string) => {
+594: const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+595: const totalBarangayBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+596: const remainingCash = totalBarangayBudget - totalSpentExpenses;
+597: const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
+1530: <h3 className="text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+1544: <h3 className="text-xl font-black text-rose-600 mt-0.5">₱{totalSpentExpenses.toLocaleString()}</h3>
+1556: <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">{((remainingCash / (totalBarangayBudget || 1))*100).toFixed(1)}% Left</span>
+1558: <h3 className="text-xl font-black text-emerald-600 mt-0.5">₱{remainingCash.toLocaleString()}</h3>
+1616: <h3 className="text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+1617: <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{remainingCash.toLocaleString()} Cash Balance</p>
+2198: {((totalSpentExpenses / (totalBarangayBudget || 1)) * 100).toFixed(1)}% Utilized
+3169: <h4 className="text-xl font-black text-[#091d64]">₱{totalBarangayBudget.toLocaleString()}</h4>
+3178: <h4 className="text-xl font-black text-rose-600">₱{totalSpentExpenses.toLocaleString()}</h4>
+3179: <p className="text-[10px] text-slate-500">{budgetUtilizationRate.toFixed(1)}% total fund utilization rate</p>
+3187: <h4 className="text-xl font-black text-emerald-600">₱{remainingCash.toLocaleString()}</h4>
+3248: const eduStats = getSectorStats('Education & Scholarship');
+3249: const sportsStats = getSectorStats('Sports Development');
+3250: const healthStats = getSectorStats('Health & Nutrition');
+3253: const stats = getSectorStats(cat);
+4463: const sportsStats = getSectorStats('Sports Development');
+4464: const eduStats = getSectorStats('Education & Scholarship');
+4465: const healthStats = getSectorStats('Health & Nutrition');
+
+===== frontend\src\components\OfficialPages.tsx [586-604] =====
+586:     },
+587:     'SK Treasurer': {
+588:       name: currentUser?.full_name || 'SK Treasurer',
+589:       title: 'SK Treasurer',
+590:     }
+591:   };
+592: 
+593:   // --- STATS COMPUTATIONS ---
+594:   const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+595:   const totalBarangayBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+596:   const remainingCash = totalBarangayBudget - totalSpentExpenses;
+597:   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
+598: 
+599:   // --- ACTIONS HANDLERS ---
+600:   const handlePublishProgram = async () => {
+601:     if (!progForm.title) {
+602:       alert('Program Title is required.');
+603:       return;
+604:     }
+
+===== frontend\src\components\OfficialPages.tsx [1515-1548] =====
+1515:                     </div>
+1516:                   </>
+1517:                 )}
+1518: 
+1519:                 {currentRole === 'SK Treasurer' && (
+1520:                   <>
+1521:                     <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+1522:                       <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+1523:                         <Coins className="w-5 h-5" />
+1524:                       </div>
+1525:                       <div className="flex-1 min-w-0">
+1526:                         <div className="flex items-center justify-between">
+1527:                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
+1528:                           <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
+1529:                         </div>
+1530:                         <h3 className="text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+1531:                         <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
+1532:                       </div>
+1533:                     </div>
+1534: 
+1535:                     <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+1536:                       <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-rose-600 group-hover:text-white transition-colors">
+1537:                         <DollarSign className="w-5 h-5" />
+1538:                       </div>
+1539:                       <div className="flex-1 min-w-0">
+1540:                         <div className="flex items-center justify-between">
+1541:                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Disbursed Ledger</span>
+1542:                           <span className="text-[9px] font-bold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded">COA Audited</span>
+1543:                         </div>
+1544:                         <h3 className="text-xl font-black text-rose-600 mt-0.5">₱{totalSpentExpenses.toLocaleString()}</h3>
+1545:                         <p className="text-[10px] text-slate-500 truncate mt-0.5">VAT / Non-VAT Expenses</p>
+1546:                       </div>
+1547:                     </div>
+1548: 
+
+===== frontend\src\components\OfficialPages.tsx [3150-3174] =====
+3150:               {currentRole === 'SK Treasurer' ? (
+3151:                 <div className="bg-white p-6 rounded-xl border border-slate-100 space-y-6">
+3152:                   {/* Header */}
+3153:                   <div className="border-b border-slate-100 pb-4">
+3154:                     <div className="flex items-center gap-2">
+3155:                       <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">FINANCIAL GOVERNANCE • FISCAL YEAR 2026</span>
+3156:                       <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'Barangay'} • Naga City</span>
+3157:                     </div>
+3158:                     <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Financial Statements & Reports</h3>
+3159:                     <p className="text-xs text-slate-500 mt-0.5">Financial statements and compliance tracking for SK funds and disbursements.</p>
+3160:                   </div>
+3161: 
+3162:                   {/* 4 Financial Stat Cards */}
+3163:                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+3164:                     <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1">
+3165:                       <div className="flex justify-between items-center text-slate-400">
+3166:                         <span className="text-[10px] font-bold uppercase tracking-wider">Annual SK 10% Fund</span>
+3167:                         <Coins className="w-4 h-4 text-[#091d64]" />
+3168:                       </div>
+3169:                       <h4 className="text-xl font-black text-[#091d64]">₱{totalBarangayBudget.toLocaleString()}</h4>
+3170:                       <p className="text-[10px] text-slate-500">Statutory allocation under RA 10742</p>
+3171:                     </div>
+3172: 
+3173:                     <div className="p-5 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
+3174:                       <div className="flex justify-between items-center text-rose-500">
+
+===== frontend\src\components\OfficialPages.tsx [4451-4560] =====
+4451:           {/* ==================== SCREEN 9: BUDGET (Treasurer AIP Monitor) ==================== */}
+4452:           {activeMenu === 'budget' && (
+4453:             <div className="bg-white p-6 rounded-xl border border-slate-100 text-left space-y-6 animate-in fade-in duration-200">
+4454:               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+4455:                 <div>
+4456:                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
+4457:                   <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
+4458:                 </div>
+4459:               </div>
+4460: 
+4461:               {/* Tally boxes - Refined Premium Design */}
+4462:               {(() => {
+4463:                 const sportsStats = getSectorStats('Sports Development');
+4464:                 const eduStats = getSectorStats('Education & Scholarship');
+4465:                 const healthStats = getSectorStats('Health & Nutrition');
+4466: 
+4467:                 return (
+4468:                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+4469:                     <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
+4470:                       <div className="flex justify-between items-start mb-4">
+4471:                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Sports Sector Limit</span>
+4472:                         <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
+4473:                       </div>
+4474:                       <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{sportsStats.alloc.toLocaleString()}</h4>
+4475:                       <div className="mt-4">
+4476:                         <div className="flex justify-between text-[10px] font-bold mb-1.5">
+4477:                           <span className="text-slate-400 uppercase">Utilization</span>
+4478:                           <span className={sportsStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+4479:                             {sportsStats.rate.toFixed(1)}%
+4480:                           </span>
+4481:                         </div>
+4482:                         <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+4483:                           <div 
+4484:                             className={`h-full transition-all duration-500 ${sportsStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+4485:                             style={{ width: `${sportsStats.rate > 0 ? Math.min(100, sportsStats.rate) : 0}%` }}
+4486:                           />
+4487:                         </div>
+4488:                       </div>
+4489:                     </div>
+4490: 
+4491:                     <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
+4492:                       <div className="flex justify-between items-start mb-4">
+4493:                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Scholarship & Education</span>
+4494:                         <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
+4495:                       </div>
+4496:                       <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{eduStats.alloc.toLocaleString()}</h4>
+4497:                       <div className="mt-4">
+4498:                         <div className="flex justify-between text-[10px] font-bold mb-1.5">
+4499:                           <span className="text-slate-400 uppercase">Utilization</span>
+4500:                           <span className={eduStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+4501:                             {eduStats.rate.toFixed(1)}%
+4502:                           </span>
+4503:                         </div>
+4504:                         <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+4505:                           <div 
+4506:                             className={`h-full transition-all duration-500 ${eduStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+4507:                             style={{ width: `${eduStats.rate > 0 ? Math.min(100, eduStats.rate) : 0}%` }}
+4508:                           />
+4509:                         </div>
+4510:                       </div>
+4511:                     </div>
+4512: 
+4513:                     <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
+4514:                       <div className="flex justify-between items-start mb-4">
+4515:                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Health & Wellness Limit</span>
+4516:                         <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
+4517:                       </div>
+4518:                       <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{healthStats.alloc.toLocaleString()}</h4>
+4519:                       <div className="mt-4">
+4520:                         <div className="flex justify-between text-[10px] font-bold mb-1.5">
+4521:                           <span className="text-slate-400 uppercase">Utilization</span>
+4522:                           <span className={healthStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+4523:                             {healthStats.rate.toFixed(1)}%
+4524:                           </span>
+4525:                         </div>
+4526:                         <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+4527:                           <div 
+4528:                             className={`h-full transition-all duration-500 ${healthStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+4529:                             style={{ width: `${healthStats.rate > 0 ? Math.min(100, healthStats.rate) : 0}%` }}
+4530:                           />
+4531:                         </div>
+4532:                       </div>
+4533:                     </div>
+4534:                   </div>
+4535:                 );
+4536:               })()}
+4537: 
+4538:               {/* Program Budget Allocation Table */}
+4539:               <div className="space-y-3 pt-2">
+4540:                 <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Active Program Budget Allocations & Overspending Monitor</h4>
+4541:                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
+4542:                   <table className="w-full text-left text-xs text-slate-600">
+4543:                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
+4544:                       <tr>
+4545:                         <th className="px-5 py-3">AIP Reference</th>
+4546:                         <th className="px-5 py-3">Program Title</th>
+4547:                         <th className="px-5 py-3">Sector Category</th>
+4548:                         <th className="px-5 py-3 text-right">Allocated Budget</th>
+4549:                         <th className="px-5 py-3 text-right">Disbursed Expenses</th>
+4550:                         <th className="px-5 py-3 text-center">Reversion Status</th>
+4551:                       </tr>
+4552:                     </thead>
+4553:                     <tbody className="divide-y divide-slate-50 font-medium">
+4554:                       {programs.length === 0 ? (
+4555:                         <tr>
+4556:                           <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+4557:                             No program budget allocations registered. Allocations will appear when a real program budget is approved.
+4558:                           </td>
+4559:                         </tr>
+4560:                       ) : (
+
+===== frontend\src\App.tsx [770-830] =====
+770:       end_date: new Date(program.endDate).toISOString(),
+771:       total_slots: program.maxParticipants,
+772:       budget_allocation: program.budgetAllocation,
+773:       aip_reference: program.aipReference || undefined,
+774:       status: program.status.toLowerCase() === 'published' ? 'upcoming' : program.status.toLowerCase(),
+775:     });
+776:     if (!result.success) {
+777:       alert(result.message || 'Program could not be updated.');
+778:       return false;
+779:     }
+780:     setPrograms(previous => previous.map(item => item.id === program.id ? program : item));
+781:     return true;
+782:   };
+783: 
+784:   const handleDeleteProgram = async (programId: string): Promise<boolean> => {
+785:     const result = await kabisigApi.deleteProgram(programId);
+786:     if (!result.success) {
+787:       alert(result.message || 'Program could not be deleted.');
+788:       return false;
+789:     }
+790:     setPrograms(previous => previous.filter(item => item.id !== programId));
+791:     return true;
+792:   };
+793: 
+794:   const handleLogExpense = async (newE: ExpenseRecord): Promise<void> => {
+795:     if (!currentTenant?.id) throw new Error('Select a barangay before recording an expense.');
+796:     if (!newE.budgetId) throw new Error('A barangay budget allocation is required.');
+797: 
+798:     const taxType = newE.taxType === 'VAT' ? 'VAT' : newE.taxType === 'Exempt' ? 'EXEMPT' : 'NON_VAT';
+799:     const taxRate = taxType === 'VAT' ? 12 : taxType === 'NON_VAT' ? 3 : 0;
+800:     const result = await kabisigApi.recordExpense({
+801:       budget_id: newE.budgetId,
+802:       program_id: newE.programId || undefined,
+803:       title: newE.supplier || newE.programTitle || 'Expense Item',
+804:       description: newE.description,
+805:       gross_amount: newE.amount,
+806:       tax_type: taxType,
+807:       tax_rate: taxRate,
+808:     });
+809: 
+810:     if (!result.success || !result.data?.expense) {
+811:       throw new Error(result.message || 'The backend did not confirm the expense.');
+812:     }
+813: 
+814:     const persistedExpense = result.data.expense;
+815:     const savedExpense: ExpenseRecord = {
+816:       ...newE,
+817:       id: persistedExpense.id,
+818:       budgetId: persistedExpense.budget_id,
+819:       amount: Number(persistedExpense.gross_amount),
+820:       taxType: persistedExpense.tax_type === 'EXEMPT' ? 'Exempt' : persistedExpense.tax_type || newE.taxType,
+821:       vatAmount: Number(persistedExpense.vat_amount ?? (persistedExpense.tax_type === 'VAT' ? persistedExpense.tax_amount : newE.vatAmount)) || 0,
+822:       withholdingTax: Number(persistedExpense.withholding_tax ?? newE.withholdingTax) || 0,
+823:       netAmount: Number(persistedExpense.net_amount ?? newE.netAmount ?? persistedExpense.gross_amount) || 0,
+824:       status: persistedExpense.status === 'approved' ? 'Approved' : 'Pending',
+825:       date: persistedExpense.expense_date,
+826:       dateLogged: persistedExpense.expense_date,
+827:     };
+828:     setExpenses(prev => [savedExpense, ...prev]);
+829:     setPrograms(prev => prev.map(program => program.id === savedExpense.programId
+830:       ? { ...program, spentBudget: (program.spentBudget || 0) + savedExpense.amount }

@@ -1,0 +1,1909 @@
+﻿KABISIG context - 10/02/2026 04:30:14
+
+=================== GIT STATUS / LAST COMMITS ===================
+D  backend/dist/api/index.d.ts
+D  backend/dist/api/index.d.ts.map
+D  backend/dist/api/index.js
+D  backend/dist/api/index.js.map
+D  backend/dist/middleware/auth.d.ts
+D  backend/dist/middleware/auth.d.ts.map
+D  backend/dist/middleware/auth.js
+D  backend/dist/middleware/auth.js.map
+D  backend/dist/routes/admin.routes.d.ts
+D  backend/dist/routes/admin.routes.d.ts.map
+D  backend/dist/routes/admin.routes.js
+D  backend/dist/routes/admin.routes.js.map
+D  backend/dist/routes/analytics.routes.d.ts
+D  backend/dist/routes/analytics.routes.d.ts.map
+D  backend/dist/routes/analytics.routes.js
+D  backend/dist/routes/analytics.routes.js.map
+D  backend/dist/routes/announcement.routes.d.ts
+D  backend/dist/routes/announcement.routes.d.ts.map
+D  backend/dist/routes/announcement.routes.js
+D  backend/dist/routes/announcement.routes.js.map
+D  backend/dist/routes/auth.routes.d.ts
+D  backend/dist/routes/auth.routes.d.ts.map
+D  backend/dist/routes/auth.routes.js
+D  backend/dist/routes/auth.routes.js.map
+D  backend/dist/routes/barangay.routes.d.ts
+D  backend/dist/routes/barangay.routes.d.ts.map
+D  backend/dist/routes/barangay.routes.js
+D  backend/dist/routes/barangay.routes.js.map
+D  backend/dist/routes/budget.routes.d.ts
+D  backend/dist/routes/budget.routes.d.ts.map
+D  backend/dist/routes/budget.routes.js
+D  backend/dist/routes/budget.routes.js.map
+D  backend/dist/routes/document.routes.d.ts
+D  backend/dist/routes/document.routes.d.ts.map
+D  backend/dist/routes/document.routes.js
+D  backend/dist/routes/document.routes.js.map
+D  backend/dist/routes/feedback.routes.d.ts
+D  backend/dist/routes/feedback.routes.d.ts.map
+D  backend/dist/routes/feedback.routes.js
+D  backend/dist/routes/feedback.routes.js.map
+D  backend/dist/routes/poll.routes.d.ts
+D  backend/dist/routes/poll.routes.d.ts.map
+D  backend/dist/routes/poll.routes.js
+D  backend/dist/routes/poll.routes.js.map
+D  backend/dist/routes/program.routes.d.ts
+D  backend/dist/routes/program.routes.d.ts.map
+D  backend/dist/routes/program.routes.js
+D  backend/dist/routes/program.routes.js.map
+D  backend/dist/routes/social.routes.d.ts
+D  backend/dist/routes/social.routes.d.ts.map
+D  backend/dist/routes/social.routes.js
+D  backend/dist/routes/social.routes.js.map
+D  backend/dist/routes/user.routes.d.ts
+D  backend/dist/routes/user.routes.d.ts.map
+D  backend/dist/routes/user.routes.js
+D  backend/dist/routes/user.routes.js.map
+D  backend/dist/server.d.ts
+D  backend/dist/server.d.ts.map
+D  backend/dist/server.js
+D  backend/dist/server.js.map
+D  backend/dist/services/supabase.service.d.ts
+D  backend/dist/services/supabase.service.d.ts.map
+D  backend/dist/services/supabase.service.js
+D  backend/dist/services/supabase.service.js.map
+D  backend/dist/types/database.types.d.ts
+D  backend/dist/types/database.types.d.ts.map
+D  backend/dist/types/database.types.js
+D  backend/dist/types/database.types.js.map
+D  backend/dist/utils/response.d.ts
+D  backend/dist/utils/response.d.ts.map
+D  backend/dist/utils/response.js
+D  backend/dist/utils/response.js.map
+ M backend/routes/admin.routes.ts
+ M backend/routes/auth.routes.ts
+ M backend/routes/feedback.routes.ts
+ M backend/routes/poll.routes.ts
+ M backend/routes/user.routes.ts
+ M backend/server.ts
+ M frontend/app/layout.tsx
+ M frontend/src/App.tsx
+ M frontend/src/components/BarangayAdminPages.tsx
+ M frontend/src/components/OfficialPages.tsx
+ M frontend/src/components/YouthPages.tsx
+ M frontend/src/lib/api.ts
+ M frontend/src/types.ts
+?? .gitignore
+?? KABISIG_context.txt
+?? backend/routes/poll.routes.ts.bak
+?? backend/supabase/migrations/011_add_program_aip_reference.sql
+?? frontend/src/App.tsx.bak
+?? frontend/src/components/BarangayAdminPages.tsx.bak
+?? frontend/src/components/BarangayAdminPages.tsx.bak2
+?? frontend/src/components/BarangayAdminPages.tsx.bak4
+?? frontend/src/components/BarangayAdminPages.tsx.bak5
+?? frontend/src/components/BarangayAdminPages.tsx.bak6
+?? frontend/src/components/OfficialPages.tsx.bak
+?? frontend/src/components/OfficialPages.tsx.bak2
+?? frontend/src/components/OfficialPages.tsx.bak3
+?? frontend/src/components/OfficialPages.tsx.bak5
+?? frontend/src/components/PublicPages.tsx.bak
+?? frontend/src/components/SupabaseCookieCleanup.tsx
+?? frontend/src/components/SuperAdminPages.tsx.bak
+?? frontend/src/components/ViewerPages.tsx.bak
+?? frontend/src/components/YouthPages.tsx.bak
+?? frontend/src/lib/api.ts.bak
+?? frontend/src/types.ts.bak
+0511056 Merge branch 'main' into igs
+36840ea FB INTEG WITH IMAGE NA
+0295173 WORKING FB INTEGRATION IN ALL BARANGAY
+4867a7a Merge pull request #1 from davjamigs23/igs
+e583e11 Last Push na nag error pa ang iba AHAHAHAH
+88bcee1 Revert "Working FB integ 2"
+345b8dc Working FB integ 2
+4be0923 FB integ working
+
+=================== SOURCE FILES (path, lines) ===================
+frontend\src\components\charts\ProgramTrendD3.tsx  (74 lines)
+frontend\src\components\ui\button.tsx  (32 lines)
+frontend\src\components\ui\card.tsx  (17 lines)
+frontend\src\components\BarangayAdminPages.tsx  (2715 lines)
+frontend\src\components\ChairpersonOnboarding.tsx  (373 lines)
+frontend\src\components\LiveCameraScanner.tsx  (393 lines)
+frontend\src\components\OfficialPages.tsx  (5366 lines)
+frontend\src\components\ProfileAvatar.tsx  (22 lines)
+frontend\src\components\PublicPages.tsx  (1169 lines)
+frontend\src\components\SupabaseCookieCleanup.tsx  (16 lines)
+frontend\src\components\SuperAdminPages.tsx  (1444 lines)
+frontend\src\components\UserMenu.tsx  (44 lines)
+frontend\src\components\ViewerPages.tsx  (1110 lines)
+frontend\src\components\YouthPages.tsx  (1833 lines)
+frontend\src\lib\api.ts  (592 lines)
+frontend\src\lib\intelligence.ts  (507 lines)
+frontend\src\lib\utils.ts  (5 lines)
+frontend\src\App.tsx  (1048 lines)
+frontend\src\data.ts  (520 lines)
+frontend\src\types.ts  (207 lines)
+backend\middleware\auth.ts  (139 lines)
+backend\routes\admin.routes.ts  (312 lines)
+backend\routes\analytics.routes.ts  (337 lines)
+backend\routes\announcement.routes.ts  (339 lines)
+backend\routes\auth.routes.ts  (878 lines)
+backend\routes\barangay.routes.ts  (512 lines)
+backend\routes\budget.routes.ts  (302 lines)
+backend\routes\document.routes.ts  (416 lines)
+backend\routes\feedback.routes.ts  (257 lines)
+backend\routes\poll.routes.ts  (169 lines)
+backend\routes\program.routes.ts  (498 lines)
+backend\routes\social.routes.ts  (367 lines)
+backend\routes\user.routes.ts  (498 lines)
+backend\services\supabase.service.ts  (90 lines)
+backend\supabase\migrations\001_kabisig_schema.sql  (599 lines)
+backend\supabase\migrations\002_add_missing_tables.sql  (186 lines)
+backend\supabase\migrations\003_add_announcements.sql  (49 lines)
+backend\supabase\migrations\004_create_documents_storage_bucket.sql  (21 lines)
+backend\supabase\migrations\005_add_program_budget_allocation.sql  (4 lines)
+backend\supabase\migrations\007_add_sk_district.sql  (43 lines)
+backend\supabase\migrations\008_add_announcement_details.sql  (20 lines)
+backend\supabase\migrations\009_add_facebook_integration.sql  (62 lines)
+backend\supabase\migrations\010_add_announcement_pubmat_storage_policies.sql  (39 lines)
+backend\supabase\migrations\011_add_program_aip_reference.sql  (5 lines)
+backend\types\database.types.ts  (311 lines)
+backend\utils\response.ts  (72 lines)
+backend\package.json  (27 lines)
+backend\server.ts  (121 lines)
+backend\tsconfig.json  (23 lines)
+
+=================== package.json (frontend + backend) ===================
+{
+  "name": "kabisig-sk-information-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.0.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.1.2",
+    "@radix-ui/react-slot": "^1.1.2",
+    "@supabase/supabase-js": "^2.8.0",
+    "@tanstack/react-query": "^5.1.0",
+    "@yudiel/react-qr-scanner": "^2.6.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "d3": "^7.9.0",
+    "date-fns": "^4.1.0",
+    "html2canvas": "^1.4.1",
+    "html5-qrcode": "^2.3.8",
+    "jspdf": "^2.5.2",
+    "lucide-react": "^0.546.0",
+    "next": "^15.5.3",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-hook-form": "^7.15.0",
+    "recharts": "^3.9.2",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@tailwindcss/postcss": "^4.1.14",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2"
+  }
+}
+{
+  "name": "kabisig-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "dev:server": "tsx watch server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.4.1",
+    "@types/qrcode": "^1.5.6",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
+
+=================== ENV VAR NAMES ONLY (no values) ===================
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\.env.local
+PORT
+SUPABASE_URL
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+FACEBOOK_APP_SECRET
+FACEBOOK_APP_ID
+FACEBOOK_PAGE_ID
+FACEBOOK_PAGE_ACCESS_TOKEN
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\frontend\.env.example
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_API_URL
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\frontend\.env.local
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_API_URL
+
+=================== BACKEND ROUTE LIST ===================
+admin.routes.ts:16: router.get(
+admin.routes.ts:81: router.post(
+analytics.routes.ts:26: router.post('/budget-alerts', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+analytics.routes.ts:99: router.post('/compliance', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+analytics.routes.ts:151: router.get('/barangay', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+analytics.routes.ts:274: router.get(
+announcement.routes.ts:116: router.get('/', authenticateUser, requireActiveUser, async (req, res) => {
+announcement.routes.ts:149: router.post(
+announcement.routes.ts:219: router.patch(
+announcement.routes.ts:319: router.delete(
+auth.routes.ts:136: router.post('/register-youth', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:313: router.post(
+auth.routes.ts:430: router.post(
+auth.routes.ts:491: router.post('/login', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:534: router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:565: router.post('/register-official', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:727: router.get('/check-chairperson-invite', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:795: router.post('/setup-chairperson-password', async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:973: router.get('/me', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+auth.routes.ts:988: router.post('/logout', async (req: Request, res: Response): Promise<void> => {
+barangay.routes.ts:103: router.get('/', async (_req: Request, res: Response): Promise<void> => {
+barangay.routes.ts:213: router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+barangay.routes.ts:246: router.patch(
+barangay.routes.ts:463: router.post(
+budget.routes.ts:34: router.get('/', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+budget.routes.ts:81: router.post(
+budget.routes.ts:153: router.get('/expenses', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+budget.routes.ts:189: router.post(
+document.routes.ts:87: router.post(
+document.routes.ts:170: router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
+document.routes.ts:213: router.get('/:id/download', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+document.routes.ts:244: router.get('/:id', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+document.routes.ts:271: router.post(
+document.routes.ts:326: router.patch(
+document.routes.ts:409: router.patch(
+feedback.routes.ts:92: router.post(
+feedback.routes.ts:169: router.get(
+feedback.routes.ts:235: router.patch(
+poll.routes.ts:36: router.get('/', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
+poll.routes.ts:59: router.post(
+poll.routes.ts:116: router.post(
+program.routes.ts:30: router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
+program.routes.ts:68: router.get('/registrations/mine', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
+program.routes.ts:85: router.get('/:id', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+program.routes.ts:134: router.get(
+program.routes.ts:172: router.post(
+program.routes.ts:229: router.put(
+program.routes.ts:279: router.delete(
+program.routes.ts:325: router.post(
+program.routes.ts:415: router.post(
+program.routes.ts:551: router.get(
+social.routes.ts:90: router.get(
+social.routes.ts:117: router.post(
+social.routes.ts:142: router.post(
+social.routes.ts:196: router.delete(
+social.routes.ts:227: router.post(
+user.routes.ts:46: router.put('/complete-profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+user.routes.ts:223: router.put('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+user.routes.ts:382: router.get('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+user.routes.ts:467: router.get('/youth-profiles', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+
+=================== DB MIGRATIONS / SCHEMA FILES ===================
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\001_kabisig_schema.sql
+-- ==============================================================================
+-- KABISIG: A Web-Based Kabataan Information System for Inclusive Governance
+-- Database Migration Script 001: Schema, Enums, Constraints, RLS, & Seed Data
+-- ==============================================================================
+
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ------------------------------------------------------------------------------
+-- CREATE TABLE IF NOT EXISTS preserves existing application data on reruns.
+-- ------------------------------------------------------------------------------
+
+-- ------------------------------------------------------------------------------
+-- 1. BARANGAY TABLE (Multi-Tenant Root)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.barangay (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    city TEXT NOT NULL DEFAULT 'Naga City',
+    district TEXT NOT NULL CHECK (district IN ('District 1', 'District 2')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ------------------------------------------------------------------------------
+-- 2. ROLES TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.roles (
+    id SERIAL PRIMARY KEY,
+    role_name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Seed Canonical Roles
+INSERT INTO public.roles (id, role_name, description) VALUES
+    (1, 'SUPER_ADMIN', 'System Administrator with complete citywide platform access'),
+    (2, 'BARANGAY_ADMIN', 'Barangay SK Chairman or Chief Administrator'),
+    (3, 'SK_OFFICIAL', 'Elected or appointed Sangguniang Kabataan Kagawad/Secretary/Treasurer'),
+    (4, 'YOUTH_CONSTITUENT', 'Registered youth resident of the barangay (15-30 years old)'),
+    (5, 'VIEWER', 'Public or restricted viewer access'),
+    (6, 'FEDERATION_OBSERVER', 'City-level Panlungsod na Pederasyon ng mga SK observer'),
+    (7, 'LGU_AUDITOR', 'City Government / DILG youth program and fiscal auditor')
+ON CONFLICT (id) DO UPDATE 
+SET role_name = EXCLUDED.role_name, description = EXCLUDED.description;
+
+-- Reset sequence for roles
+SELECT setval('public.roles_id_seq', (SELECT MAX(id) FROM public.roles));
+
+-- Seed Naga City 27 Barangays with Explicit UUIDs
+INSERT INTO public.barangay (id, name, city, district) VALUES
+    -- District 1
+    ('a0111111-1111-4000-8000-000000000001', 'Bagumbayan Norte', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000002', 'Bagumbayan Sur', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000003', 'Calauag', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000004', 'Carolina', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000005', 'Dayangdang', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000006', 'Liboton', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000007', 'Pacol', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000008', 'Panicuason', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000009', 'PeÃ±afrancia', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000010', 'San Felipe', 'Naga City', 'District 1'),
+    ('a0111111-1111-4000-8000-000000000011', 'Santa Cruz', 'Naga City', 'District 1'),
+    -- District 2
+    ('b0222222-2222-4000-8000-000000000012', 'Abella', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000013', 'Balatas', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000014', 'Cararayan', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000015', 'Concepcion Grande', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000016', 'Concepcion PequeÃ±a', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000017', 'Del Rosario', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000018', 'Dinaga', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000019', 'Igualdad Interior', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000020', 'Lerma', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000021', 'Mabolo', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000022', 'Sabang', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000023', 'San Francisco', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000024', 'San Isidro', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000025', 'Tabuco', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000026', 'Tinago', 'Naga City', 'District 2'),
+    ('b0222222-2222-4000-8000-000000000027', 'Triangulo', 'Naga City', 'District 2')
+ON CONFLICT (id) DO UPDATE 
+SET name = EXCLUDED.name, city = EXCLUDED.city, district = EXCLUDED.district;
+
+-- ------------------------------------------------------------------------------
+-- 3. USERS TABLE (Linked to Supabase auth.users)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    tenant_id UUID REFERENCES public.barangay(id) ON DELETE SET NULL,
+    role_id INT NOT NULL REFERENCES public.roles(id) DEFAULT 4,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    phone TEXT,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'rejected')) DEFAULT 'pending',
+    approved_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON public.users(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_users_role_id ON public.users(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_status ON public.users(status);
+
+-- ------------------------------------------------------------------------------
+-- 4. RESIDENT_PROFILE TABLE (15-30 Youth Age Verification)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.resident_profile (
+    user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    birthdate DATE NOT NULL,
+    sex TEXT NOT NULL CHECK (sex IN ('Male', 'Female', 'Other', 'Prefer not to say')),
+    address TEXT NOT NULL,
+    educational_status TEXT CHECK (educational_status IN ('Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth')),
+    employment_status TEXT CHECK (employment_status IN ('Employed', 'Unemployed', 'Self-Employed', 'Student')),
+    is_registered_voter BOOLEAN NOT NULL DEFAULT false,
+    digital_youth_id TEXT UNIQUE,
+    qr_code_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_resident_profile_tenant_id ON public.resident_profile(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_resident_profile_digital_id ON public.resident_profile(digital_youth_id);
+
+-- Enforce 15-30 age requirement per Republic Act No. 10742 (SK Reform Act)
+CREATE OR REPLACE FUNCTION public.check_resident_age()
+RETURNS TRIGGER AS $$
+DECLARE
+    calculated_age INT;
+BEGIN
+    calculated_age := DATE_PART('year', AGE(NEW.birthdate));
+    IF calculated_age < 15 OR calculated_age > 30 THEN
+        RAISE EXCEPTION 'Age must be between 15 and 30 years old per SK Reform Act (RA 10742). Submitted age: %', calculated_age;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_check_resident_age ON public.resident_profile;
+CREATE TRIGGER trg_check_resident_age
+    BEFORE INSERT OR UPDATE ON public.resident_profile
+    FOR EACH ROW
+    EXECUTE FUNCTION public.check_resident_age();
+
+-- ------------------------------------------------------------------------------
+-- 5. PROGRAM TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.program (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    category TEXT NOT NULL,
+    location TEXT NOT NULL,
+    start_date TIMESTAMPTZ NOT NULL,
+    end_date TIMESTAMPTZ NOT NULL,
+    total_slots INT NOT NULL DEFAULT 50 CHECK (total_slots > 0),
+    status TEXT NOT NULL CHECK (status IN ('draft', 'upcoming', 'ongoing', 'completed', 'cancelled')) DEFAULT 'upcoming',
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_program_dates CHECK (end_date >= start_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_program_tenant_id ON public.program(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_program_status ON public.program(status);
+
+-- ------------------------------------------------------------------------------
+-- 6. PROGRAM_REGISTRATIONS & ATTENDANCE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.program_registrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    program_id UUID NOT NULL REFERENCES public.program(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK (status IN ('registered', 'waitlisted', 'cancelled', 'attended')) DEFAULT 'registered',
+    registered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_program_user_reg UNIQUE (program_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_program_reg_program ON public.program_registrations(program_id);
+CREATE INDEX IF NOT EXISTS idx_program_reg_user ON public.program_registrations(user_id);
+CREATE INDEX IF NOT EXISTS idx_program_reg_tenant ON public.program_registrations(tenant_id);
+
+CREATE TABLE IF NOT EXISTS public.program_attendance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    program_id UUID NOT NULL REFERENCES public.program(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    checked_in_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    checked_in_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    qr_payload TEXT,
+    CONSTRAINT uq_attendance_program_user UNIQUE (program_id, user_id) -- Duplicate check-in prevention
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_program ON public.program_attendance(program_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_user ON public.program_attendance(user_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_tenant ON public.program_attendance(tenant_id);
+
+-- ------------------------------------------------------------------------------
+-- 7. BUDGET & EXPENSE TABLES (With Fiscal & Tax Calculations)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.budget (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    fiscal_year INT NOT NULL,
+    category TEXT NOT NULL,
+    allocated_amount NUMERIC(14,2) NOT NULL CHECK (allocated_amount >= 0),
+    remaining_amount NUMERIC(14,2) NOT NULL CHECK (remaining_amount >= 0),
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_tenant_fiscal_cat UNIQUE (tenant_id, fiscal_year, category)
+);
+
+CREATE INDEX IF NOT EXISTS idx_budget_tenant_year ON public.budget(tenant_id, fiscal_year);
+
+CREATE TABLE IF NOT EXISTS public.expense (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    budget_id UUID NOT NULL REFERENCES public.budget(id) ON DELETE RESTRICT,
+    program_id UUID REFERENCES public.program(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    gross_amount NUMERIC(14,2) NOT NULL CHECK (gross_amount > 0),
+    tax_type TEXT NOT NULL CHECK (tax_type IN ('VAT', 'NON_VAT', 'EXEMPT')),
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+    tax_amount NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+    net_amount NUMERIC(14,2) NOT NULL,
+    receipt_url TEXT,
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')) DEFAULT 'pending',
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_expense_tenant_id ON public.expense(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_expense_budget_id ON public.expense(budget_id);
+
+-- ------------------------------------------------------------------------------
+-- 8. INVENTORY TABLE
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.inventory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    item_name TEXT NOT NULL,
+    description TEXT,
+    quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+    unit TEXT NOT NULL DEFAULT 'pcs',
+    condition TEXT NOT NULL CHECK (condition IN ('New', 'Good', 'Fair', 'Damaged', 'Disposed')) DEFAULT 'Good',
+    location TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_tenant_id ON public.inventory(tenant_id);
+
+-- ------------------------------------------------------------------------------
+-- 9. DOCUMENTS TABLE (Approval Workflow)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    document_type TEXT NOT NULL CHECK (document_type IN ('Resolution', 'Ordinance', 'Financial Report', 'Minutes', 'Project Proposal', 'Other')),
+    file_url TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('draft', 'pending_approval', 'approved', 'rejected', 'archived')) DEFAULT 'draft',
+    submitted_by UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    reviewed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    feedback TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant ON public.documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON public.documents(status);
+
+-- ------------------------------------------------------------------------------
+-- 10. FEEDBACK TABLE (Boses ng Kabataan)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    is_anonymous BOOLEAN NOT NULL DEFAULT false,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    category TEXT NOT NULL,
+    sentiment TEXT NOT NULL CHECK (sentiment IN ('positive', 'neutral', 'negative')) DEFAULT 'neutral',
+    status TEXT NOT NULL CHECK (status IN ('submitted', 'under_review', 'resolved', 'dismissed')) DEFAULT 'submitted',
+    response TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_tenant ON public.feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_sentiment ON public.feedback(sentiment);
+
+-- ------------------------------------------------------------------------------
+-- 11. POLLS & POLL RESPONSES
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.polls (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    description TEXT,
+    options JSONB NOT NULL DEFAULT '[]'::jsonb,
+    start_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+    end_date TIMESTAMPTZ NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.poll_responses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    poll_id UUID NOT NULL REFERENCES public.polls(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    selected_option TEXT NOT NULL,
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_poll_user UNIQUE (poll_id, user_id)
+);
+
+-- ------------------------------------------------------------------------------
+-- 12. SOCIAL MEDIA POSTS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.social_media_posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    platform TEXT NOT NULL,
+    post_url TEXT NOT NULL,
+    content TEXT,
+    metrics JSONB NOT NULL DEFAULT '{"reach": 0, "likes": 0, "comments": 0, "shares": 0}'::jsonb,
+    posted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ------------------------------------------------------------------------------
+-- 13. AUDIT LOGS
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES public.barangay(id) ON DELETE SET NULL,
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    entity_name TEXT NOT NULL,
+    entity_id TEXT,
+    details JSONB,
+    ip_address TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant ON public.audit_logs(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON public.audit_logs(created_at DESC);
+
+-- ==============================================================================
+-- 14. ROW LEVEL SECURITY (RLS) POLICIES
+-- ==============================================================================
+
+-- Security Helper Functions
+CREATE OR REPLACE FUNCTION public.get_auth_user_tenant_id()
+RETURNS UUID AS $$
+    SELECT tenant_id FROM public.users WHERE id = auth.uid();
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION public.get_auth_user_role()
+RETURNS TEXT AS $$
+    SELECT r.role_name
+    FROM public.users u
+    JOIN public.roles r ON u.role_id = r.id
+    WHERE u.id = auth.uid();
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+
+-- Enable RLS on all tables
+ALTER TABLE public.barangay ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.resident_profile ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.program ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.program_registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.program_attendance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.budget ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expense ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.polls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.poll_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.social_media_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- 14.1 BARANGAY & ROLES POLICIES (Readable by all authenticated users)
+DROP POLICY IF EXISTS "Barangay read access for authenticated users" ON public.barangay;
+CREATE POLICY "Barangay read access for authenticated users" 
+    ON public.barangay FOR SELECT 
+    TO authenticated 
+    USING (true);
+
+DROP POLICY IF EXISTS "Roles read access for authenticated users" ON public.roles;
+CREATE POLICY "Roles read access for authenticated users" 
+    ON public.roles FOR SELECT 
+    TO authenticated 
+    USING (true);
+
+-- 14.2 USERS POLICIES
+DROP POLICY IF EXISTS "Users read own or tenant profile" ON public.users;
+CREATE POLICY "Users read own or tenant profile" 
+    ON public.users FOR SELECT 
+    TO authenticated 
+    USING (
+        id = auth.uid() 
+        OR tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Users can update their own non-sensitive profile" ON public.users;
+CREATE POLICY "Users can update their own non-sensitive profile"
+    ON public.users FOR UPDATE
+    TO authenticated
+    USING (id = auth.uid())
+    WITH CHECK (id = auth.uid());
+
+DROP POLICY IF EXISTS "Admins can update user status and role within tenant" ON public.users;
+CREATE POLICY "Admins can update user status and role within tenant"
+    ON public.users FOR UPDATE
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.3 RESIDENT_PROFILE POLICIES
+DROP POLICY IF EXISTS "Resident profile tenant isolation" ON public.resident_profile;
+CREATE POLICY "Resident profile tenant isolation"
+    ON public.resident_profile FOR SELECT
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Resident profile insert" ON public.resident_profile;
+CREATE POLICY "Resident profile insert"
+    ON public.resident_profile FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        user_id = auth.uid()
+        OR public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN')
+    );
+
+DROP POLICY IF EXISTS "Resident profile update" ON public.resident_profile;
+CREATE POLICY "Resident profile update"
+    ON public.resident_profile FOR UPDATE
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.4 PROGRAM POLICIES
+DROP POLICY IF EXISTS "Program select policy" ON public.program;
+CREATE POLICY "Program select policy"
+    ON public.program FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Program write policy" ON public.program;
+CREATE POLICY "Program write policy"
+    ON public.program FOR ALL
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.5 PROGRAM REGISTRATIONS & ATTENDANCE POLICIES
+DROP POLICY IF EXISTS "Program registration select" ON public.program_registrations;
+CREATE POLICY "Program registration select"
+    ON public.program_registrations FOR SELECT
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
+    );
+
+DROP POLICY IF EXISTS "Program registration insert" ON public.program_registrations;
+CREATE POLICY "Program registration insert"
+    ON public.program_registrations FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        user_id = auth.uid()
+        OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+    );
+
+DROP POLICY IF EXISTS "Program attendance select" ON public.program_attendance;
+CREATE POLICY "Program attendance select"
+    ON public.program_attendance FOR SELECT
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Program attendance write" ON public.program_attendance;
+CREATE POLICY "Program attendance write"
+    ON public.program_attendance FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.6 BUDGET & EXPENSE POLICIES
+DROP POLICY IF EXISTS "Budget select policy" ON public.budget;
+CREATE POLICY "Budget select policy"
+    ON public.budget FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Budget write policy" ON public.budget;
+CREATE POLICY "Budget write policy"
+    ON public.budget FOR ALL
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Expense select policy" ON public.expense;
+CREATE POLICY "Expense select policy"
+    ON public.expense FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Expense write policy" ON public.expense;
+CREATE POLICY "Expense write policy"
+    ON public.expense FOR ALL
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.7 INVENTORY POLICIES
+DROP POLICY IF EXISTS "Inventory select policy" ON public.inventory;
+CREATE POLICY "Inventory select policy"
+    ON public.inventory FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Inventory write policy" ON public.inventory;
+CREATE POLICY "Inventory write policy"
+    ON public.inventory FOR ALL
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.8 DOCUMENTS POLICIES
+DROP POLICY IF EXISTS "Documents select policy" ON public.documents;
+CREATE POLICY "Documents select policy"
+    ON public.documents FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Documents write policy" ON public.documents;
+CREATE POLICY "Documents write policy"
+    ON public.documents FOR ALL
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.9 FEEDBACK POLICIES (Boses ng Kabataan)
+DROP POLICY IF EXISTS "Feedback select policy" ON public.feedback;
+CREATE POLICY "Feedback select policy"
+    ON public.feedback FOR SELECT
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
+    );
+
+DROP POLICY IF EXISTS "Feedback insert policy" ON public.feedback;
+CREATE POLICY "Feedback insert policy"
+    ON public.feedback FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Feedback update policy" ON public.feedback;
+CREATE POLICY "Feedback update policy"
+    ON public.feedback FOR UPDATE
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+-- 14.10 POLLS & RESPONSES POLICIES
+DROP POLICY IF EXISTS "Polls select policy" ON public.polls;
+CREATE POLICY "Polls select policy"
+    ON public.polls FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
+    );
+
+DROP POLICY IF EXISTS "Poll responses insert policy" ON public.poll_responses;
+CREATE POLICY "Poll responses insert policy"
+    ON public.poll_responses FOR INSERT
+    TO authenticated
+    WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Poll responses select policy" ON public.poll_responses;
+CREATE POLICY "Poll responses select policy"
+    ON public.poll_responses FOR SELECT
+    TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
+    );
+
+-- 14.11 SOCIAL MEDIA POSTS & AUDIT LOGS POLICIES
+DROP POLICY IF EXISTS "Social media select policy" ON public.social_media_posts;
+CREATE POLICY "Social media select policy"
+    ON public.social_media_posts FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
+    );
+
+DROP POLICY IF EXISTS "Audit logs select policy" ON public.audit_logs;
+CREATE POLICY "Audit logs select policy"
+    ON public.audit_logs FOR SELECT
+    TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\002_add_missing_tables.sql
+-- KABISIG migration 002: additive governance and workflow tables.
+-- This migration does not drop or alter existing tables.
+
+CREATE TABLE IF NOT EXISTS public.document_approvals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    reviewer_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL CHECK (status IN ('approved', 'rejected')),
+    feedback TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_approvals_tenant ON public.document_approvals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_document_approvals_document ON public.document_approvals(document_id);
+
+CREATE TABLE IF NOT EXISTS public.resolution_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    poll_id UUID NOT NULL REFERENCES public.polls(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    vote_choice TEXT NOT NULL CHECK (vote_choice IN ('Support', 'Oppose', 'Abstain')),
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_resolution_vote_poll_user UNIQUE (poll_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_resolution_votes_tenant ON public.resolution_votes(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_votes_poll ON public.resolution_votes(poll_id);
+CREATE INDEX IF NOT EXISTS idx_resolution_votes_user ON public.resolution_votes(user_id);
+
+CREATE TABLE IF NOT EXISTS public.compliance_monitoring (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES public.documents(id) ON DELETE SET NULL,
+    report_type TEXT NOT NULL,
+    fiscal_year INT NOT NULL CHECK (fiscal_year BETWEEN 2000 AND 2100),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'approved', 'rejected', 'overdue')),
+    due_date DATE,
+    submitted_at TIMESTAMPTZ,
+    reviewed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_compliance_tenant_report_year UNIQUE (tenant_id, report_type, fiscal_year)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compliance_tenant ON public.compliance_monitoring(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_status ON public.compliance_monitoring(status);
+
+CREATE TABLE IF NOT EXISTS public.sentiment_analysis (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    feedback_id UUID NOT NULL UNIQUE REFERENCES public.feedback(id) ON DELETE CASCADE,
+    sentiment TEXT NOT NULL CHECK (sentiment IN ('positive', 'neutral', 'negative')),
+    score INT NOT NULL,
+    positive_keywords JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(positive_keywords) = 'array'),
+    negative_keywords JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(negative_keywords) = 'array'),
+    analyzed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sentiment_analysis_tenant ON public.sentiment_analysis(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sentiment_analysis_sentiment ON public.sentiment_analysis(sentiment);
+
+CREATE TABLE IF NOT EXISTS public.committee (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    chairperson_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_committee_tenant_name UNIQUE (tenant_id, name),
+    CONSTRAINT uq_committee_id_tenant UNIQUE (id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_committee_tenant ON public.committee(tenant_id);
+
+CREATE TABLE IF NOT EXISTS public.committee_assignment (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    committee_id UUID NOT NULL,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    position TEXT NOT NULL DEFAULT 'member',
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT fk_committee_assignment_committee_tenant
+        FOREIGN KEY (committee_id, tenant_id)
+        REFERENCES public.committee(id, tenant_id) ON DELETE CASCADE,
+    CONSTRAINT uq_committee_assignment_user UNIQUE (committee_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_committee_assignment_tenant ON public.committee_assignment(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_committee_assignment_user ON public.committee_assignment(user_id);
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    notification_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    link TEXT,
+    is_read BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_tenant ON public.notifications(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON public.notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON public.notifications(user_id) WHERE is_read = false;
+
+ALTER TABLE public.document_approvals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.resolution_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.compliance_monitoring ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sentiment_analysis ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.committee ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.committee_assignment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Document approvals tenant read" ON public.document_approvals;
+CREATE POLICY "Document approvals tenant read"
+    ON public.document_approvals FOR SELECT TO authenticated
+    USING (tenant_id = public.get_auth_user_tenant_id() OR public.get_auth_user_role() = 'SUPER_ADMIN');
+
+DROP POLICY IF EXISTS "Document approvals admin insert" ON public.document_approvals;
+CREATE POLICY "Document approvals admin insert"
+    ON public.document_approvals FOR INSERT TO authenticated
+    WITH CHECK (
+        reviewer_id = auth.uid()
+        AND (
+            (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() = 'BARANGAY_ADMIN')
+            OR public.get_auth_user_role() = 'SUPER_ADMIN'
+        )
+    );
+
+DROP POLICY IF EXISTS "Resolution votes tenant read" ON public.resolution_votes;
+CREATE POLICY "Resolution votes tenant read"
+    ON public.resolution_votes FOR SELECT TO authenticated
+    USING (
+        user_id = auth.uid()
+        OR tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Resolution votes own insert" ON public.resolution_votes;
+CREATE POLICY "Resolution votes own insert"
+    ON public.resolution_votes FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid() AND tenant_id = public.get_auth_user_tenant_id());
+
+DROP POLICY IF EXISTS "Compliance tenant read" ON public.compliance_monitoring;
+CREATE POLICY "Compliance tenant read"
+    ON public.compliance_monitoring FOR SELECT TO authenticated
+    USING (tenant_id = public.get_auth_user_tenant_id() OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'));
+
+DROP POLICY IF EXISTS "Compliance admin manage" ON public.compliance_monitoring;
+CREATE POLICY "Compliance admin manage"
+    ON public.compliance_monitoring FOR ALL TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() = 'BARANGAY_ADMIN')
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() = 'BARANGAY_ADMIN')
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Sentiment analysis tenant read" ON public.sentiment_analysis;
+CREATE POLICY "Sentiment analysis tenant read"
+    ON public.sentiment_analysis FOR SELECT TO authenticated
+    USING (tenant_id = public.get_auth_user_tenant_id() OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'));
+
+DROP POLICY IF EXISTS "Committee tenant read" ON public.committee;
+CREATE POLICY "Committee tenant read"
+    ON public.committee FOR SELECT TO authenticated
+    USING (tenant_id = public.get_auth_user_tenant_id() OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER'));
+
+DROP POLICY IF EXISTS "Committee tenant manage" ON public.committee;
+CREATE POLICY "Committee tenant manage"
+    ON public.committee FOR ALL TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Committee assignments tenant read" ON public.committee_assignment;
+CREATE POLICY "Committee assignments tenant read"
+    ON public.committee_assignment FOR SELECT TO authenticated
+    USING (tenant_id = public.get_auth_user_tenant_id() OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER'));
+
+DROP POLICY IF EXISTS "Committee assignments tenant manage" ON public.committee_assignment;
+CREATE POLICY "Committee assignments tenant manage"
+    ON public.committee_assignment FOR ALL TO authenticated
+    USING (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    )
+    WITH CHECK (
+        (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Notifications recipient read" ON public.notifications;
+CREATE POLICY "Notifications recipient read"
+    ON public.notifications FOR SELECT TO authenticated
+    USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "Notifications recipient update" ON public.notifications;
+CREATE POLICY "Notifications recipient update"
+    ON public.notifications FOR UPDATE TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\003_add_announcements.sql
+-- KABISIG migration 003: tenant-scoped announcements.
+-- This migration is additive and does not drop or alter existing tables.
+
+CREATE TABLE IF NOT EXISTS public.announcement (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES public.barangay(id) ON DELETE CASCADE,
+    title TEXT NOT NULL CHECK (length(trim(title)) >= 3),
+    content TEXT NOT NULL CHECK (length(trim(content)) >= 1),
+    category TEXT NOT NULL CHECK (category IN ('Opportunity', 'Notice', 'Emergency', 'Event')),
+    author_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
+    published_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT announcement_published_at_required
+        CHECK (status <> 'published' OR published_at IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS idx_announcement_tenant
+    ON public.announcement(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_announcement_status_published
+    ON public.announcement(status, published_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_announcement_author
+    ON public.announcement(author_id);
+
+ALTER TABLE public.announcement ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Announcement tenant read" ON public.announcement;
+CREATE POLICY "Announcement tenant read"
+    ON public.announcement FOR SELECT
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
+    );
+
+DROP POLICY IF EXISTS "Announcement tenant manage" ON public.announcement;
+CREATE POLICY "Announcement tenant manage"
+    ON public.announcement FOR ALL
+    TO authenticated
+    USING (
+        (
+            tenant_id = public.get_auth_user_tenant_id()
+            AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL')
+        )
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    )
+    WITH CHECK (
+        (
+            tenant_id = public.get_auth_user_tenant_id()
+            AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL')
+        )
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\004_create_documents_storage_bucket.sql
+-- Creates the private Storage bucket required by POST /api/documents/upload.
+-- Apply this migration manually in the intended Supabase project.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'documents',
+  'documents',
+  false,
+  26214400,
+  ARRAY[
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'image/jpeg',
+    'image/png'
+  ]
+)
+ON CONFLICT (id) DO UPDATE
+SET
+  public = EXCLUDED.public,
+  file_size_limit = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\005_add_program_budget_allocation.sql
+-- Persists the program allocation entered by authorized officials.
+ALTER TABLE public.program
+  ADD COLUMN IF NOT EXISTS budget_allocation NUMERIC(14,2) NOT NULL DEFAULT 0
+  CHECK (budget_allocation >= 0);
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\007_add_sk_district.sql
+-- Add operational SK districts without changing the existing legislative district field.
+ALTER TABLE public.barangay
+    ADD COLUMN IF NOT EXISTS sk_district text;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conrelid = 'public.barangay'::regclass
+          AND conname = 'barangay_sk_district_check'
+    ) THEN
+        ALTER TABLE public.barangay
+            ADD CONSTRAINT barangay_sk_district_check
+            CHECK (sk_district IN ('North', 'South', 'West', 'East'));
+    END IF;
+END;
+$$;
+
+UPDATE public.barangay
+SET sk_district = 'North'
+WHERE name IN (
+    'Bagumbayan Norte', 'Bagumbayan Sur', 'Calauag', 'Liboton',
+    'PeÃ±afrancia', 'San Felipe', 'San Francisco', 'Santa Cruz'
+);
+
+UPDATE public.barangay
+SET sk_district = 'South'
+WHERE name IN (
+    'Balatas', 'Concepcion Grande', 'Concepcion PequeÃ±a',
+    'Dayangdang', 'Tinago', 'Triangulo'
+);
+
+UPDATE public.barangay
+SET sk_district = 'West'
+WHERE name IN (
+    'Abella', 'Dinaga', 'Igualdad Interior', 'Lerma',
+    'Mabolo', 'Sabang', 'Tabuco'
+);
+
+UPDATE public.barangay
+SET sk_district = 'East'
+WHERE name IN (
+    'Cararayan', 'Carolina', 'Del Rosario',
+    'Pacol', 'Panicuason', 'San Isidro'
+);
+
+CREATE INDEX IF NOT EXISTS idx_barangay_sk_district
+    ON public.barangay (sk_district);
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\008_add_announcement_details.sql
+-- Add structured announcement content and private pubmat storage.
+ALTER TABLE public.announcement
+    ADD COLUMN IF NOT EXISTS what text,
+    ADD COLUMN IF NOT EXISTS where_text text,
+    ADD COLUMN IF NOT EXISTS event_when text,
+    ADD COLUMN IF NOT EXISTS hashtags text,
+    ADD COLUMN IF NOT EXISTS image_path text;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'announcement-pubmats',
+    'announcement-pubmats',
+    false,
+    10485760,
+    ARRAY['image/jpeg', 'image/png']
+)
+ON CONFLICT (id) DO UPDATE
+SET public = false,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+NOTIFY pgrst, 'reload schema';
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\009_add_facebook_integration.sql
+-- Store a separately encrypted Facebook Page credential for each barangay.
+CREATE TABLE IF NOT EXISTS public.facebook_integration (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL UNIQUE REFERENCES public.barangay(id) ON DELETE CASCADE,
+    page_id TEXT NOT NULL,
+    page_name TEXT NOT NULL,
+    page_access_token TEXT NOT NULL,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    connected_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    last_verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON COLUMN public.facebook_integration.page_access_token
+    IS 'AES-256-GCM encrypted by the backend; never store the plaintext Page token here.';
+
+CREATE INDEX IF NOT EXISTS idx_facebook_integration_active_tenant
+    ON public.facebook_integration(tenant_id, is_active);
+
+ALTER TABLE public.facebook_integration ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Facebook integration tenant read" ON public.facebook_integration;
+CREATE POLICY "Facebook integration tenant read"
+    ON public.facebook_integration
+    FOR SELECT
+    TO authenticated
+    USING (
+        (
+            tenant_id = public.get_auth_user_tenant_id()
+            AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+        )
+        OR public.get_auth_user_role() = 'SUPER_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Facebook integration tenant insert" ON public.facebook_integration;
+CREATE POLICY "Facebook integration tenant insert"
+    ON public.facebook_integration
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+        tenant_id = public.get_auth_user_tenant_id()
+        AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Facebook integration tenant update" ON public.facebook_integration;
+CREATE POLICY "Facebook integration tenant update"
+    ON public.facebook_integration
+    FOR UPDATE
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+    )
+    WITH CHECK (
+        tenant_id = public.get_auth_user_tenant_id()
+        AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+    );
+
+DROP POLICY IF EXISTS "Facebook integration tenant delete" ON public.facebook_integration;
+CREATE POLICY "Facebook integration tenant delete"
+    ON public.facebook_integration
+    FOR DELETE
+    TO authenticated
+    USING (
+        tenant_id = public.get_auth_user_tenant_id()
+        AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+    );
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\010_add_announcement_pubmat_storage_policies.sql
+-- Allow Barangay Admins to upload and create signed previews for pubmats in their own tenant folder.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policies
+        WHERE schemaname = 'storage'
+          AND tablename = 'objects'
+          AND policyname = 'Barangay admins upload announcement pubmats'
+    ) THEN
+        CREATE POLICY "Barangay admins upload announcement pubmats"
+            ON storage.objects
+            FOR INSERT
+            TO authenticated
+            WITH CHECK (
+                bucket_id = 'announcement-pubmats'
+                AND (storage.foldername(name))[1] = public.get_auth_user_tenant_id()::text
+                AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+            );
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policies
+        WHERE schemaname = 'storage'
+          AND tablename = 'objects'
+          AND policyname = 'Barangay admins read announcement pubmats'
+    ) THEN
+        CREATE POLICY "Barangay admins read announcement pubmats"
+            ON storage.objects
+            FOR SELECT
+            TO authenticated
+            USING (
+                bucket_id = 'announcement-pubmats'
+                AND (storage.foldername(name))[1] = public.get_auth_user_tenant_id()::text
+                AND public.get_auth_user_role() = 'BARANGAY_ADMIN'
+            );
+    END IF;
+END
+$$;
+# C:\Users\djign\OneDrive\Documents\GitHub\KABISIG\backend\supabase\migrations\011_add_program_aip_reference.sql
+-- Add the AIP reference code captured by the program creation forms.
+-- Additive and safe to apply to existing program records.
+ALTER TABLE public.program
+    ADD COLUMN IF NOT EXISTS aip_reference TEXT;
+
+NOTIFY pgrst, 'reload schema';
+
+=================== TYPES (frontend types.ts) ===================
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+export type UserRole =
+  | 'Super Admin'
+  | 'Barangay Admin'
+  | 'SK Chairperson'
+  | 'SK Kagawad'
+  | 'SK Secretary'
+  | 'SK Treasurer'
+  | 'Youth Constituent'
+  | 'Viewer';
+
+export interface BarangayTenant {
+  id: string;
+  name: string;
+  chairperson: string;
+  youthPopulation: number;
+  youthPopulationAvailable?: boolean;
+  activePrograms: number;
+  totalBudget: number;
+  spentBudget: number;
+  allocatedBudget: number;
+  contact: string;
+  status: 'Active' | 'Inactive';
+  logo?: string;
+  dateCreated?: string;
+  district?: string;
+  skDistrict?: string | null;
+  city?: string;
+  chairpersonEmail?: string;
+  mustChangePassword?: boolean;
+}
+
+export interface YouthProfile {
+  userId?: string;
+  id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
+  name: string; // Full Name (Required)
+  sex: 'Male' | 'Female' | 'Other'; // Sex (Required)
+  birthdate: string; // Birthdate (Required)
+  age: number; // Age (Auto-calculated from birthdate)
+  civilStatus?: 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Single Parent'; // Civil Status (Required)
+  address: string; // Complete residential address (Required)
+  zone: string; // Zone/Purok (Required)
+  mobile: string; // Contact Number (Required)
+  email: string; // Email Address (Optional)
+  educationalLevel: string; // Educational Level (Required: Elementary / Junior High / Senior High / College / Vocational / etc.)
+  school: string; // School (Required if applicable)
+  course?: string; // Course (Optional)
+  year?: string; // Year Level (Optional)
+  employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-employed' | 'Out-of-School Youth'; // Employment Status (Required)
+  scholarStatus: 'Scholar' | 'Non-Scholar' | 'Yes' | 'No'; // Scholar Status (Required)
+  scholarshipType?: string; // Scholarship Type (if applicable)
+  youthSector?: 'In-School Youth' | 'Out-of-School Youth' | 'Working Youth' | 'Youth with Special Needs' | 'PWD' | 'Solo Parent'; // Youth Sector (Required - DILG MC 2022-033)
+  guardianName: string; // Parent/Guardian Information (Required)
+  guardianContact: string; // Parent/Guardian Contact (Required)
+  profilePic?: string; // Profile Picture (Optional)
+  qrCode?: string; // QR Code (Auto-generated)
+  
+  // Convenience fields for legacy / report references
+  education?: string;
+  employment?: string;
+  isScholar?: boolean;
+
+  // System metadata
+  status: 'Pending' | 'Approved' | 'Rejected';
+  rejectionReason?: string;
+  dateRegistered: string;
+  registeredRole?: UserRole;
+  barangayId?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  registeredProgramsCount?: number;
+  attendanceRate?: number;
+  engagementScore?: number; // scale 1-100
+  mustChangePassword?: boolean;
+}
+
+export interface Program {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  maxParticipants: number;
+  budgetAllocation: number;
+  spentBudget: number;
+  aipReference: string; // Annual Investment Program reference code
+  category: 'Health & Nutrition' | 'Education & Scholarship' | 'Sports Development' | 'Livelihood & Skills' | 'Peace & Security' | 'Environmental Protection';
+  status: 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed';
+  registeredCount: number;
+}
+
+export interface Registration {
+  id: string;
+  programId: string;
+  programTitle: string;
+  participantId: string; // matches YouthProfile.id
+  participantName: string;
+  dateRegistered: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
+  qrCode: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  programId: string;
+  participantId: string;
+  participantName: string;
+  checkInTime: string;
+  status: 'Present' | 'Absent';
+}
+
+export interface DocumentRecord {
+  id: string;
+  title: string;
+  category: 'Resolutions' | 'Vouchers' | 'Liquidation' | 'Accomplishment' | 'Budget' | 'Minutes' | 'Reports' | 'Communications' | string;
+  status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Archived' | string;
+  uploadedBy: string; // name
+  uploadedDate: string;
+  fileSize: string;
+  description: string;
+  fileUrl?: string;
+  reviewFeedback?: string;
+  resolutionNumber?: string;
+  designatedApprover?: string;
+  version?: string;
+  history?: { date: string; action: string; user: string; notes?: string }[];
+  barangayId?: string;
+  created_at?: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  programId: string;
+  budgetId?: string;
+  programTitle: string;
+  amount: number;
+  supplier?: string;
+  taxType?: 'VAT' | 'Non-VAT' | 'Exempt' | 'Withholding' | string;
+  vatAmount?: number;
+  withholdingTax?: number;
+  netAmount?: number;
+  category: 'Supplies' | 'Honorarium' | 'Food & Catering' | 'Travel & Transport' | 'Equipment rental' | 'Others' | string;
+  status: 'Pending' | 'Approved' | string;
+  dateLogged?: string;
+  receiptUrl?: string;
+  voucherNumber?: string;
+  payee?: string;
+  title?: string;
+  aipCode?: string;
+  isVat?: boolean;
+  barangayId?: string;
+  date?: string;
+  description?: string;
+}
+
+export interface FeedbackRecord {
+  id: string;
+  userId?: string;
+  type: 'Suggestion' | 'Complaint' | 'Evaluation' | 'Inquiry';
+  programId?: string;
+  programTitle?: string;
+  title: string;
+  content: string;
+  rating: number; // 1 to 5
+  anonymous: boolean;
+  status: 'Pending' | 'Reviewed' | 'Resolved';
+  response?: string;
+  dateSubmitted: string;
+  submittedBy?: string; // name (or anonymous)
+}
+
+export interface ResolutionRecord {
+  id: string;
+  resolutionNumber: string; // e.g. Res-2026-005
+  author?: string;
+  title: string;
+  content: string;
+  status: 'Draft' | 'Under Review' | 'Approved' | 'Archived' | 'Voting Open' | 'Closed';
+  validityPeriod: string; // e.g., "July 2026 - Dec 2026"
+  votesSupport: number;
+  votesOppose: number;
+  votesAbstain: number;
+  votedUsers: string[]; // List of participantIds
+  dateCreated: string;
+}
+
+export interface SystemAuditLog {
+  id: string;
+  timestamp: string;
+  user: string;
+  role: string;
+  action: string;
+  details: string;
+}
+
+export interface AnnouncementRecord {
+  id: string;
+  title: string;
+  content: string;
+  what?: string;
+  where?: string;
+  when?: string;
+  hashtags?: string;
+  imageUrl?: string;
+  imagePath?: string;
+  author: string;
+  barangay: string;
+  datePosted: string;
+  status?: string;
+  category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
+  attachments?: string[];
+  facebookPostUrl?: string;
+  facebookPostId?: string;
+  facebookPostedAt?: string;
+}
+
+=================== KEY FILE: App.tsx data loading (first 200 lines) ===================
+'use client';
+
+import { useState, useEffect } from 'react';
+import kabisigApi from './lib/api';
+import { 
+  NAGA_BARANGAYS, 
+  DEFAULT_BARANGAY_LOGOS,
+  INITIAL_PROGRAMS, 
+  INITIAL_YOUTH_PROFILES, 
+  INITIAL_REGISTRATIONS, 
+  INITIAL_FEEDBACK, 
+  INITIAL_RESOLUTIONS, 
+  INITIAL_EXPENSES, 
+  INITIAL_ANNOUNCEMENTS,
+  INITIAL_DOCUMENTS,
+  INITIAL_AUDIT_LOGS
+} from './data';
+import PublicPages from './components/PublicPages';
+import SuperAdminPages from './components/SuperAdminPages';
+import BarangayAdminPages from './components/BarangayAdminPages';
+import ChairpersonOnboarding from './components/ChairpersonOnboarding';
+import OfficialPages from './components/OfficialPages';
+import YouthPages from './components/YouthPages';
+import ViewerPages from './components/ViewerPages';
+import { detectScheduleConflicts } from './lib/intelligence';
+import { 
+  BarangayTenant, 
+  Program, 
+  YouthProfile, 
+  Registration, 
+  AttendanceRecord,
+  FeedbackRecord, 
+  ResolutionRecord, 
+  ExpenseRecord, 
+  DocumentRecord,
+  AnnouncementRecord,
+  SystemAuditLog,
+  UserRole
+} from './types';
+import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
+
+export default function App() {
+  // --- Client state synchronized with the backend ---
+  const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
+  const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
+  const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>(INITIAL_YOUTH_PROFILES);
+  const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
+  const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
+  const [youthProfilesRetryCount, setYouthProfilesRetryCount] = useState(0);
+  const [registrations, setRegistrations] = useState<Registration[]>(INITIAL_REGISTRATIONS);
+  const [feedback, setFeedback] = useState<FeedbackRecord[]>(INITIAL_FEEDBACK);
+  const [resolutions, setResolutions] = useState<ResolutionRecord[]>(INITIAL_RESOLUTIONS);
+    const [pollsError, setPollsError] = useState<string | null>(null);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
+  const [documents, setDocuments] = useState<DocumentRecord[]>(INITIAL_DOCUMENTS);
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>(INITIAL_ANNOUNCEMENTS);
+  const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>(INITIAL_AUDIT_LOGS);
+
+  // --- AUTHENTICATED USER SESSION ---
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentRole, setCurrentRole] = useState<UserRole | 'Viewer' | null>(null);
+  const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
+  const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
+  const [currentEmail, setCurrentEmail] = useState<string>('');
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!currentRole || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    kabisigApi.getAnnouncements().then(rows => {
+      if (!isMounted) return;
+      setAnnouncements(rows.map((announcement: any): AnnouncementRecord => ({
+        id: announcement.id,
+        title: announcement.title,
+        content: announcement.content || '',
+        what: announcement.what || '',
+        where: announcement.where_text || '',
+        when: announcement.event_when || '',
+        hashtags: announcement.hashtags || '',
+        imageUrl: announcement.image_url || '',
+        author: announcement.author?.full_name || 'SK Official',
+        barangay: tenants.find(tenant => tenant.id === announcement.tenant_id)?.name || 'Barangay',
+        datePosted: (announcement.published_at || announcement.created_at || '').split('T')[0],
+        category: announcement.category || 'Notice',
+        status: announcement.status,
+        attachments: [],
+      })));
+    }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
+    return () => { isMounted = false; };
+  }, [currentRole, currentTenant?.id, currentUser?.id]);
+
+  // --- PUBLIC PAGES NAVIGATION STATE ---
+  const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('login');
+
+  // Load 27 permanently seeded Naga City barangays and restore session from backend API
+  useEffect(() => {
+    const invalidateSession = () => {
+      kabisigApi.logout();
+      setCurrentUser(null);
+      setCurrentRole(null);
+      setCurrentTenant(null);
+      setCurrentYouth(null);
+      setCurrentEmail('');
+      setPublicView('login');
+    };
+    window.addEventListener('kabisig:auth-invalid', invalidateSession);
+    return () => window.removeEventListener('kabisig:auth-invalid', invalidateSession);
+  }, []);
+
+  useEffect(() => {
+    kabisigApi.getBarangays().then((data) => {
+      if (data && data.length > 0) {
+        setTenants(prev => {
+          const updated = prev.map(existing => {
+            const backendBarangay = data.find(b => b.id === existing.id);
+            if (!backendBarangay) return existing;
+
+            return {
+              ...existing,
+              ...backendBarangay,
+              youthPopulation: backendBarangay.youthPopulation ?? existing.youthPopulation ?? 0,
+              youthPopulationAvailable: backendBarangay.youthPopulationAvailable ?? false,
+              activePrograms: backendBarangay.activePrograms ?? existing.activePrograms ?? 0,
+              totalBudget: backendBarangay.totalBudget ?? existing.totalBudget ?? 0,
+              allocatedBudget: backendBarangay.allocatedBudget ?? existing.allocatedBudget ?? 0,
+              spentBudget: backendBarangay.spentBudget ?? existing.spentBudget ?? 0,
+              logo: backendBarangay.logo || existing.logo || ''
+            };
+          });
+          return updated.sort((a, b) => a.name.localeCompare(b.name));
+        });
+
+        // If user already restored with tenant_id, sync currentTenant with backend data
+        const token = kabisigApi.getToken();
+        if (token) {
+          kabisigApi.getCurrentUser().then(user => {
+            if (user?.tenant_id) {
+              const matchedBgy = data.find(b => b.id === user.tenant_id);
+              if (matchedBgy) {
+                setCurrentTenant({
+                  ...matchedBgy,
+                  logo: matchedBgy.logo || DEFAULT_BARANGAY_LOGOS[matchedBgy.name] || ''
+                });
+              }
+            }
+          }).catch(console.warn).finally(() => setAuthReady(true));
+        } else {
+          setAuthReady(true);
+        }
+      }
+    }).catch(console.warn);
+
+    kabisigApi.getAuditLogs().then((logs) => {
+      if (logs) setAuditLogs(logs);
+    }).catch(console.warn);
+
+    // Invitation links must never reuse an existing Super Admin/browser session.
+    const inviteParams = typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : null;
+    const isChairpersonInvite = inviteParams?.get('invite_email')
+      && inviteParams.get('role') === 'chairperson';
+
+    if (isChairpersonInvite) {
+      kabisigApi.logout();
+      setCurrentUser(null);
+      setCurrentTenant(null);
+      setCurrentYouth(null);
+      setCurrentRole(null);
+      setPublicView('login');
+    }
+
+    // Restore an authenticated session only when this is not an invitation flow.
+    const token = isChairpersonInvite ? null : kabisigApi.getToken();
+    if (token) {
+      kabisigApi.getCurrentUser().then(user => {
+        if (user) {
+          if (user.status === 'pending' || user.status === 'rejected') {
+            kabisigApi.logout();
+            alert(
+              user.status === 'pending'
+                ? 'Access Denied!\n\nYour account is still pending approval by your Sangguniang Kabataan Chairperson.'
+                : 'Access Denied!\n\nYour account application was rejected.'
+            );
+            return;
+          }
+          setCurrentUser(user);
+          setCurrentEmail(user.email || '');
+          const roleId = user.role_id;
+          if (roleId === 1) {
+            setCurrentRole('Super Admin');
+          } else if (roleId === 2) {
+            setCurrentRole('Barangay Admin');
+            if (user.tenant_id) {
+              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              if (bgy) {
+                setCurrentTenant({
+                  ...bgy,
+                  logo: bgy.logo || DEFAULT_BARANGAY_LOGOS[bgy.name] || ''
+                });
+
+=================== TODO / FIXME / HARDCODED CHECK ===================

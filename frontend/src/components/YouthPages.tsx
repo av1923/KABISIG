@@ -70,6 +70,7 @@ interface YouthPagesProps {
   registrations: Registration[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
+    pollsError?: string | null;
   announcements: AnnouncementRecord[];
   currentTenant?: BarangayTenant | null;
   tenants?: BarangayTenant[];
@@ -86,6 +87,7 @@ export default function YouthPages({
   registrations,
   feedback,
   resolutions,
+    pollsError = null,
   announcements = [],
   currentTenant,
   tenants = [],
@@ -208,9 +210,46 @@ export default function YouthPages({
     setLocalFeedback(feedback);
   }, [feedback]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const refreshMyFeedback = () => {
+      kabisigApi.getFeedback().then((feeds) => {
+        if (!isMounted) return;
+        setLocalFeedback(feeds.map((feed: any): FeedbackRecord => ({
+          id: feed.id,
+          userId: feed.user_id || undefined,
+          type: feed.category || 'General',
+          title: feed.subject,
+          content: feed.message,
+          rating: feed.sentiment === 'positive' ? 5 : feed.sentiment === 'negative' ? 1 : 3,
+          anonymous: feed.is_anonymous || false,
+          status: feed.status === 'resolved' ? 'Resolved' : feed.status === 'under_review' ? 'Reviewed' : 'Pending',
+          dateSubmitted: feed.created_at?.split('T')[0] || '',
+          submittedBy: feed.is_anonymous ? 'Anonymous' : feed.users?.full_name || youth.name,
+          response: feed.response || '',
+        })));
+      }).catch((error: any) => console.warn('Could not refresh youth feedback history:', error));
+    };
+
+    const handleVisible = () => {
+      if (document.visibilityState === 'visible') refreshMyFeedback();
+    };
+
+    refreshMyFeedback();
+    window.addEventListener('focus', refreshMyFeedback);
+    document.addEventListener('visibilitychange', handleVisible);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', refreshMyFeedback);
+      document.removeEventListener('visibilitychange', handleVisible);
+    };
+  }, [youth.id, youth.name]);
+
   // Derived arrays
   const myRegistrations = localRegs.filter(r => r.participantId === youth.id);
-  const myFeedback = localFeedback.filter(f => f.submittedBy === youth.name || f.anonymous);
+  const myFeedback = localFeedback.filter(f =>
+    youth.userId && f.userId ? f.userId === youth.userId : f.submittedBy === youth.name
+  );
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,16 +322,10 @@ export default function YouthPages({
       setFeedbackNotice({ type: 'error', text: 'Please fill out all feedback fields.' });
       return;
     }
-    if (!currentYouth.barangayId) {
-      setFeedbackNotice({ type: 'error', text: 'Your profile is not linked to a barangay.' });
-      return;
-    }
-
     setIsSubmittingFeedback(true);
     setFeedbackNotice(null);
     try {
       const result = await kabisigApi.submitFeedback({
-        tenant_id: currentYouth.barangayId,
         subject: feedbackForm.title.trim(),
         message: feedbackForm.content.trim(),
         category: feedbackForm.type,
@@ -304,6 +337,7 @@ export default function YouthPages({
       const sentiment = result.data?.sentiment_analysis?.sentiment;
       const newFeed: FeedbackRecord = {
         id: saved.id,
+        userId: saved.user_id || currentYouth.userId,
         type: saved.category,
         title: saved.subject,
         content: saved.message,
@@ -558,6 +592,45 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
+
+              {/* Latest Announcements Preview */}
+              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="w-4 h-4 text-[#091d64]" />
+                    <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Latest SK Announcements</h4>
+                  </div>
+                  <button
+                    onClick={() => setActiveMenu('announcements')}
+                    className="text-[10px] font-extrabold text-[#091d64] hover:underline bg-blue-50 px-3 py-1 rounded-full cursor-pointer"
+                  >
+                    View All &rarr;
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {announcements
+                    .filter(a => a.status === 'published')
+                    .slice(0, 3)
+                    .map(a => (
+                      <div key={a.id} className="rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="rounded border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">
+                            {a.category}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{a.datePosted}</span>
+                        </div>
+                        <p className="text-xs font-bold text-slate-800 truncate">{a.title}</p>
+                        <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">{a.content}</p>
+                      </div>
+                    ))}
+                  {announcements.filter(a => a.status === 'published').length === 0 && (
+                    <p className="py-6 text-center text-xs text-slate-400 font-semibold">
+                      No announcements yet from your SK Council.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               
               {/* TOP ROW: DIGITAL YOUTH ID CARD (LEFT) & METRIC BOXES (RIGHT) */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
@@ -703,15 +776,15 @@ export default function YouthPages({
 
               </div>
 
-              {/* PERSONALIZED KABISIG SMART HUB (Rule-Based Intelligence Suite) */}
+              {/* PERSONALIZED KABISIG RULE-BASED HUB (Rule-Based Suite) */}
               <div className="bg-gradient-to-r from-blue-50/50 to-indigo-50/30 rounded-xl border border-blue-100 p-6 space-y-6 text-left">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <h4 className="text-sm font-black text-[#091d64] uppercase tracking-tight flex items-center gap-2">
                       <ShieldCheck className="w-5 h-5 text-amber-500" />
-                      Personalized KABISIG Smart Hub (Rule-Based)
+                      Personalized KABISIG Rule-Based Hub
                     </h4>
-                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time profile categorization, engagement scoring, and intelligent recommendations</p>
+                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time profile categorization, engagement scoring, and rule-based recommendations</p>
                   </div>
                   
                   <div className="flex items-center gap-3">
@@ -750,7 +823,7 @@ export default function YouthPages({
 
                   {/* Smart Recommendations Panel */}
                   <div className="bg-white p-4 rounded-xl border border-blue-50 shadow-2xs space-y-3 md:col-span-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Intelligent Program Recommendations</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rule-Based Program Recommendations</span>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {myRecommendations.map((rec, index) => {
@@ -853,6 +926,7 @@ export default function YouthPages({
                   )}
                 </div>
               </div>
+
 
             </div>
           )}
@@ -1353,6 +1427,12 @@ export default function YouthPages({
                             </span>
                           </div>
                           <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">{f.content}</p>
+                          {f.response && (
+                            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/70 p-3">
+                              <span className="block text-[9px] font-extrabold uppercase tracking-wider text-[#091d64]">SK Council Response</span>
+                              <p className="mt-1 text-xs leading-relaxed text-slate-700">{f.response}</p>
+                            </div>
+                          )}
                           <span className="text-[9px] text-slate-400 block mt-2 font-mono">Logged on: {f.dateSubmitted}</span>
                         </div>
                       ))}
@@ -1374,8 +1454,16 @@ export default function YouthPages({
                       {resolutionVoteNotice.text}
                     </div>
                   )}
+                  {pollsError && (
+                    <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                      Polls could not be loaded: {pollsError}
+                    </p>
+                  )}
 
                   <div className="space-y-4">
+                    {resolutions.length === 0 && !pollsError && (
+                      <p className="py-8 text-center text-xs text-slate-400">No active polls are available for your barangay yet.</p>
+                    )}
                     {resolutions.map(res => (
                       <div key={res.id} className="p-5 border border-slate-100 rounded-xl bg-white space-y-3 shadow-xs">
                         <div className="flex justify-between items-center border-b border-slate-50 pb-2">

@@ -5,17 +5,15 @@ import kabisigApi from './lib/api';
 import { 
   NAGA_BARANGAYS, 
   DEFAULT_BARANGAY_LOGOS,
-  INITIAL_PROGRAMS, 
-  INITIAL_YOUTH_PROFILES, 
-  INITIAL_REGISTRATIONS, 
-  INITIAL_FEEDBACK, 
-  INITIAL_RESOLUTIONS, 
-  INITIAL_EXPENSES, 
-  INITIAL_ANNOUNCEMENTS,
-  INITIAL_DOCUMENTS,
-  INITIAL_AUDIT_LOGS
+
+
+
+
+
+
 } from './data';
 import PublicPages from './components/PublicPages';
+import LandingPage from './components/LandingPage';
 import SuperAdminPages from './components/SuperAdminPages';
 import BarangayAdminPages from './components/BarangayAdminPages';
 import ChairpersonOnboarding from './components/ChairpersonOnboarding';
@@ -42,18 +40,19 @@ import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
 export default function App() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
-  const [programs, setPrograms] = useState<Program[]>(INITIAL_PROGRAMS);
-  const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>(INITIAL_YOUTH_PROFILES);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>([]);
   const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
   const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
   const [youthProfilesRetryCount, setYouthProfilesRetryCount] = useState(0);
-  const [registrations, setRegistrations] = useState<Registration[]>(INITIAL_REGISTRATIONS);
-  const [feedback, setFeedback] = useState<FeedbackRecord[]>(INITIAL_FEEDBACK);
-  const [resolutions, setResolutions] = useState<ResolutionRecord[]>(INITIAL_RESOLUTIONS);
-  const [expenses, setExpenses] = useState<ExpenseRecord[]>(INITIAL_EXPENSES);
-  const [documents, setDocuments] = useState<DocumentRecord[]>(INITIAL_DOCUMENTS);
-  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>(INITIAL_ANNOUNCEMENTS);
-  const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>(INITIAL_AUDIT_LOGS);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackRecord[]>([]);
+  const [resolutions, setResolutions] = useState<ResolutionRecord[]>([]);
+    const [pollsError, setPollsError] = useState<string | null>(null);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([]);
 
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -86,10 +85,60 @@ export default function App() {
       })));
     }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
     return () => { isMounted = false; };
-  }, [currentRole, currentTenant?.id]);
+  }, [currentRole, currentTenant?.id, currentUser?.id]);
+
+  // --- VIEWER PORTAL PUBLIC DATA (no auth) ---
+  useEffect(() => {
+    if (currentRole !== 'Viewer') return;
+    let isMounted = true;
+
+    kabisigApi.getPublicAnnouncements().then(rows => {
+      if (!isMounted) return;
+      setAnnouncements(rows.map((a: any) => ({
+        id: a.id,
+        title: a.title,
+        content: a.content || '',
+        what: a.what || '',
+        where: a.where_text || '',
+        when: a.event_when || '',
+        hashtags: a.hashtags || '',
+        imageUrl: '',
+        author: a.author?.full_name || 'SK Official',
+        barangay: a.barangay?.name || 'Barangay',
+        datePosted: (a.published_at || a.created_at || '').split('T')[0],
+        category: a.category || 'Notice',
+        status: 'published',
+        attachments: [],
+      })));
+    }).catch((e: any) => console.warn('Public announcements failed:', e?.message));
+
+    kabisigApi.getPublicExpenses().then(rows => {
+      if (!isMounted) return;
+      setExpenses(rows.map((e: any) => ({
+        id: e.id,
+        programId: e.program_id || '',
+        programTitle: e.program?.title || e.title || 'General',
+        category: e.budget?.category || 'Supplies',
+        amount: Number(e.gross_amount) || 0,
+        supplier: 'Various Suppliers',
+        taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || 'Non-VAT',
+        vatAmount: Number(e.tax_amount) || 0,
+        withholdingTax: 0,
+        netAmount: Number(e.net_amount) || 0,
+        description: e.description || '',
+        date: e.expense_date || '',
+        dateLogged: e.expense_date || '',
+        voucherNumber: 'DV-' + String(e.id).slice(0, 6).toUpperCase(),
+        status: 'Approved',
+        barangayId: e.tenant_id,
+      })));
+    }).catch((e: any) => console.warn('Public expenses failed:', e?.message));
+
+    return () => { isMounted = false; };
+  }, [currentRole]);
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
-  const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('login');
+  const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('landing');
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
   useEffect(() => {
@@ -100,7 +149,7 @@ export default function App() {
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentEmail('');
-      setPublicView('login');
+      setPublicView('landing');
     };
     window.addEventListener('kabisig:auth-invalid', invalidateSession);
     return () => window.removeEventListener('kabisig:auth-invalid', invalidateSession);
@@ -149,25 +198,6 @@ export default function App() {
       }
     }).catch(console.warn);
 
-    // Load live feedback from database
-    kabisigApi.getFeedback().then((feeds) => {
-      if (feeds) {
-        const formatted: FeedbackRecord[] = feeds.map((f: any) => ({
-          id: f.id,
-          type: f.category || 'General',
-          title: f.subject,
-          content: f.message,
-          rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
-          anonymous: f.is_anonymous || false,
-          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
-          dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-          submittedBy: f.users?.full_name || 'Anonymous Youth',
-          response: f.response || ''
-        }));
-        setFeedback(formatted);
-      }
-    }).catch(console.warn);
-
     kabisigApi.getAuditLogs().then((logs) => {
       if (logs) setAuditLogs(logs);
     }).catch(console.warn);
@@ -185,7 +215,7 @@ export default function App() {
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentRole(null);
-      setPublicView('login');
+      setPublicView('landing');
     }
 
     // Restore an authenticated session only when this is not an invitation flow.
@@ -299,6 +329,7 @@ export default function App() {
     setPrograms([]);
     setDocuments([]);
     setExpenses([]);
+    if (currentRole !== 'Barangay Admin' && currentRole !== 'SK Chairperson' && currentRole !== 'Super Admin') setYouthProfiles([]);
 
     kabisigApi.getPrograms().then(progs => {
       if (!isMounted) return;
@@ -316,6 +347,7 @@ export default function App() {
         category: p.category || 'Other',
         status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
         registeredCount: p.program_registrations?.[0]?.count || 0,
+        barangayId: p.tenant_id,
       })));
     }).catch(error => console.warn('Unable to load programs for active role:', error));
 
@@ -367,6 +399,29 @@ export default function App() {
     return () => { isMounted = false; };
   }, [currentRole, currentTenant?.id]);
 
+  // After login, reload barangays with the user's token: the pre-login list hides contact details.
+  useEffect(() => {
+    if (!currentUser?.id || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    kabisigApi.getBarangays().then((data) => {
+      if (!isMounted || !data || data.length === 0) return;
+      setTenants(prev => prev.map(existing => {
+        const fresh = data.find(b => b.id === existing.id);
+        return fresh ? { ...existing, ...fresh, logo: fresh.logo || existing.logo || '' } : existing;
+      }));
+    }).catch(console.warn);
+    return () => { isMounted = false; };
+  }, [currentUser?.id]);
+
+  // Keep currentTenant in step with the live tenants list so budget cards update after expenses or a refetch.
+  useEffect(() => {
+    setCurrentTenant(prev => {
+      if (!prev) return prev;
+      const live = tenants.find(t => t.id === prev.id);
+      return live ? { ...prev, ...live, logo: live.logo || prev.logo || '' } : prev;
+    });
+  }, [tenants]);
+
   useEffect(() => {
     const officialOrAdmin =
       currentRole === 'Barangay Admin' ||
@@ -383,7 +438,7 @@ export default function App() {
     let isMounted = true;
     setYouthProfilesLoading(true);
     setYouthProfilesError(null);
-    kabisigApi.getYouthProfiles(true).then(({ data, error }) => {
+    kabisigApi.getYouthProfiles().then(({ data, error }) => {
       if (!isMounted) return;
       if (error || data === null) {
         setYouthProfilesError(error || 'Unable to load youth profiles.');
@@ -405,10 +460,48 @@ export default function App() {
     if (!currentRole || currentRole === 'Viewer') return;
     let isMounted = true;
     kabisigApi.getPolls().then((polls) => {
-      if (isMounted && polls) setResolutions(polls);
-    }).catch(console.warn);
+      if (!isMounted) return;
+      setResolutions(polls);
+      setPollsError(null);
+    }).catch((error: any) => {
+      if (!isMounted) return;
+      setPollsError(error.message || 'Polls could not be loaded.');
+      console.warn('Unable to load polls for active tenant:', error);
+    });
     return () => { isMounted = false; };
-  }, [currentRole]);
+  }, [currentRole, currentTenant?.id, currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentRole || currentRole === 'Viewer' || currentRole === 'Super Admin' || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    kabisigApi.getFeedback().then((feeds) => {
+      if (!isMounted) return;
+      setFeedback(feeds.map((f: any): FeedbackRecord => ({
+        id: f.id,
+        userId: f.user_id || undefined,
+        type: f.category || 'General',
+        title: f.subject,
+        content: f.message,
+        rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
+        anonymous: f.is_anonymous || false,
+        status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
+        dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
+        response: f.response || '',
+        residentProfile: f.users?.resident_profile ? {
+          age: f.users.resident_profile.birthdate ? Math.max(15, Math.floor((Date.now() - new Date(f.users.resident_profile.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))) : undefined,
+          sex: f.users.resident_profile.sex || undefined,
+          address: f.users.resident_profile.address || undefined,
+          educationalLevel: f.users.resident_profile.educational_status || undefined,
+          employmentStatus: f.users.resident_profile.employment_status || undefined,
+          contact: f.users.phone || undefined,
+          email: f.users.email || undefined,
+        } : undefined,
+      })));
+    }).catch(error => console.warn('Unable to load feedback history for active user:', error));
+
+    return () => { isMounted = false; };
+  }, [currentRole, currentTenant?.id, currentUser?.id]);
 
   // --- AUTH CALLBACKS ---
   const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
@@ -530,7 +623,7 @@ export default function App() {
     setCurrentYouth(null);
     setCurrentUser(null);
     setCurrentEmail('');
-    setPublicView('login');
+    setPublicView('landing');
   };
 
   // --- SYSTEM REGISTRATION WORKFLOWS (Multi-Tenancy Binding) ---
@@ -884,13 +977,21 @@ export default function App() {
       {!authReady && (
         <div className="flex-1 flex items-center justify-center text-slate-500 font-semibold">Checking your session…</div>
       )}
-      {authReady && currentRole === null && (
+      {authReady && currentRole === null && publicView === 'landing' && (
+        <LandingPage
+          onSignIn={() => setPublicView('login')}
+          onCreateAccount={() => setPublicView('signup')}
+          onTransparencyPortal={() => { setCurrentUser(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); }}
+        />
+      )}
+
+      {authReady && currentRole === null && publicView !== 'landing' && (
         <PublicPages 
           barangays={tenants}
           programs={programs}
-          activeTab={publicView === 'landing' ? 'home' : publicView}
-          setActiveTab={(tab) => setPublicView(tab === 'home' ? 'landing' : tab as any)}
-          onLogin={(email, role, tenantId, userObj) => handleLogin(role, tenantId || '', email, userObj)}
+          activeTab={publicView}
+          setActiveTab={(tab) => setPublicView(tab === '_landing' ? 'landing' : (tab as any))}
+          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { setCurrentUser(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
           onSignUp={(partialProfile) => {
             const completeProfile: YouthProfile = {
               id: `SK-2026-${Math.floor(100 + Math.random() * 900)}`,
@@ -1054,6 +1155,7 @@ export default function App() {
           documents={documents}
           feedback={feedback}
           resolutions={resolutions}
+          pollsError={pollsError}
           expenses={expenses}
           announcements={announcements.filter(announcement => announcement.status === 'published')}
           currentTenant={currentTenant}
@@ -1079,6 +1181,7 @@ export default function App() {
           resolutions={resolutions}
           announcements={announcements.filter(announcement => announcement.status === 'published')}
           tenants={tenants}
+          pollsError={pollsError}
           onSubmitFeedback={(feed) => setFeedback(prev => [feed, ...prev])}
           onVoteResolution={handleVoteResolution}
           onRegisterProgram={handleRegisterProgram}

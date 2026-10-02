@@ -434,10 +434,38 @@ export default function PublicPages({
     <div className="min-h-screen flex flex-col bg-slate-50 relative overflow-x-hidden">
       <main className="flex-grow">
         {(activeTab === 'home' || activeTab === 'login') && (
-          <section className="relative min-h-screen flex flex-col items-center justify-center bg-[#f8fafc] px-4 py-12">
-            <DecorativeBackground />
+          <section className="relative min-h-screen lg:grid lg:grid-cols-[2fr_3fr]">
+
+            {/* LEFT - Navy branding panel (desktop only) */}
+            <div className="hidden lg:flex relative flex-col justify-between bg-gradient-to-br from-[#091d64] via-[#0d2a80] to-[#091d64] p-12 overflow-hidden">
+              <DecorativeBackground />
+              <div className="relative z-10">
+                <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center p-2 shadow-lg">
+                  <img src={logoWBg.src} alt="KABISIG" className="w-full h-full object-contain" />
+                </div>
+              </div>
+              <div className="relative z-10 my-10">
+                <p className="text-amber-400 font-extrabold text-[10px] tracking-[0.3em] uppercase mb-3">Naga City - Sangguniang Kabataan</p>
+                <h2 className="text-white font-black text-3xl mb-4 leading-tight">Youth governance,<br />centralized.</h2>
+                <p className="text-blue-100/90 text-sm mb-8 leading-relaxed max-w-sm">Multi-tenant platform serving all 27 SK councils of Naga City - profiling, programs, budgets, and community engagement.</p>
+                <ul className="space-y-3 text-blue-100/90 text-xs font-semibold">
+                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Youth Profiling &amp; Digital Youth ID</span></li>
+                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Program, Event &amp; Attendance Management</span></li>
+                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Budget Transparency &amp; COA-Ready Reports</span></li>
+                  <li className="flex items-start gap-2.5"><ShieldCheck className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" /><span>Federation Analytics across Barangays</span></li>
+                </ul>
+              </div>
+              <div className="relative z-10">
+                <p className="text-blue-200/60 text-[10px] font-medium leading-relaxed">Ateneo de Naga University - BS Information Technology - 2026</p>
+              </div>
+            </div>
+
+            {/* RIGHT - Form column */}
+            <div className="relative flex items-center justify-center bg-[#f8fafc] px-4 py-12">
+              <DecorativeBackground />
 
             <div className="relative z-10 w-full max-w-[440px] flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
+              <button onClick={() => setActiveTab('_landing')} className="self-start mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#091d64] cursor-pointer transition-colors"><ChevronLeft className="w-4 h-4" /> Back to Home</button>
               <div className="w-full bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 sm:p-10 flex flex-col items-center">
                 <KabisigLogo className="mb-0" />
                 
@@ -649,13 +677,7 @@ export default function PublicPages({
                           <label className="block text-xs font-bold text-slate-900 font-sans">
                             Password
                           </label>
-                          <a 
-                            href="#forgot" 
-                            onClick={(e) => { e.preventDefault(); alert('Reset link simulated! Code forwarded securely to registered official mail.'); }} 
-                            className="text-xs text-[#1a237e] font-bold hover:underline"
-                          >
-                            Forgot Password?
-                          </a>
+                          <button type="button" onClick={async () => { if (!email.trim()) { alert('Please enter your registered email address first, then click Forgot Password.'); return; } try { const res = await kabisigApi.requestPasswordReset(email.trim()); alert(res.success ? 'Password reset instructions have been sent to ' + email + '. Please check your inbox.' : 'Error: ' + (res.message || 'Could not send reset link.')); } catch (err) { alert('Error: ' + (err.message || 'Could not send reset link.')); } }} className="text-xs text-[#1a237e] font-bold hover:underline cursor-pointer">Forgot Password?</button>
                         </div>
                         <div className="relative w-full">
                           <input
@@ -743,6 +765,7 @@ export default function PublicPages({
                   </button>
                 </div>
               </div>
+            </div>
             </div>
           </section>
         )}

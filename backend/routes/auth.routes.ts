@@ -217,7 +217,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     email: normalizedEmail,
     password,
     options: {
-      data: { full_name, barangay_id, tenant_id: barangay_id, profilePic: profile_pic || '' },
+      data: { full_name, barangay_id, tenant_id: barangay_id },
     },
   });
 
@@ -426,67 +426,67 @@ router.post(
       },
       `User ${targetUser.full_name} has been approved and granted Digital Youth ID ${digitalYouthId}.`
     );
-
-    router.post(
-      '/reject-user',
-      authenticateUser,
-      requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
-      async (req: Request, res: Response): Promise<void> => {
-        const parseResult = RejectUserSchema.safeParse(req.body);
-        if (!parseResult.success) {
-          sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
-          return;
-        }
-
-        const admin = (req as AuthRequest).user!;
-        const { user_id, reason } = parseResult.data;
-        const { data: targetUser, error: fetchError } = await supabaseAdmin
-          .from('users')
-          .select('id, full_name, email, tenant_id, status')
-          .eq('id', user_id)
-          .single();
-
-        if (fetchError || !targetUser) {
-          sendError(res, 'Target user not found.', 404);
-          return;
-        }
-        if (!canAccessTenant(admin, targetUser.tenant_id)) {
-          sendError(res, 'Forbidden: You do not have permission to reject users outside your assigned Barangay.', 403);
-          return;
-        }
-        if (targetUser.status === 'active') {
-          sendError(res, 'Active users cannot be rejected.', 400);
-          return;
-        }
-
-        const { data: rejectedUser, error: updateError } = await supabaseAdmin
-          .from('users')
-          .update({ status: 'rejected', updated_at: new Date().toISOString() })
-          .eq('id', targetUser.id)
-          .select('id, full_name, email, tenant_id, status')
-          .single();
-
-        if (updateError || !rejectedUser) {
-          sendError(res, `Failed to reject user: ${updateError?.message || 'No user was updated.'}`, 500);
-          return;
-        }
-
-        await recordAuditLog({
-          tenantId: targetUser.tenant_id,
-          userId: admin.id,
-          action: 'REJECT_USER',
-          entityName: 'users',
-          entityId: targetUser.id,
-          details: { reason },
-          ipAddress: req.ip || null,
-        });
-
-        sendSuccess(res, rejectedUser, 'User application rejected.');
-      }
-    );
   }
 );
 
+// POST /api/auth/reject-user
+router.post(
+  '/reject-user',
+  authenticateUser,
+  requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = RejectUserSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+
+    const admin = (req as AuthRequest).user!;
+    const { user_id, reason } = parseResult.data;
+    const { data: targetUser, error: fetchError } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, email, tenant_id, status')
+      .eq('id', user_id)
+      .single();
+
+    if (fetchError || !targetUser) {
+      sendError(res, 'Target user not found.', 404);
+      return;
+    }
+    if (!canAccessTenant(admin, targetUser.tenant_id)) {
+      sendError(res, 'Forbidden: You do not have permission to reject users outside your assigned Barangay.', 403);
+      return;
+    }
+    if (targetUser.status === 'active') {
+      sendError(res, 'Active users cannot be rejected.', 400);
+      return;
+    }
+
+    const { data: rejectedUser, error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ status: 'rejected', updated_at: new Date().toISOString() })
+      .eq('id', targetUser.id)
+      .select('id, full_name, email, tenant_id, status')
+      .single();
+
+    if (updateError || !rejectedUser) {
+      sendError(res, `Failed to reject user: ${updateError?.message || 'No user was updated.'}`, 500);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: targetUser.tenant_id,
+      userId: admin.id,
+      action: 'REJECT_USER',
+      entityName: 'users',
+      entityId: targetUser.id,
+      details: { reason },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(res, rejectedUser, 'User application rejected.');
+  }
+);
 // POST /api/auth/login
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   const parseResult = LoginSchema.safeParse(req.body);

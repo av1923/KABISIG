@@ -18,6 +18,24 @@ export interface AnnouncementPayload {
   };
 }
 
+const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
+function resolveApiBaseUrl(): string {
+  if (typeof window === 'undefined') return CONFIGURED_API_BASE_URL;
+
+  try {
+    const apiUrl = new URL(CONFIGURED_API_BASE_URL, window.location.origin);
+    const isLocalApiHost = apiUrl.hostname === 'localhost' || apiUrl.hostname === '127.0.0.1';
+    const isLocalPageHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalApiHost && !isLocalPageHost) apiUrl.hostname = window.location.hostname;
+    return apiUrl.toString().replace(/\/$/, '');
+  } catch {
+    return CONFIGURED_API_BASE_URL;
+  }
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
+
 export interface SystemNotification {
   id: string;
   notification_type: string;
@@ -28,17 +46,20 @@ export interface SystemNotification {
   created_at: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 function toResolutionRecord(poll: any): ResolutionRecord {
-  const numberLine = String(poll.description || '').split('\n').find(line => line.startsWith('Resolution Number: '));
+  const description = String(poll.description || '');
+  const lines = description.split('\n');
+  const numberLine = lines.find(line => line.startsWith('Resolution Number: '));
+  const authorLine = lines.find(line => line.startsWith('Proposed by: '));
   const votes = poll.vote_counts || {};
   return {
     id: poll.id,
     resolutionNumber: numberLine?.replace('Resolution Number: ', '') || `POLL-${String(poll.id).slice(0, 8)}`,
+    author: authorLine?.replace('Proposed by: ', '') || '',
     title: poll.question,
-    content: poll.description || '',
-    status: poll.is_active ? 'Voting Open' : 'Archived',
+    content: description,
+    status: !poll.is_active ? 'Archived' : new Date(poll.end_date) <= new Date() ? 'Closed' : 'Voting Open',
     validityPeriod: `${String(poll.start_date).slice(0, 10)} - ${String(poll.end_date).slice(0, 10)}`,
     votesSupport: Number(votes.support) || 0,
     votesOppose: Number(votes.oppose) || 0,
@@ -94,7 +115,7 @@ class KabisigApiClient {
       });
 
       const json = await response.json().catch(() => ({}));
-      if (response.status === 401) {
+      if (response.status === 401 && !endpoint.includes('/auth/login')) {
         this.setToken(null);
         if (!this.invalidating && typeof window !== 'undefined') {
           this.invalidating = true;
@@ -202,6 +223,43 @@ class KabisigApiClient {
   }
 
   // --- AUTHENTICATION & MULTI-TENANCY ---
+  async getPublicAnnouncements(): Promise<any[]> {
+    const res = await this.request<any[]>('/public/announcements', { method: 'GET' });
+    if (!res.success || !res.data) return [];
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async getPublicExpenses(): Promise<any[]> {
+    const res = await this.request<any[]>('/public/expenses', { method: 'GET' });
+    if (!res.success || !res.data) return [];
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async getPublicDemographics(): Promise<any | null> {
+    const res = await this.request<any>('/public/demographics', { method: 'GET' });
+    return res.success && res.data ? res.data : null;
+  }
+
+  async getInventory(): Promise<any[]> {
+    const res = await this.request<any[]>('/inventory', { method: 'GET' });
+    if (!res.success || !res.data) return [];
+    return Array.isArray(res.data) ? res.data : [];
+  }
+
+  async addInventoryItem(payload: any): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/inventory', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
   async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
     const res = await this.request<{ token: string; user: any }>('/auth/login', {
       method: 'POST',
@@ -395,9 +453,11 @@ class KabisigApiClient {
     return res.success && Array.isArray(res.data) ? res.data : null;
   }
 
-  async getPolls(): Promise<ResolutionRecord[] | null> {
+  async getPolls(): Promise<ResolutionRecord[]> {
     const res = await this.request<any[]>('/polls', { method: 'GET' });
-    return res.success && Array.isArray(res.data) ? res.data.map(toResolutionRecord) : null;
+    if (!res.success) throw new Error(res.message || 'Polls could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The polls endpoint returned an invalid response.');
+    return res.data.map(toResolutionRecord);
   }
 
   async createPoll(payload: {
@@ -612,9 +672,8 @@ class KabisigApiClient {
   }
 
   // --- FEEDBACK ---
-  async getFeedback(tenantId?: string): Promise<any[]> {
-    const url = tenantId ? `/feedback?tenant_id=${tenantId}` : '/feedback';
-    const res = await this.request<any>(url, { method: 'GET' });
+  async getFeedback(): Promise<any[]> {
+    const res = await this.request<any>('/feedback', { method: 'GET' });
     if (!res.success || !res.data) return [];
     if (Array.isArray(res.data)) return res.data;
     return Array.isArray(res.data.feedbacks) ? res.data.feedbacks : [];

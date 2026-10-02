@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Building2, 
   Search, 
@@ -45,6 +45,7 @@ import {
   YouthProfile
 } from '../types';
 import { KabisigLogo } from './PublicPages';
+import { kabisigApi } from '../lib/api';
 
 interface ViewerPagesProps {
   tenants: BarangayTenant[];
@@ -74,6 +75,21 @@ export default function ViewerPages({
 
   // Sub-tab inside Transparency: 'financial' | 'demographics' | 'fpd' | 'auditing'
   const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing'>('financial');
+
+  // --- Public demographics (anonymized aggregate) ---
+  const [publicDemographics, setPublicDemographics] = useState<any>(null);
+  const [publicDemographicsLoading, setPublicDemographicsLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeMenu !== 'transparency' || transparencySubTab !== 'demographics') return;
+    let isMounted = true;
+    setPublicDemographicsLoading(true);
+    kabisigApi.getPublicDemographics()
+      .then((d) => { if (isMounted) setPublicDemographics(d); })
+      .catch(() => {})
+      .finally(() => { if (isMounted) setPublicDemographicsLoading(false); });
+    return () => { isMounted = false; };
+  }, [activeMenu, transparencySubTab]);
 
   // Search & Filter state
   const [selectedBarangayId, setSelectedBarangayId] = useState('All');
@@ -190,20 +206,13 @@ export default function ViewerPages({
   const femaleCount = youthProfiles.filter(p => p.sex === 'Female').length;
   const scholarCount = youthProfiles.filter(p => p.scholarStatus === 'Scholar').length;
 
-  const genderDemographicData = [
-    { name: 'Male Youth', value: maleCount, color: '#091d64' },
-    { name: 'Female Youth', value: femaleCount, color: '#ec4899' }
-  ];
+  const genderDemographicData = publicDemographics ? Object.entries(publicDemographics.sex_distribution || {}).map(([k, v]: any) => ({ name: k, value: v, color: k === 'Male' ? '#091d64' : k === 'Female' ? '#d32f2f' : '#94a3b8' })) : [];
 
   const highSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'High School' || p.educationalLevel === 'Junior High' || p.educationalLevel === 'Senior High').length;
   const collegeCount = youthProfiles.filter(p => p.educationalLevel === 'College' || p.educationalLevel === 'Vocational').length;
   const outOfSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'Out of School Youth' || p.employmentStatus === 'Unemployed').length;
 
-  const educationDemographicData = [
-    { name: 'High School', value: highSchoolCount, color: '#3b82f6' },
-    { name: 'College / TVET', value: collegeCount, color: '#10b981' },
-    { name: 'Employed / Out of School', value: outOfSchoolCount, color: '#f59e0b' }
-  ];
+  const educationDemographicData = publicDemographics ? Object.entries(publicDemographics.education_distribution || {}).map(([k, v]: any) => ({ name: k, value: v })) : [];
 
   // Consistently sort barangays alphabetically
   const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
@@ -572,35 +581,7 @@ export default function ViewerPages({
                   </div>
                 </div>
 
-                {/* FEATURED ACTIVE YOUTH PROGRAMS */}
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                      <Award className="w-4 h-4 text-emerald-500" /> Featured Active Programs
-                    </h3>
-                    <span className="text-xs text-slate-400 font-medium">Community Impact Projects</span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {programs.slice(0, 3).map(prog => (
-                      <div key={prog.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-slate-800">{prog.title}</span>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
-                            {prog.status}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 line-clamp-2">{prog.description}</p>
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
-                          <span>📍 {prog.location}</span>
-                          <span className="font-mono font-bold text-[#091d64]">₱{prog.budgetAllocation.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </div>
+                              </div>
 
             </div>
           )}
@@ -796,15 +777,15 @@ export default function ViewerPages({
                       <h4 className="text-xs font-bold text-slate-800 mb-3 uppercase tracking-wider">City-Wide Program Accomplishments Summary</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center">
-                          <span className="text-2xl font-black text-emerald-800 block">1,450+</span>
+                          <span className="text-2xl font-black text-emerald-800 block">{(programs.reduce((s, p) => s + (Number(p.registeredCount) || 0), 0)).toLocaleString()}</span>
                           <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mt-1">Youth Event Attendees</span>
                         </div>
                         <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center">
-                          <span className="text-2xl font-black text-[#091d64] block">85 Active</span>
+                          <span className="text-2xl font-black text-[#091d64] block">{publicDemographics?.scholar_count ?? 0} Active</span>
                           <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block mt-1">LGU Educational Scholars</span>
                         </div>
                         <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center">
-                          <span className="text-2xl font-black text-amber-800 block">14 Passed</span>
+                          <span className="text-2xl font-black text-amber-800 block">{(resolutions.filter(r => r.status === 'Closed' || r.status === 'Archived' || r.status === 'Approved').length).toLocaleString()} Passed</span>
                           <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mt-1">Youth Development Resolutions</span>
                         </div>
                       </div>
@@ -968,6 +949,7 @@ export default function ViewerPages({
           {/* ==================== 3. ANNOUNCEMENTS TAB ==================== */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6">
+
               
               {/* ANNOUNCEMENTS & PUBLIC FEED CONTAINER */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
@@ -1011,6 +993,36 @@ export default function ViewerPages({
                       {t.name}
                     </button>
                   ))}
+                </div>
+
+
+{/* FEATURED ACTIVE YOUTH PROGRAMS */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <Award className="w-4 h-4 text-emerald-500" /> Featured Active Programs
+                    </h3>
+                    <span className="text-xs text-slate-400 font-medium">Community Impact Projects</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {programs.filter((prog: any) => selectedBarangayId === 'All' || sortedTenants.find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId).slice(0, 6).map((prog: any) => (
+                      <div key={prog.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-800">{prog.title}</span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
+                            {prog.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
+                        <p className="text-[11px] text-slate-500 line-clamp-2">{prog.description}</p>
+                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
+                          <span>{prog.location}</span>
+                          <span className="font-mono font-bold text-[#091d64]">₱{prog.budgetAllocation.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Announcement Cards Feed */}
