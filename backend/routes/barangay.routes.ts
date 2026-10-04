@@ -112,7 +112,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, city, district, sk_district, allocated_budget, created_at, updated_at')
+      .select('id, name, city, district, sk_district, created_at, updated_at')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -200,7 +200,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
-        totalBudget: ((b as any).allocated_budget && Number((b as any).allocated_budget) > 0) ? Number((b as any).allocated_budget) : budget.allocated,
+        totalBudget: budget.allocated,
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
         status: 'Active',
@@ -468,34 +468,6 @@ router.patch(
 );
 
 // POST /api/barangays/:id/assign-chairperson - Super Admin: Assign SK Chairperson (Barangay Admin)
-router.patch(
-  '/:id/sk-budget',
-  authenticateUser,
-  requireRoles('BARANGAY_ADMIN'),
-  async (req: Request, res: Response): Promise<void> => {
-    const user = (req as AuthRequest).user!;
-    const { id } = req.params;
-    if (user.tenant_id !== id) {
-      sendError(res, 'You can only set the total budget for your own Barangay.', 403);
-      return;
-    }
-    const body = req.body || {};
-    const numericAmount = Number(body.total_amount ?? body.totalBudget ?? body.allocatedBudget);
-    if (!numericAmount || numericAmount <= 0) {
-      sendError(res, 'Total amount must be a positive number.', 400);
-      return;
-    }
-    const { error } = await supabaseAdmin
-      .from('barangay')
-      .update({ allocated_budget: numericAmount })
-      .eq('id', id);
-    if (error) {
-      sendError(res, `Failed to update total SK budget: ${error.message}`, 500);
-      return;
-    }
-    sendSuccess(res, { total_amount: numericAmount, fiscal_year: body.fiscal_year }, 'Total SK budget updated.');
-  }
-);
 router.post(
   '/:id/assign-chairperson',
   authenticateUser,

@@ -94,7 +94,6 @@ import {
 } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
-import NotificationMenu from './NotificationMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
@@ -931,25 +930,14 @@ export default function OfficialPages({
     }
   };
 
-  const handleRegisterInventorySubmit = async () => {
+  const handleRegisterInventorySubmit = () => {
     if (!invForm.item) return alert('Item name is required.');
-    try {
-      const res = await kabisigApi.addInventoryItem({
-        item_name: invForm.item,
-        category: invForm.category,
-        condition: invForm.condition === 'Needs Repair' ? 'Fair' : invForm.condition,
-        quantity: invForm.quantity,
-        unit: 'pcs',
-        unit_cost: invForm.cost,
-        location: invForm.location,
-      });
-      if (!res.success || !res.data) throw new Error(res.message || 'Could not save asset.');
-      const row = res.data;
-      setInventory(prev => [{ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || "" }, ...prev]);
-      setShowInvModal(false);
-    } catch (error: any) {
-      alert(error.message || 'Could not save asset.');
-    }
+    const newItem = {
+      id: `inv-${Date.now().toString().slice(-3)}`,
+      ...invForm
+    };
+    setInventory(prev => [newItem, ...prev]);
+    setShowInvModal(false);
   };
 
   const handleOpenFeedbackResponse = (fb: FeedbackRecord) => {
@@ -1209,14 +1197,12 @@ export default function OfficialPages({
           )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">{currentRole}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
-          >
-            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+        <button 
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
+        >
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* MOBILE DRAWER OVERLAY */}
@@ -1372,7 +1358,6 @@ export default function OfficialPages({
           </div>
 
           <div className="flex items-center gap-5">
-            <NotificationMenu onNavigate={() => setActiveMenu('programs')} />
             <UserMenu 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
@@ -1755,9 +1740,7 @@ export default function OfficialPages({
                               </Pie>
                               <Tooltip 
                                 formatter={(value: any, name: any) => [`${value} Records (${((Number(value) / localDocs.length) * 100).toFixed(0)}%)`, name]}
-                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                                itemStyle={{ color: '#ffffff' }}
-                                labelStyle={{ color: '#cbd5e1' }}
+                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                               />
                             </PieChart>
                           </ResponsiveContainer>
@@ -2082,9 +2065,7 @@ export default function OfficialPages({
                             <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
                             <YAxis stroke="#64748b" fontSize={9} tickLine={false} />
                             <Tooltip 
-                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                              itemStyle={{ color: '#ffffff' }}
-                              labelStyle={{ color: '#cbd5e1' }}
+                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
                             />
                             <Legend verticalAlign="top" height={30} />
                             <Bar dataKey="capacity" name="Target Capacity" fill="#cbd5e1" radius={[3, 3, 0, 0]} />
@@ -3073,16 +3054,8 @@ export default function OfficialPages({
                           <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-slate-500">
-                                Submitted by: {fb.anonymous ? ' Anonymous Youth Constituent' : fb.submittedBy}</span>
-                              {!fb.anonymous && fb.residentProfile && (
-                                <span className="inline-flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-500 font-medium">
-                                  {fb.residentProfile.age && <span><strong className="text-slate-600">Age:</strong> {fb.residentProfile.age}</span>}
-                                  {fb.residentProfile.sex && <span><strong className="text-slate-600">Sex:</strong> {fb.residentProfile.sex}</span>}
-                                  {fb.residentProfile.educationalLevel && <span><strong className="text-slate-600">Education:</strong> {fb.residentProfile.educationalLevel}</span>}
-                                  {fb.residentProfile.employmentStatus && <span><strong className="text-slate-600">Employment:</strong> {fb.residentProfile.employmentStatus}</span>}
-                                  {fb.residentProfile.contact && <span><strong className="text-slate-600">Contact:</strong> {fb.residentProfile.contact}</span>}
-                                </span>
-                              )}
+                                Submitted by: {fb.anonymous ? ' Anonymous Youth Constituent' : fb.submittedBy}
+                              </span>
                               <div className="flex text-amber-400 gap-0.5 ml-2">
                                 {[...Array(5)].map((_, i) => (
                                   <Star key={i} className={`w-3 h-3 ${i < fb.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} />
@@ -3280,39 +3253,135 @@ export default function OfficialPages({
                       </div>
 
                       {/* Sector Summary Breakdown */}
-              {([
-                { key: 'Sports Development', label: 'Sports Sector Limit' },
-                { key: 'Education & Scholarship', label: 'Scholarship & Education' },
-                { key: 'Health & Nutrition', label: 'Health & Wellness Limit' },
-                { key: 'Livelihood & Skills', label: 'Livelihood & Skills' },
-                { key: 'Peace & Security', label: 'Peace & Security' },
-                { key: 'Environmental Protection', label: 'Environmental Protection' },
-              ] as const).map(cat => {
-                const stats = getSectorStats(cat.key);
-                return (
-                  <div key={cat.key} className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{cat.label}</span>
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
-                    </div>
-                    <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{stats.alloc.toLocaleString()}</h4>
-                    <div className="mt-4">
-                      <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                        <span className="text-slate-400 uppercase">Utilization</span>
-                        <span className={stats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
-                          {stats.rate.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-500 ` + (stats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300')}
-                          style={{ width: (stats.rate > 0 ? Math.min(100, stats.rate) : 0) + '%' }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                      {(() => {
+                        const eduStats = getSectorStats('Education & Scholarship');
+                        const sportsStats = getSectorStats('Sports Development');
+                        const healthStats = getSectorStats('Health & Nutrition');
+
+                        const sreCategories = Array.from(new Set(programs.map(program => program.category))).map(cat => {
+                          const stats = getSectorStats(cat);
+                          return {
+                            name: cat,
+                            cat,
+                            aip: programs.find(program => program.category === cat)?.aipReference || '',
+                            alloc: stats.alloc,
+                            disb: stats.disb,
+                            rem: Math.max(0, stats.alloc - stats.disb),
+                            rate: stats.rate
+                          };
+                        });
+
+                        const hasAnySreData = sreCategories.some(c => c.alloc > 0 || c.disb > 0);
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-xs space-y-2">
+                                <div className="flex justify-between text-xs font-bold text-slate-700">
+                                  <span>Education & Scholarship</span>
+                                  <span className={eduStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+                                    {eduStats.rate.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-500 ${eduStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+                                    style={{ width: `${eduStats.rate > 0 ? Math.min(100, eduStats.rate) : 0}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                                  <span>Alloc: ₱{eduStats.alloc.toLocaleString()}</span>
+                                  <span className="text-slate-700 font-bold">Disb: ₱{eduStats.disb.toLocaleString()}</span>
+                                </div>
+                              </div>
+
+                              <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-xs space-y-2">
+                                <div className="flex justify-between text-xs font-bold text-slate-700">
+                                  <span>Sports Development</span>
+                                  <span className={sportsStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+                                    {sportsStats.rate.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-500 ${sportsStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+                                    style={{ width: `${sportsStats.rate > 0 ? Math.min(100, sportsStats.rate) : 0}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                                  <span>Alloc: ₱{sportsStats.alloc.toLocaleString()}</span>
+                                  <span className="text-slate-700 font-bold">Disb: ₱{sportsStats.disb.toLocaleString()}</span>
+                                </div>
+                              </div>
+
+                              <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-xs space-y-2">
+                                <div className="flex justify-between text-xs font-bold text-slate-700">
+                                  <span>Health & Nutrition</span>
+                                  <span className={healthStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
+                                    {healthStats.rate.toFixed(1)}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-500 ${healthStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
+                                    style={{ width: `${healthStats.rate > 0 ? Math.min(100, healthStats.rate) : 0}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-[11px] text-slate-400 font-mono">
+                                  <span>Alloc: ₱{healthStats.alloc.toLocaleString()}</span>
+                                  <span className="text-slate-700 font-bold">Disb: ₱{healthStats.disb.toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Main SRE Table */}
+                            <div className="overflow-x-auto border border-slate-100 rounded-xl">
+                              <table className="w-full text-left text-xs text-slate-600">
+                                <thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase tracking-wider">
+                                  <tr>
+                                    <th className="px-5 py-3">Sector / Program Category</th>
+                                    <th className="px-5 py-3">AIP Reference</th>
+                                    <th className="px-5 py-3 text-right">Allocated Budget</th>
+                                    <th className="px-5 py-3 text-right">Disbursed Expenses</th>
+                                    <th className="px-5 py-3 text-right">Remaining Balance</th>
+                                    <th className="px-5 py-3 text-right">Utilization</th>
+                                    <th className="px-5 py-3 text-center">COA Audit Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-medium">
+                                  {!hasAnySreData ? (
+                                    <tr>
+                                      <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
+                                        No sector budget or expenditure entries recorded. Register programs and log disbursements to generate COA SRE statements.
+                                      </td>
+                                    </tr>
+                                  ) : (
+                                    sreCategories.map((row, idx) => (
+                                      <tr key={idx} className="hover:bg-slate-50">
+                                        <td className="px-5 py-3.5 font-bold text-slate-800">{row.name}</td>
+                                        <td className="px-5 py-3.5 font-mono text-slate-400">{row.aip}</td>
+                                        <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{row.alloc.toLocaleString()}</td>
+                                        <td className="px-5 py-3.5 text-right font-mono text-slate-600 font-bold">₱{row.disb.toLocaleString()}</td>
+                                        <td className="px-5 py-3.5 text-right font-mono text-emerald-600 font-bold">₱{row.rem.toLocaleString()}</td>
+                                        <td className={`px-5 py-3.5 text-right font-mono font-black ${row.rate > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                          {row.rate.toFixed(1)}%
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center">
+                                          {row.disb > 0 ? (
+                                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold text-[9px] rounded uppercase">Verified</span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-500 font-extrabold text-[9px] rounded uppercase">No Expenses</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">Certification details will appear after live budget records are available.</div>
                     </div>
@@ -4789,14 +4858,10 @@ export default function OfficialPages({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                {currentRole !== 'SK Kagawad' && (
-                  <>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
-                    <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono" />
-                  </div>
-                  </>
-                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
+                  <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono" />
+                </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Max slots</label>
                   <input type="number" value={progForm.maxParticipants} onChange={(e)=>setProgForm({...progForm, maxParticipants: parseInt(e.target.value)||100})} className="w-full p-2 border rounded text-xs" />

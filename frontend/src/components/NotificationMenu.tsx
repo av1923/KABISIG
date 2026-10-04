@@ -32,18 +32,10 @@ export default function NotificationMenu({ supplementalItems = [], onNavigate, b
     };
 
     void loadNotifications();
-    const retry = window.setTimeout(() => void loadNotifications(), 3000);
-    const interval = window.setInterval(() => void loadNotifications(), 30_000);
-
-    const onVisibility = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') void loadNotifications();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
+    const interval = window.setInterval(() => void loadNotifications(), 60_000);
     return () => {
       isMounted = false;
-      window.clearTimeout(retry);
       window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
