@@ -33,7 +33,7 @@ const ApproveDocumentSchema = z.object({
 
 const UploadDocumentSchema = z.object({
   title: z.string().min(3, 'Document title is required'),
-  document_type: z.enum(['Resolution', 'Ordinance', 'Financial Report', 'Minutes', 'Project Proposal', 'Other']),
+  document_type: z.enum(['Resolution', 'Resolutions', 'Ordinance', 'Ordinances', 'Financial Report', 'Reports', 'Minutes', 'Meeting Minutes', 'Project Proposal', 'Accomplishment', 'Budget', 'Vouchers', 'Liquidation', 'Communications', 'Other']),
   file_name: z.string().min(1, 'File name is required'),
   content_type: z.string().min(1, 'Content type is required'),
   file_base64: z.string().min(1, 'File data is required'),

@@ -1,3 +1,4 @@
+import { formatCurrencyInput } from '../lib/utils';
 import { useState, useEffect } from 'react';
 import { 
   Building2, 
@@ -85,13 +86,11 @@ import {
   BarangayTenant,
   AnnouncementRecord
 } from '../types';
-import { 
-  analyzeFeedbackSentiment, 
+import { analyzeFeedbackSentiment, 
   extractFeedbackKeywords, 
   getMostRequestedProgramTrends,
   recommendPrograms,
-  calculateEngagementScore
-} from '../lib/intelligence';
+  calculateEngagementScore, detectLowEngagement, detectScheduleConflicts } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import NotificationMenu from './NotificationMenu';
@@ -104,7 +103,6 @@ interface OfficialPagesProps {
   programs: Program[];
   youthProfiles: YouthProfile[];
   registrations: Registration[];
-  attendance: AttendanceRecord[];
   documents: DocumentRecord[];
   feedback: FeedbackRecord[];
   resolutions: ResolutionRecord[];
@@ -120,6 +118,8 @@ interface OfficialPagesProps {
   onAddDocument: (d: DocumentRecord) => void;
   onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
+  onApproveDocument?: (id: string, notes?: string) => Promise<DocumentRecord>;
+  onRejectDocument?: (id: string, notes?: string) => Promise<DocumentRecord>;
 }
 
 export default function OfficialPages({
@@ -127,7 +127,6 @@ export default function OfficialPages({
   programs,
   youthProfiles,
   registrations,
-  attendance,
   documents,
   feedback,
   resolutions,
@@ -142,6 +141,8 @@ export default function OfficialPages({
   onAddExpense,
   onAddDocument,
   onRegisterAttendance,
+  onApproveDocument,
+  onRejectDocument,
   onLogout
 }: OfficialPagesProps) {
   // Navigation active tab (resets to 'dashboard' on role change)
@@ -192,6 +193,9 @@ export default function OfficialPages({
   const [showEditDocModal, setShowEditDocModal] = useState<boolean>(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
+  const [showReviewDocModal, setShowReviewDocModal] = useState<boolean>(false);
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [isReviewingDoc, setIsReviewingDoc] = useState(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [documentUploadError, setDocumentUploadError] = useState('');
 
@@ -384,7 +388,12 @@ export default function OfficialPages({
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
   const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
-  const [expenseSaveError, setExpenseSaveError] = useState('');
+
+  const [showAllocateProgram, setShowAllocateProgram] = useState(false);
+  const [allocateForm, setAllocateForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+  const [allocateError, setAllocateError] = useState('');
+  const [isSavingAllocate, setIsSavingAllocate] = useState(false);
+  const [allocateNotice, setAllocateNotice] = useState('');  const [expenseSaveError, setExpenseSaveError] = useState('');
   const [resForm, setResForm] = useState({
     title: '', number: '', author: '', endDate: ''
   });
@@ -397,8 +406,15 @@ export default function OfficialPages({
   const [rejectionTargetId, setRejectionTargetId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  // Attendance scanner simulation states
+  // Attendance scanner state
   const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
+
+  // Auto-select the first program when the program list becomes available
+  useEffect(() => {
+    if (!selectedProgId && programs.length > 0) {
+      setSelectedProgId(programs[0].id);
+    }
+  }, [programs, selectedProgId]);
   const [selectedProgramRegistrations, setSelectedProgramRegistrations] = useState<Registration[]>([]);
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
@@ -718,9 +734,9 @@ export default function OfficialPages({
 
   const handleSaveDocEdit = () => {
     if (!selectedDoc) return;
+      const currentVerNum = parseFloat((selectedDoc.version || 'v1.0').replace('v', '')) || 1.0;
     setLocalDocs(prev => prev.map(doc => {
       if (doc.id === selectedDoc.id) {
-        const currentVerNum = parseFloat((selectedDoc.version || 'v1.0').replace('v', '')) || 1.0;
         const newVer = `v${(currentVerNum + 0.1).toFixed(1)}`;
         const updatedHistory = doc.history || [];
         return {
@@ -835,7 +851,11 @@ export default function OfficialPages({
           td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
           .footer-sig { margin-top: 50px; display: flex; justify-content: space-between; font-size: 11px; }
           .sig-box { text-align: center; width: 220px; }
-          .sig-line { border-top: 1px solid #0f172a; margin-top: 40px; pt-1; font-weight: bold; }
+          .sig-line { border-top: 1px solid #0f172a; margin-top: 40px; padding-top: 4px; font-weight: bold; }
+          .sig-grid { margin-top: 50px; display: flex; justify-content: space-around; gap: 40px; font-size: 11px; }
+          .sig-cell { text-align: center; width: 240px; }
+          .sig-cell .name { font-weight: bold; border-top: 1px solid #0f172a; margin-top: 40px; padding-top: 4px; }
+          .sig-cell .role { font-size: 10px; color: #64748b; }
         </style>
       </head>
       <body>
@@ -865,7 +885,17 @@ export default function OfficialPages({
         <script>
           window.onload = function() { window.print(); }
         </script>
-      </body>
+            <div class="sig-grid">
+        <div class="sig-cell">
+          <div class="name">${(currentTenant?.chairperson || 'SK Chairperson').toUpperCase()}</div>
+          <div class="role">SK Chairperson &bull; Barangay ${currentTenant?.name || ''}</div>
+        </div>
+        <div class="sig-cell">
+          <div class="name">${(currentUser?.full_name || 'SK Official').toUpperCase()}</div>
+          <div class="role">${currentRole || 'SK Official'}</div>
+        </div>
+      </div>
+</body>
       </html>
     `);
     printWindow.document.close();
@@ -992,6 +1022,17 @@ export default function OfficialPages({
 
   const handleActualScan = async (scannedText: string) => {
     if (isRecordingAttendance) return;
+    if (!selectedProgId) {
+      setLastScanDetail({
+        rawCode: scannedText,
+        status: 'NOT_REGISTERED',
+        title: 'No Program Selected',
+        message: 'Please select an active program from the dropdown at the top of this tab before scanning.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      });
+      setQrMessage('Select an active program first.');
+      return;
+    }
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const currentProg = programs.find(p => p.id === selectedProgId);
     const progTitle = currentProg?.title || selectedProgId;
@@ -1072,9 +1113,23 @@ export default function OfficialPages({
       r.status === 'Approved'
     );
 
-    const youthName = reg?.participantName || youthProf?.name || partId;
-    const finalPartId = reg?.participantId || youthProf?.id || partId;
-    const purokVal = youthProf?.zone || 'Naga Youth Constituent';
+    // Widened lookup for display — includes any registration status and matches by user_id, participantId, or qrCode
+    const regAny = selectedProgramRegistrations.find(r =>
+      (scannedUserId && r.participantId === scannedUserId) ||
+      r.participantId === partId ||
+      r.qrCode === scannedText ||
+      (scannedDigitalYouthId && r.qrCode === scannedDigitalYouthId)
+    ) as any;
+    // Fall back to the full registrations list (any program) so we can still resolve a name
+    const regGlobal = (registrations as any[]).find(r =>
+      (scannedUserId && (r.participantId === scannedUserId || (r.userId && r.userId === scannedUserId))) ||
+      r.participantId === partId ||
+      r.qrCode === scannedText
+    );
+    const resolvedName = (reg?.participantName || youthProf?.name || regAny?.participantName || regGlobal?.participantName || "").trim();
+    const youthName = resolvedName && resolvedName !== partId ? resolvedName : "Unknown / Unregistered Youth";
+    const finalPartId = reg?.participantId || youthProf?.id || regAny?.participantId || regGlobal?.participantId || partId;
+    const purokVal = youthProf?.zone || regAny?.zone || "Naga Youth Constituent";
     // The backend is authoritative for identity, registration, and duplicate check-in validation.
     const record: AttendanceRecord = {
       id: '',
@@ -1109,7 +1164,7 @@ export default function OfficialPages({
         status: isDuplicate ? 'ALREADY_PRESENT' : 'NOT_REGISTERED',
         title: isDuplicate ? 'Already Present' : 'Attendance Rejected',
         message,
-        participantName: youthName,
+        participantName: (error?.details?.attendee_name || error?.response?.data?.details?.attendee_name || youthName),
         participantId: finalPartId,
         purok: purokVal,
         programTitle: progTitle,
@@ -1121,7 +1176,7 @@ export default function OfficialPages({
     }
   };
 
-  // Live QR Attendance Simulation Action
+  // Live QR Attendance Action
   const handleQrScanTrigger = () => {
     setQrScanning(true);
     setQrMessage('Aligning camera framework...');
@@ -1175,9 +1230,31 @@ export default function OfficialPages({
     alert(`Verification observation logged for candidate ${candidate?.name || id}: "${reason}". Recommendation forwarded to Barangay Administrator (SK Chairperson) for final determination.`);
   };
 
+  const handleInviteYouth = async (userId: string, youthName: string) => {
+    if (!userId) {
+      alert('This youth has no linked user account and cannot be notified in-app.');
+      return;
+    }
+    try {
+      const res = await kabisigApi.sendNotification({
+        user_id: userId,
+        title: 'SK Outreach Invitation',
+        message: 'You are invited to join our upcoming SK programs. Please check the Programs tab for open slots and register.',
+        notification_type: 'outreach',
+        link: '/programs',
+      });
+      if (!res.success) {
+        alert(res.message || 'Could not send invitation.');
+        return;
+      }
+      alert('Invitation sent to ' + youthName + '. They will see it in their notifications.');
+    } catch (err) {
+      alert((err && err.message) ? err.message : 'Network error sending invitation.');
+    }
+  };
   const formatProgramTitle = (title: string) => {
     if (!currentTenant) return title;
-    return title.replace(/Balatas|Tabuco|Concepcion Grande|Dayangdang|Concepcion Pequeña/g, currentTenant.name);
+    return title.replace(/Balatas|Tabuco|Concepcion Grande|Dayangdang|Concepcion PequeÃƒÂ±a/g, currentTenant.name);
   };
 
   // Filtered lists
@@ -1197,19 +1274,16 @@ export default function OfficialPages({
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
-        <div className="flex items-center gap-2.5">
-          <KabisigLogo className="w-24" />
-          {barangayLogo && (
-            <img 
-              src={barangayLogo} 
-              alt={`Brgy. ${currentTenant?.name} Seal`} 
-              className="w-7 h-7 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0 shadow-2xs" 
-            />
-          )}
-          <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">{currentRole}</span>
+      <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-8 w-auto object-contain shrink-0" />
+          <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
+          <NotificationMenu
+            buttonClassName="text-white hover:bg-white/10"
+            onNavigate={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }}
+          />
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
@@ -1283,29 +1357,10 @@ export default function OfficialPages({
           {/* Logo brand - Using Official Logo */}
           <div className="p-5 border-b border-slate-100 flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50/40 to-transparent">
             <KabisigLogo className="w-36" />
-            {barangayLogo && (
-              <div className="flex items-center gap-2.5 px-3 py-2 bg-white rounded-xl border border-slate-200/70 shadow-2xs w-full">
-                <img 
-                  src={barangayLogo} 
-                  alt={`Barangay ${currentTenant?.name} Seal`} 
-                  className="w-9 h-9 object-contain shrink-0" 
-                />
-                <div className="min-w-0 flex-1 text-left">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Official Seal</span>
-                  <p className="text-[11px] font-extrabold text-[#091d64] truncate leading-tight">Brgy. {currentTenant?.name}</p>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Navigation Links */}
           <nav className="p-4 space-y-1 flex-1">
-            <div className="px-4 py-1.5 mb-2 bg-slate-50 rounded-lg border border-slate-100">
-              <span className="text-[9px] font-bold text-[#091d64] uppercase tracking-wider block">
-                KABISIG OFFICIAL CONSOLE
-              </span>
-              <span className="text-[8px] text-slate-400 block mt-0.5">Barangay {currentTenant?.name || 'Barangay'} SK Council</span>
-            </div>
 
             {menuConfig[currentRole]?.map(menu => {
               const Icon = menu.icon;
@@ -1347,17 +1402,15 @@ export default function OfficialPages({
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
           <div className="flex items-center gap-4">
-            {barangayLogo && (
-              <div className="w-13 h-13 rounded-2xl bg-white border border-slate-200/80 p-1 flex items-center justify-center overflow-hidden shadow-xs shrink-0">
-                <img 
-                  src={barangayLogo} 
-                  alt={`Barangay ${currentTenant?.name} Seal`} 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            )}
             <div className="flex flex-col">
               <div className="flex items-center gap-3">
+                {barangayLogo && (
+                  <img
+                    src={barangayLogo}
+                    alt="Barangay Seal"
+                    className="w-11 h-11 object-contain rounded-full bg-white p-0.5 border border-slate-200 shadow-2xs shrink-0"
+                  />
+                )}
                 <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
                   {activeMenu.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </h1>
@@ -1736,7 +1789,7 @@ export default function OfficialPages({
                             <PieChart>
                               <Pie 
                                 data={[
-                                  { name: 'Council Resolutions', value: localDocs.filter(d=>d.category==='Resolutions').length || 6, color: '#091d64' },
+                                  { name: 'Council Resolutions', value: localDocs.filter(d=>d.category==='Resolutions').length, color: '#091d64' },
                                   { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length, color: '#2563eb' },
                                   { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length, color: '#10b981' },
                                   { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length, color: '#f59e0b' }
@@ -1770,7 +1823,7 @@ export default function OfficialPages({
                         {/* Detailed Category Data Cards */}
                         <div className="space-y-2.5">
                           {(() => {
-                            const resCount = localDocs.filter(d=>d.category==='Resolutions').length || 6;
+                            const resCount = localDocs.filter(d=>d.category==='Resolutions').length;
                             const minCount = localDocs.filter(d=>d.category==='Minutes').length;
                             const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length;
                             const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length;
@@ -1823,7 +1876,7 @@ export default function OfficialPages({
                             <tbody className="divide-y divide-slate-50">
                               {localDocs.slice(0, 3).map((d) => (
                                 <tr key={d.id} className="hover:bg-slate-50/80">
-                                  <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{d.resolutionNumber || 'DOC-2026'}</td>
+                                  <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{d.resolutionNumber || '—'}</td>
                                   <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs">{d.title}</td>
                                   <td className="px-3 py-2 text-slate-500">{d.category}</td>
                                   <td className="px-3 py-2 text-center">
@@ -1936,7 +1989,7 @@ export default function OfficialPages({
                           <div className="p-2 rounded-lg bg-blue-50/50 border border-blue-100 flex items-start gap-2">
                             <Clock className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div className="min-w-0">
-                              <p className="font-bold text-slate-800">Q3 Youth Accomplishment Report</p>
+                              <p className="font-bold text-slate-800">Quarterly Youth Accomplishment Report</p>
                               <p className="text-[10px] text-slate-500">Draft ready for council verification</p>
                             </div>
                           </div>
@@ -2077,7 +2130,7 @@ export default function OfficialPages({
                           <BarChart data={programs.slice(0, 5).map(p => ({
                             name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
                             registered: p.registeredCount || registrations.filter(r => r.programId === p.id).length,
-                            capacity: p.maxParticipants || 100
+                            capacity: p.maxParticipants || 0
                           }))} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
                             <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
                             <YAxis stroke="#64748b" fontSize={9} tickLine={false} />
@@ -2095,8 +2148,6 @@ export default function OfficialPages({
 
                       <div className="pt-2 border-t border-slate-100 text-xs text-slate-400">Committee activity summaries will appear when live program records are available.</div>
                     </div>
-
-                    {/* Right Col: Rule-Based Features (Schedule Conflict & Low Engagement Alerts) */}
                     <div className="space-y-6 col-span-1">
                       {/* Venue & Schedule Conflict Alert Widget */}
                       <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
@@ -2108,14 +2159,53 @@ export default function OfficialPages({
                           <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">Clear</span>
                         </div>
 
-                        <div className="p-3 rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs space-y-1">
-                          <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Zero Schedule Overlaps
-                          </div>
-                          <p className="text-[11px] text-slate-600 leading-relaxed">
-                            Barangay Hall Multi-Purpose Court is reserved for <strong>Youth Leadership Camp</strong> on July 15–20 with no conflicting municipal events.
-                          </p>
-                        </div>
+                        {(() => {
+                          const active = programs.filter(p => p.status !== 'Completed');
+                          const conflicts = [];
+                          for (let i = 0; i < active.length; i++) {
+                            for (let j = i + 1; j < active.length; j++) {
+                              const a = active[i], b = active[j];
+                              const aS = new Date(a.startDate).getTime();
+                              const aE = new Date(a.endDate).getTime();
+                              const bS = new Date(b.startDate).getTime();
+                              const bE = new Date(b.endDate).getTime();
+                              if (aS <= bE && aE >= bS) {
+                                const aV = (a.location || '').toLowerCase().trim();
+                                const bV = (b.location || '').toLowerCase().trim();
+                                if (aV && aV === bV) {
+                                  conflicts.push({ a: a.title, b: b.title, reason: 'Venue double-booking at ' + a.location });
+                                } else if (a.category === 'Sports Development' && b.category === 'Sports Development') {
+                                  conflicts.push({ a: a.title, b: b.title, reason: 'Overlapping sports events - volunteer split expected.' });
+                                }
+                              }
+                            }
+                          }
+                          if (conflicts.length === 0) {
+                            return (
+                              <div className="p-3 rounded-lg bg-emerald-50/60 border border-emerald-100 text-xs space-y-1">
+                                <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Zero Schedule Overlaps
+                                </div>
+                                <p className="text-[11px] text-slate-600 leading-relaxed">
+                                  No conflicts detected across {active.length} active program{active.length === 1 ? '' : 's'}.
+                                </p>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="space-y-2">
+                              {conflicts.map((conf, idx) => (
+                                <div key={idx} className="p-3 rounded-lg bg-amber-50/70 border border-amber-200 text-xs space-y-1">
+                                  <div className="flex items-center gap-1.5 text-amber-800 font-bold">
+                                    <AlertTriangle className="w-4 h-4 text-amber-600" /> Conflict Detected
+                                  </div>
+                                  <p className="text-[11px] text-slate-700 leading-relaxed">{conf.reason}</p>
+                                  <p className="text-[10px] text-slate-500 italic">{conf.a} vs {conf.b}</p>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Low Engagement Youth Detection & Outreach Recommendations */}
@@ -2125,36 +2215,42 @@ export default function OfficialPages({
                             <Sparkles className="w-4 h-4 text-amber-500" />
                             Low Engagement Detection
                           </h4>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded">2 Profiles</span>
+                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded">{detectLowEngagement(youthProfiles, registrations).length} Profiles</span>
                         </div>
 
-                        <div className="space-y-2 text-xs">
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
-                            <div>
-                              <p className="font-bold text-slate-800">Out-of-School Youth Sector</p>
-                              <p className="text-[10px] text-slate-500">Purok 4 & 5 Roster (15% attendance)</p>
+                        {(() => {
+                          const low = detectLowEngagement(youthProfiles, registrations);
+                          if (low.length === 0) {
+                            return (
+                              <p className="text-xs text-slate-500 italic py-4 text-center">
+                                No low-engagement youth detected. All constituents are actively participating.
+                              </p>
+                            );
+                          }
+                          return (
+                            <div className="space-y-2 text-xs">
+                              {low.slice(0, 5).map((item, idx) => (
+                                <div key={idx} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-slate-800 truncate">{item.profile.name}</p>
+                                    <p className="text-[10px] text-slate-500 truncate">
+                                      {item.profile.youthSector || item.profile.employmentStatus || 'Youth'} - Score {item.score}
+                                    </p>
+                                    {item.recommendedOutreach[0] && (
+                                      <p className="text-[10px] text-slate-400 truncate italic">{item.recommendedOutreach[0]}</p>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => handleInviteYouth(item.profile.userId || '', item.profile.name)}
+                                    className="text-[10px] font-bold text-[#091d64] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded cursor-pointer shrink-0 ml-2"
+                                  >
+                                    Invite
+                                  </button>
+                                </div>
+                              ))}
                             </div>
-                            <button 
-                              onClick={() => setActiveMenu('programs')}
-                              className="text-[10px] font-bold text-[#091d64] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded cursor-pointer"
-                            >
-                              Send Invite
-                            </button>
-                          </div>
-
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
-                            <div>
-                              <p className="font-bold text-slate-800">First-Time Registered KK</p>
-                              <p className="text-[10px] text-slate-500">Newly onboarded residents (28 youth)</p>
-                            </div>
-                            <button 
-                              onClick={() => setActiveMenu('programs')}
-                              className="text-[10px] font-bold text-[#091d64] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded cursor-pointer"
-                            >
-                              Assign
-                            </button>
-                          </div>
-                        </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -2289,7 +2385,7 @@ export default function OfficialPages({
                             <tbody className="divide-y divide-slate-50">
                               {expenses.slice(0, 3).map((exp) => {
                                 const gross = exp.amount;
-                                const vat = exp.isVat ? Math.round(gross * 0.05) : 0;
+                                const vat = exp.isVat ? Math.round(gross * 0.12) : 0;
                                 return (
                                   <tr key={exp.id} className="hover:bg-slate-50/80">
                                     <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{exp.voucherNumber || 'DV-2026-001'}</td>
@@ -3933,7 +4029,7 @@ export default function OfficialPages({
                               <tr key={min.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-mono font-bold text-[#091d64]">{min.resolutionNumber || min.id}</td>
                                 <td className="px-5 py-3 font-bold text-slate-800">{min.title}</td>
-                                <td className="px-5 py-3 text-center"><span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-black text-[9px]">100% Present</span></td>
+                                <td className="px-5 py-3 text-center"><span className={`px-2 py-0.5 rounded font-black text-[9px] ${min.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{min.status || '—'}</span></td>
                                 <td className="px-5 py-3 font-mono text-slate-500">{min.uploadedDate}</td>
                                 <td className="px-5 py-3 text-center">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">{currentUser?.full_name || 'SK Secretary'}</span>
@@ -4053,7 +4149,6 @@ export default function OfficialPages({
                       <th className="px-5 py-3.5">Document Title & Summary</th>
                       <th className="px-5 py-3.5">Category</th>
                       <th className="px-5 py-3.5 text-center">Status</th>
-                      <th className="px-5 py-3.5 text-center">Version</th>
                       <th className="px-5 py-3.5">Designated Approver</th>
                       <th className="px-5 py-3.5 text-center">Actions</th>
                     </tr>
@@ -4090,14 +4185,21 @@ export default function OfficialPages({
                               {doc.status}
                             </span>
                           </td>
-                          <td className="px-5 py-4 text-center font-mono font-bold text-slate-500">
-                            {doc.version || 'v1.0'}
-                          </td>
                           <td className="px-5 py-4 text-slate-600 font-semibold text-[11px]">
                             {doc.designatedApprover || 'SK Chairperson'}
                           </td>
                           <td className="px-5 py-4">
                             <div className="flex justify-center items-center gap-1.5">
+                              {doc.status === 'Pending' && (
+                                <button
+                                  onClick={() => { setSelectedDoc(doc); setReviewNotes(''); setShowReviewDocModal(true); }}
+                                  className="p-1.5 hover:bg-emerald-100 rounded text-emerald-700 font-bold"
+                                  title="Review & Approve Document"
+                                >
+                                  <FileCheck className="w-4 h-4" />
+                                </button>
+                              )}
+
                               <button 
                                 onClick={() => { setSelectedDoc(doc); setShowViewDocModal(true); }} 
                                 className="p-1.5 hover:bg-slate-100 rounded text-[#091d64] font-bold" 
@@ -4116,14 +4218,10 @@ export default function OfficialPages({
 
                               <button 
                                 onClick={() => {
-                                  const element = document.createElement("a");
-                                  const file = new Blob([`SK OFFICIAL DOCUMENT RECORD\n\nTitle: ${doc.title}\nResolution No: ${doc.resolutionNumber || doc.id}\nCategory: ${doc.category}\nStatus: ${doc.status}\nApprover: ${doc.designatedApprover}\nDate: ${doc.uploadedDate}\nDescription: ${doc.description}`], {type: 'text/plain'});
-                                  element.href = URL.createObjectURL(file);
-                                  element.download = `${(doc.resolutionNumber || doc.id).replace(/\s+/g, '_')}_Record.txt`;
-                                  document.body.appendChild(element);
-                                  element.click();
-                                  document.body.removeChild(element);
-                                }} 
+                                  const url = (doc as any).fileUrl;
+                                  if (url) { window.open(url, '_blank'); return; }
+                                  alert('No file attached to this document. It may be a metadata-only record.');
+                                }}
                                 className="p-1.5 hover:bg-slate-100 rounded text-emerald-700 font-bold" 
                                 title="Download File"
                               >
@@ -4135,7 +4233,7 @@ export default function OfficialPages({
                       ))}
                     {localDocs.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-slate-400 font-bold">No official documents found matching the filter criteria.</td>
+                        <td colSpan={6} className="text-center py-8 text-slate-400 font-bold">No official documents found matching the filter criteria.</td>
                       </tr>
                     )}
                   </tbody>
@@ -4391,11 +4489,83 @@ export default function OfficialPages({
           {/* ==================== SCREEN 9: BUDGET (Treasurer AIP Monitor) ==================== */}
           {activeMenu === 'budget' && (
             <div className="bg-white p-6 rounded-xl border border-slate-100 text-left space-y-6 animate-in fade-in duration-200">
+              {allocateNotice && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+                  {allocateNotice}
+                </div>
+              )}
+              {showAllocateProgram && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+                  <form
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      setAllocateError('');
+                      if (!allocateForm.category.trim()) { setAllocateError('Select a program.'); return; }
+                      const amount = Number(allocateForm.allocatedAmount.replace(/[^0-9.]/g, ''));
+                      if (!amount || amount <= 0) { setAllocateError('Amount must be greater than zero.'); return; }
+                      if (!currentTenant?.id) { setAllocateError('No Barangay selected.'); return; }
+                      setIsSavingAllocate(true);
+                      try {
+                        const res = await kabisigApi.allocateBudget({
+                          fiscal_year: Number(allocateForm.fiscalYear),
+                          category: allocateForm.category.trim(),
+                          allocated_amount: amount,
+                          description: allocateForm.description.trim() || undefined,
+                        });
+                        if (!res.success) { setAllocateError(res.message || 'Budget allocation failed.'); return; }
+                        setShowAllocateProgram(false);
+                        setAllocateForm({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+                        setAllocateNotice('Budget allocation saved.');
+                        window.setTimeout(() => setAllocateNotice(''), 5000);
+                        const rows = await kabisigApi.getBudgets(currentTenant.id, Number(allocateForm.fiscalYear));
+                        if (rows) setBudgetOptions(rows as any);
+                      } catch (err) {
+                        setAllocateError((err && err.message) ? err.message : 'Network error saving allocation.');
+                      } finally {
+                        setIsSavingAllocate(false);
+                      }
+                    }}
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-[#091d64]">Allocate budget to program</h3>
+                        <p className="mt-1 text-xs text-slate-500">Per DILG JMC No. 1 s. 2025 Item 4.3.2.2, the SK Chairperson prepares the AIP. The Treasurer assists by allocating specific amounts to each program.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowAllocateProgram(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close allocation form"><X className="h-4 w-4" /></button>
+                    </div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
+                      <input required type="number" min="2020" max="2100" value={allocateForm.fiscalYear} onChange={(event) => setAllocateForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
+                      <select required value={allocateForm.category} onChange={(event) => setAllocateForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
+                        <option value="">Select a created program...</option>
+                        {programs.filter(p => !currentTenant?.id || p.barangayId === currentTenant.id).map(p => <option key={p.id} value={p.title}>{p.title}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Allocated amount
+                      <input required type="text" inputMode="decimal" value={allocateForm.allocatedAmount} onChange={(event) => setAllocateForm((previous) => ({ ...previous, allocatedAmount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Description <span className="text-slate-400 font-normal normal-case tracking-normal">(Optional)</span>
+                      <input value={allocateForm.description} onChange={(event) => setAllocateForm((previous) => ({ ...previous, description: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-800" placeholder="Notes for this allocation" />
+                    </label>
+                    {allocateError && <p role="alert" className="text-xs font-semibold text-rose-700">{allocateError}</p>}
+                    <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button type="button" disabled={isSavingAllocate} onClick={() => setShowAllocateProgram(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="submit" disabled={isSavingAllocate} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
                   <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
                 </div>
+                <button type="button" onClick={() => { setAllocateError(''); setShowAllocateProgram(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878]">
+                  <Plus className="h-4 w-4" /> Allocate to program
+                </button>
               </div>
 
               {/* Tally boxes - Refined Premium Design */}
@@ -4961,7 +5131,7 @@ export default function OfficialPages({
                   <option value="">{isLoadingBudgets ? 'Loading current-year budgets...' : 'Select a budget allocation'}</option>
                   {budgetOptions.map((budget) => (
                     <option key={budget.id} value={budget.id}>
-                      {budget.category} · FY {budget.fiscal_year} · ₱{Number(budget.remaining_amount).toLocaleString()} remaining
+                      {budget.category}
                     </option>
                   ))}
                 </select>
@@ -5155,17 +5325,80 @@ export default function OfficialPages({
       )}
 
       {/* 7. View Document Details Modal */}
+      {showReviewDocModal && selectedDoc && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="flex items-start justify-between p-6 border-b border-slate-100">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{selectedDoc.category}</span>
+                <h3 className="font-sans font-bold text-lg mt-2 leading-snug text-slate-900">{selectedDoc.title}</h3>
+                <p className="text-xs text-slate-500 mt-1 font-mono">Tracking No: {selectedDoc.resolutionNumber || selectedDoc.id}</p>
+              </div>
+              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Uploaded By</span>
+                  <span className="font-bold text-slate-800 block mt-1">{selectedDoc.uploadedBy}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Uploaded Date</span>
+                  <span className="font-bold text-slate-800 block mt-1">{selectedDoc.uploadedDate}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Designated Approver</span>
+                  <span className="font-bold text-[#091d64] block mt-1">{selectedDoc.designatedApprover || currentTenant?.chairperson || 'SK Chairperson'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Current Status</span>
+                  <span className="font-bold text-amber-700 block mt-1">{selectedDoc.status}</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Description</span>
+                <p className="text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 leading-relaxed text-xs">{selectedDoc.description || 'No description provided.'}</p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/60 border border-blue-100 rounded-lg">
+                <div className="text-xs">
+                  <p className="font-bold text-[#091d64]">Attached File</p>
+                  <p className="text-slate-500 text-[10px]">{(selectedDoc as any).fileUrl ? 'File ready to preview' : 'No file attached'}</p>
+                </div>
+                <button type="button" onClick={() => {
+                  const url = (selectedDoc as any).fileUrl;
+                  if (url) { window.open(url, '_blank'); return; }
+                  alert('No file attached to this document.');
+                }} className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs flex items-center gap-1.5">
+                  <Eye className="w-4 h-4" /> View Original File
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Review Notes</label>
+                <textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} rows={3} className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]" placeholder="Optional notes for the document author..." />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center border-t border-slate-100 p-4 bg-slate-50">
+              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="px-4 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+              <div className="flex gap-2">
+                <button onClick={async () => { if (!onRejectDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onRejectDocument(selectedDoc.id, reviewNotes || 'Rejected by reviewer.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Reject failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onRejectDocument} className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><X className="w-4 h-4" /> Reject</button>
+                <button onClick={async () => { if (!onApproveDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onApproveDocument(selectedDoc.id, reviewNotes || 'Approved.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Approve failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onApproveDocument} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" /> Approve</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showViewDocModal && selectedDoc && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-start">
-              <div>
-                <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-200 text-[10px] font-black uppercase rounded tracking-wider">
-                  {selectedDoc.category} • {selectedDoc.version || 'v1.0'}
-                </span>
-                <h3 className="font-sans font-bold text-lg mt-2 leading-snug">{selectedDoc.title}</h3>
-                <p className="text-xs text-slate-300 mt-1 font-mono">Tracking No: {selectedDoc.resolutionNumber || selectedDoc.id}</p>
-              </div>
               <button onClick={() => setShowViewDocModal(false)} className="text-slate-300 hover:text-white p-1 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
@@ -5223,14 +5456,10 @@ export default function OfficialPages({
               <div className="flex justify-between items-center border-t border-slate-100 pt-4">
                 <button 
                   onClick={() => {
-                    const element = document.createElement("a");
-                    const file = new Blob([`SK OFFICIAL DOCUMENT: ${selectedDoc.title}\nResolution No: ${selectedDoc.resolutionNumber || selectedDoc.id}\nStatus: ${selectedDoc.status}\nApprover: ${selectedDoc.designatedApprover}\nDate: ${selectedDoc.uploadedDate}\nDescription: ${selectedDoc.description}`], {type: 'text/plain'});
-                    element.href = URL.createObjectURL(file);
-                    element.download = `${(selectedDoc.resolutionNumber || selectedDoc.id).replace(/\s+/g, '_')}_Record.txt`;
-                    document.body.appendChild(element);
-                    element.click();
-                    document.body.removeChild(element);
-                  }} 
+                    const url = (selectedDoc as any).fileUrl;
+                    if (url) { window.open(url, '_blank'); return; }
+                    alert('No file attached to this document. It may be a metadata-only record.');
+                  }}
                   className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs flex items-center gap-1.5"
                 >
                   <Download className="w-4 h-4" /> Download Official File

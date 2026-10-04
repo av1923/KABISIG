@@ -1,3 +1,4 @@
+import { formatCurrencyInput } from '../lib/utils';
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
@@ -125,7 +126,7 @@ export interface BarangayAdminPagesProps {
   onRejectDocument: (id: string, notes: string) => Promise<DocumentRecord>;
   onAddExpense: (expense: ExpenseRecord) => Promise<void>;
   onAddDocument: (document: DocumentRecord) => void;
-  onCreateProgram: (newProg: Program) => void;
+  onCreateProgram: (newProg: Program) => Promise<boolean>;
   onUpdateProgram: (program: Program) => Promise<boolean>;
   onDeleteProgram: (programId: string) => Promise<boolean>;
   onAnnouncementsChanged?: (announcements: AnnouncementRecord[]) => void;
@@ -242,7 +243,7 @@ export default function BarangayAdminPages({
           </thead>
           <tbody>
             <tr>
-              <td colspan="4" class="text-center">No compliance transmittal records available.</td>
+              ${documents.filter(d => d.category === 'Reports' || d.category === 'Compliance' || (d.title || '').toLowerCase().includes('compliance')).map(d => `<tr><td>${d.title}</td><td>Current</td><td>${d.uploadedDate || '-'}</td><td class="text-center">${d.status === 'Approved' ? 'Verified' : 'Pending'}</td></tr>`).join('') || '<td colspan="4" class="text-center">No compliance transmittal records available.</td>'}
             </tr>
           </tbody>
         </table>
@@ -250,7 +251,7 @@ export default function BarangayAdminPages({
         <div class="footer">
           <p>Certified Correct & Attested:</p>
           <div class="sign">
-            HON. CHAIRPERSON &bull; SK EXECUTIVE BOARD<br>
+            HON. ${(currentBarangay?.chairperson || 'SK CHAIRPERSON').toUpperCase()} &bull; SK EXECUTIVE BOARD<br>
             <span style="font-weight: normal; color: #64748b;">Barangay ${currentBarangay?.name || 'Barangay'}, City of Naga</span>
           </div>
         </div>
@@ -418,6 +419,7 @@ export default function BarangayAdminPages({
   const [progListFilter, setProgListFilter] = useState<'List' | 'Calendar'>('List');
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
+  const [viewingProgram, setViewingProgram] = useState<Program | null>(null);
   const [newProgForm, setNewProgForm] = useState({
     title: '',
     description: '',
@@ -435,6 +437,17 @@ export default function BarangayAdminPages({
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
   const [budgetAllocations, setBudgetAllocations] = useState<any[]>([]);
   const [showRecordExpense, setShowRecordExpense] = useState(false);
+  const [showSetTotal, setShowSetTotal] = useState(false);
+  const [totalForm, setTotalForm] = useState({ amount: '', fiscalYear: String(new Date().getFullYear()) });
+  const [totalFormError, setTotalFormError] = useState('');
+  const [isSavingTotal, setIsSavingTotal] = useState(false);
+  const [savedTotalBudget, setSavedTotalBudget] = useState<number | null>(null);
+  const [totalBudgetNotice, setTotalBudgetNotice] = useState('');
+  const [showSetBudget, setShowSetBudget] = useState(false);
+  const [budgetForm, setBudgetForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+  const [budgetFormError, setBudgetFormError] = useState('');
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
+  const [budgetNotice, setBudgetNotice] = useState('');
   const [expenseForm, setExpenseForm] = useState({
     title: '',
     amount: '',
@@ -565,9 +578,19 @@ export default function BarangayAdminPages({
     return matchesBarangay && matchesSearch && matchesStatus;
   });
 
+  // Beneficiary Distribution Audit — computes participation counts to prevent duplicate assistance
+  const youthProgramCounts = youthProfiles.map(y => {
+    const count = registrations.filter((r: any) => r.participantId === y.id && r.status !== "Rejected").length;
+    return { ...y, programCount: count };
+  });
+  const underservedYouth = youthProgramCounts.filter(y => y.programCount === 0 && y.status === "Approved");
+  const overBenefitedYouth = youthProgramCounts
+    .filter(y => y.programCount >= 3)
+    .sort((a, b) => b.programCount - a.programCount);
+
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
   const programAllocatedBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
-  const intelligentBudget = getBudgetAnalytics(programAllocatedBudget, programs, expenses);
+  const budgetAnalytics = getBudgetAnalytics(programAllocatedBudget, programs, expenses);
   const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
   const budgetAlertSignature = budgetAlerts
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
@@ -634,6 +657,7 @@ export default function BarangayAdminPages({
 
   const [announcementsList, setAnnouncementsList] = useState<any[]>([]);
   const [announcementError, setAnnouncementError] = useState('');
+  const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false);
 
   const [annTitle, setAnnTitle] = useState('');
@@ -1077,12 +1101,24 @@ export default function BarangayAdminPages({
     if (editingProgram) {
       void onUpdateProgram(createdProg).then(success => {
         if (success) {
+          setProgramNotice({ type: 'success', text: `"${createdProg.title}" updated successfully.` });
           setEditingProgram(null);
           setShowCreateProgDrawer(false);
+          setTimeout(() => setProgramNotice(null), 5000);
+        } else {
+          setProgramNotice({ type: 'error', text: 'Failed to update program. Please check the details and try again.' });
         }
       });
     } else {
-      onCreateProgram(createdProg);
+      void onCreateProgram(createdProg).then(success => {
+        if (success) {
+          setProgramNotice({ type: 'success', text: `"${createdProg.title}" created successfully.` });
+          setShowCreateProgDrawer(false);
+          setTimeout(() => setProgramNotice(null), 5000);
+        } else {
+          setProgramNotice({ type: 'error', text: 'Failed to create program. Please check the details and try again.' });
+        }
+      });
     }
     
     setNewProgForm({
@@ -1113,7 +1149,8 @@ export default function BarangayAdminPages({
     return current >= new Date(start.getFullYear(), start.getMonth(), start.getDate())
       && current <= new Date(end.getFullYear(), end.getMonth(), end.getDate());
   });
-  const openProgramEditor = (program?: Program) => {
+  const openProgramEditor = (program?: Program, mode: 'edit' | 'view' = 'edit') => {
+    if (mode === 'view' && program) { setViewingProgram(program); return; }
     if (!program) {
       setEditingProgram(null);
       setNewProgForm(previous => ({ ...previous, title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: null }));
@@ -1136,18 +1173,77 @@ export default function BarangayAdminPages({
   };
 return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
+      {programNotice && (
+        <div className={"fixed top-6 right-6 z-[100] px-4 py-3 rounded-xl shadow-lg border text-xs font-bold max-w-sm " + (programNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-800')}>
+          {programNotice.text}
+        </div>
+      )}
+
+      {viewingProgram && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setViewingProgram(null)}>
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[#091d64] text-white p-6 flex justify-between items-start">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300 mb-1">Program Details</p>
+                <h3 className="text-lg font-black leading-tight">{viewingProgram.title}</h3>
+                <p className="text-xs text-blue-100 mt-1">{viewingProgram.category}</p>
+              </div>
+              <button onClick={() => setViewingProgram(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/80">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Start Date</span>
+                  <span className="font-bold text-slate-800">{viewingProgram.startDate || '—'}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">End Date</span>
+                  <span className="font-bold text-slate-800">{viewingProgram.endDate || '—'}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Venue / Location</span>
+                  <span className="font-bold text-slate-800">{viewingProgram.location || '—'}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Status</span>
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-black rounded uppercase">{viewingProgram.status}</span>
+                </div>
+                <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
+                  <span className="text-[10px] font-bold text-emerald-600 uppercase block">Budget Allocation</span>
+                  <span className="font-bold text-emerald-800 font-mono">₱{(Number(viewingProgram.budgetAllocation) || 0).toLocaleString()}</span>
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <span className="text-[10px] font-bold text-blue-600 uppercase block">Max Slots</span>
+                  <span className="font-bold text-blue-800 font-mono">{viewingProgram.maxParticipants || 0}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">Registered</span>
+                  <span className="font-bold text-slate-800 font-mono">{viewingProgram.registeredCount || 0}</span>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">AIP Reference</span>
+                  <span className="font-bold text-slate-800 font-mono">{viewingProgram.aipReference || '—'}</span>
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Description</span>
+                <p className="text-slate-700 leading-relaxed whitespace-pre-line">{viewingProgram.description || 'No description provided.'}</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
+              <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Close</button>
+              <button onClick={() => { const p = viewingProgram; setViewingProgram(null); if (p) openProgramEditor(p); }} className="px-4 py-2 text-xs font-bold bg-[#091d64] hover:bg-[#061344] text-white rounded-lg">Edit Program</button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* MOBILE HEADER */}
       <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2.5">
           <KabisigLogo className="scale-75" />
-          {barangayLogo && (
-            <img 
-              src={barangayLogo} 
-              alt={`Brgy. ${currentBarangay?.name} Seal`} 
-              className="w-7 h-7 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0 shadow-2xs" 
-            />
-          )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
         <button
@@ -1165,13 +1261,6 @@ return (
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
                 <KabisigLogo className="scale-90" />
-                {barangayLogo && (
-                  <img 
-                    src={barangayLogo} 
-                    alt={`Brgy. ${currentBarangay?.name} Seal`} 
-                    className="w-8 h-8 object-contain rounded-full bg-white p-0.5 border border-white/30 shrink-0" 
-                  />
-                )}
               </div>
               <button 
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -1275,19 +1364,6 @@ return (
         <div className="flex flex-col h-full overflow-y-auto">
           <div className="p-5 border-b border-slate-100 flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50/40 to-transparent">
             <KabisigLogo className="scale-90" />
-            {barangayLogo && (
-              <div className="flex items-center gap-2.5 px-3 py-2 bg-white rounded-xl border border-slate-200/70 shadow-2xs w-full">
-                <img 
-                  src={barangayLogo} 
-                  alt={`Barangay ${currentBarangay?.name} Official Seal`} 
-                  className="w-9 h-9 object-contain shrink-0" 
-                />
-                <div className="min-w-0 flex-1 text-left">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Official Seal</span>
-                  <p className="text-[11px] font-extrabold text-[#091d64] truncate leading-tight">Brgy. {currentBarangay?.name}</p>
-                </div>
-              </div>
-            )}
           </div>
 
           <nav className="p-4 space-y-1 flex-1">
@@ -1425,15 +1501,6 @@ return (
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
           <div className="flex items-center gap-4">
-            {barangayLogo && (
-              <div className="w-13 h-13 rounded-2xl bg-white border border-slate-200/80 p-1 flex items-center justify-center overflow-hidden shadow-xs shrink-0">
-                <img 
-                  src={barangayLogo} 
-                  alt={`Barangay ${currentBarangay?.name} Seal`} 
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            )}
             <div className="flex flex-col">
               <div className="flex items-center gap-3">
                 <h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
@@ -1444,9 +1511,7 @@ return (
                   {activeMenu === 'documents' && 'Document Repository'}
                   {activeMenu === 'reports' && 'Reports Desk'}
                   {activeMenu === 'announcements' && 'Sangguniang Kabataan Announcements'}
-                  {activeMenu === 'calendar' && 'AIP Program Scheduling Calendar'}
                   {activeMenu === 'settings' && 'System Parameters Settings'}
-                  {activeMenu === 'profile' && 'Sangguniang Kabataan Admin Profile'}
                 </h1>
                 <span className="text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
                   Barangay Admin
@@ -1483,8 +1548,8 @@ return (
                 })),
                 {
                   id: 'budget-trend',
-                  title: `Budget spending trend: ${intelligentBudget.consumptionTrend}`,
-                  message: intelligentBudget.consumptionTrend === 'Accelerated' ? 'Spending is progressing faster than planned.' : intelligentBudget.consumptionTrend === 'Under-utilizing' ? 'Spending is below the expected pace.' : 'Spending is progressing as expected.',
+                  title: `Budget spending trend: ${budgetAnalytics.consumptionTrend}`,
+                  message: budgetAnalytics.consumptionTrend === 'Accelerated' ? 'Spending is progressing faster than planned.' : budgetAnalytics.consumptionTrend === 'Under-utilizing' ? 'Spending is below the expected pace.' : 'Spending is progressing as expected.',
                   is_read: true,
                   countInBadge: false,
                 },
@@ -1506,7 +1571,7 @@ return (
                 ...(overspentBudgetPrograms.length === 0 ? [{ id: 'overspending-clear', title: 'No overspending detected', message: 'All programs are within their allocated budgets.', is_read: true, countInBadge: false }] : []),
               ] satisfies NotificationMenuItem[]}
               onNavigate={link => {
-                if (link.includes('calendar')) setActiveMenu('calendar');
+                if (link.includes('calendar')) setActiveMenu('programs');
                 else if (link.includes('budget')) setActiveMenu('budget');
               }}
             />
@@ -1737,9 +1802,9 @@ return (
                       Budget Auditor & Alerts
                     </h4>
                     <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                      intelligentBudget.consumptionTrend === 'Accelerated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+                      budgetAnalytics.consumptionTrend === 'Accelerated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
                     }`}>
-                      Trend: {intelligentBudget.consumptionTrend}
+                      Trend: {budgetAnalytics.consumptionTrend}
                     </span>
                   </div>
                   <div className="space-y-3 max-h-72 overflow-y-auto">
@@ -1804,6 +1869,54 @@ return (
                   />
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 </div>
+
+
+              {/* BENEFICIARY DISTRIBUTION AUDIT */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <div className="bg-white p-5 rounded-xl border border-amber-100 shadow-xs">
+                  <div className="flex items-center gap-2 mb-2">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    <h4 className="font-extrabold text-slate-800 text-sm">Underserved Youth</h4>
+                    <span className="ml-auto text-[10px] font-extrabold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full">
+                      {underservedYouth.length} Never Participated
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-3">Approved youth with zero program registrations. Prioritize these for outreach to ensure equitable distribution.</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {underservedYouth.slice(0, 8).map(y => (
+                      <div key={y.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-50">
+                        <span className="font-bold text-slate-700 truncate">{y.name}</span>
+                        <span className="text-[10px] text-slate-400 font-mono flex-shrink-0 ml-2">{y.zone}</span>
+                      </div>
+                    ))}
+                    {underservedYouth.length === 0 && (
+                      <p className="py-3 text-center text-[10px] text-emerald-600 font-bold">All approved youth have received at least one program.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-rose-100 shadow-xs">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                    <h4 className="font-extrabold text-slate-800 text-sm">Duplicate Assistance Flag</h4>
+                    <span className="ml-auto text-[10px] font-extrabold bg-rose-50 text-rose-800 px-2 py-0.5 rounded-full">
+                      {overBenefitedYouth.length} For Review
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mb-3">Youth participating in 3 or more programs. Review to prevent duplicate resource allocation.</p>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {overBenefitedYouth.slice(0, 8).map(y => (
+                      <div key={y.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-50">
+                        <span className="font-bold text-slate-700 truncate">{y.name}</span>
+                        <span className="text-[10px] font-extrabold text-rose-700 flex-shrink-0 ml-2">{y.programCount} programs</span>
+                      </div>
+                    ))}
+                    {overBenefitedYouth.length === 0 && (
+                      <p className="py-3 text-center text-[10px] text-emerald-600 font-bold">No duplicate assistance patterns detected.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
 
                 <div className="overflow-x-auto border border-slate-100 rounded-lg">
                   <table className="w-full text-left text-xs text-slate-600">
@@ -1974,7 +2087,7 @@ return (
                                 <button
                                   type="button"
                                   key={program.id}
-                                  onClick={() => openProgramEditor(program)}
+                                  onClick={() => openProgramEditor(program, 'view')}
                                   className="w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white bg-blue-600 hover:bg-blue-700 truncate"
                                   title={`${program.title} · ${program.category}`}
                                 >
@@ -2015,7 +2128,7 @@ return (
                         </div>
                         <div className="text-right">
                           <span className="text-[10px] text-slate-400 block font-bold">Registrations</span>
-                          <span className="text-xs font-extrabold text-slate-800 block mt-0.5">{p.registeredCount || 0} / {p.maxParticipants || 100}</span>
+                          <span className="text-xs font-extrabold text-slate-800 block mt-0.5">{p.registeredCount || 0} / {p.maxParticipants || 0}</span>
                         </div>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => openProgramEditor(p)} className="px-2 py-1 border rounded text-[10px] font-bold">Edit</button>
@@ -2126,12 +2239,129 @@ return (
           {/* 4. BUDGET MANAGEMENT */}
           {activeMenu === 'budget' && (
             <div className="space-y-6 animate-in fade-in duration-200">
+              {totalBudgetNotice && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+                  {totalBudgetNotice}
+                </div>
+              )}
+              {showSetTotal && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+                  <form
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      setTotalFormError('');
+                      const amount = Number(totalForm.amount.replace(/[^0-9.]/g, ''));
+                      if (!amount || amount <= 0) { setTotalFormError('Amount must be greater than zero.'); return; }
+                      if (!currentBarangay?.id) { setTotalFormError('No Barangay selected.'); return; }
+                      setIsSavingTotal(true);
+                      try {
+                        const res = await kabisigApi.setSkTotalBudget(currentBarangay.id, {
+                          total_amount: amount,
+                          fiscal_year: Number(totalForm.fiscalYear),
+                        });
+                        if (!res.success) { setTotalFormError(res.message || 'Total budget save failed.'); return; }
+                        setShowSetTotal(false);
+                        setTotalForm({ amount: '', fiscalYear: String(new Date().getFullYear()) });
+                        setSavedTotalBudget(amount);
+                        setTotalBudgetNotice('Total SK budget saved: P' + amount.toLocaleString());
+                        window.setTimeout(() => setTotalBudgetNotice(''), 5000);
+                      } catch (err) {
+                        setTotalFormError((err && err.message) ? err.message : 'Network error saving total budget.');
+                      } finally {
+                        setIsSavingTotal(false);
+                      }
+                    }}
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-[#091d64]">Set total SK budget</h3>
+                        <p className="mt-1 text-xs text-slate-500">Per DILG JMC No. 1 s. 2025 Item 4.3.2.2, the SK Chairperson prepares the SK Annual/Supplemental budget with assistance from the SK Treasurer. This is the ceiling the Treasurer allocates from.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowSetTotal(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close total budget form"><X className="h-4 w-4" /></button>
+                    </div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
+                      <input required type="number" min="2020" max="2100" value={totalForm.fiscalYear} onChange={(event) => setTotalForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Total SK budget for the year
+                      <input required type="text" inputMode="decimal" value={totalForm.amount} onChange={(event) => setTotalForm((previous) => ({ ...previous, amount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
+                    </label>
+                    {totalFormError && <p role="alert" className="text-xs font-semibold text-rose-700">{totalFormError}</p>}
+                    <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button type="button" disabled={isSavingTotal} onClick={() => setShowSetTotal(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="submit" disabled={isSavingTotal} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingTotal ? 'Saving...' : 'Save total budget'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+              {showSetBudget && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+                  <form
+                    onSubmit={async (event) => {
+                      event.preventDefault();
+                      setBudgetFormError('');
+                      if (!budgetForm.category.trim()) { setBudgetFormError('Category is required.'); return; }
+                      const amount = Number(budgetForm.allocatedAmount.replace(/[^0-9.]/g, ''));
+                      if (!amount || amount <= 0) { setBudgetFormError('Amount must be greater than zero.'); return; }
+                      setIsSavingBudget(true);
+                      try {
+                        const res = await kabisigApi.allocateBudget({
+                          fiscal_year: Number(budgetForm.fiscalYear),
+                          category: budgetForm.category.trim(),
+                          allocated_amount: amount,
+                          description: budgetForm.description.trim() || undefined,
+                        });
+                        if (!res.success) { setBudgetFormError(res.message || 'Budget allocation failed.'); return; }
+                        setShowSetBudget(false);
+                        setBudgetForm({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+                        
+                      } catch (err) {
+                        setBudgetFormError((err && err.message) ? err.message : 'Network error saving budget.');
+                      } finally {
+                        setIsSavingBudget(false);
+                      }
+                    }}
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-[#091d64]">Set budget allocation</h3>
+                        <p className="mt-1 text-xs text-slate-500">Per DILG JMC No. 1 s. 2025, the SK Chairperson prepares the barangay SK budget with the Treasurer's assistance.</p>
+                      </div>
+                      <button type="button" onClick={() => setShowSetBudget(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close budget form"><X className="h-4 w-4" /></button>
+                    </div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
+                      <input required type="number" min="2020" max="2100" value={budgetForm.fiscalYear} onChange={(event) => setBudgetForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
+                      <select required value={budgetForm.category} onChange={(event) => setBudgetForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
+                        <option value="">Select a created program...</option>
+                        {programs.filter(p => !currentBarangay?.id || p.barangayId === currentBarangay.id).map(p => <option key={p.id} value={p.title}>{p.title}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Allocated amount
+                      <input required type="text" inputMode="decimal" value={budgetForm.allocatedAmount} onChange={(event) => setBudgetForm((previous) => ({ ...previous, allocatedAmount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
+                    </label>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Description <span className="text-slate-400 font-normal normal-case tracking-normal">(Optional)</span>
+                      <input value={budgetForm.description} onChange={(event) => setBudgetForm((previous) => ({ ...previous, description: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-800" placeholder="Notes for this allocation" />
+                    </label>
+                    {budgetFormError && <p role="alert" className="text-xs font-semibold text-rose-700">{budgetFormError}</p>}
+                    <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button type="button" disabled={isSavingBudget} onClick={() => setShowSetBudget(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="submit" disabled={isSavingBudget} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingBudget ? 'Saving...' : 'Save allocation'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-xl font-extrabold text-[#091d64]">Budget Management</h3>
                   <p className="text-xs text-slate-400 mt-1">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                 </div>
-                <button type="button" onClick={() => { setExpenseFormError(''); setShowRecordExpense(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878]">
+                <button type="button" onClick={() => { setTotalFormError(''); setShowSetTotal(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-xs font-bold text-amber-950 hover:bg-amber-300">
+                  <Coins className="h-4 w-4" /> Set total SK budget
+                </button>
+                                <button type="button" onClick={() => { setExpenseFormError(''); setShowRecordExpense(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878]">
                   <Plus className="h-4 w-4" /> Record expense
                 </button>
                 <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
@@ -2206,18 +2436,18 @@ return (
                 const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
                 const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
                 const isAllPrograms = budgetProgramFilter === 'All Programs';
-                const barangayTotalBudget = Number(currentBarangay?.totalBudget) || 0;
+                const barangayTotalBudget = savedTotalBudget !== null ? savedTotalBudget : (Number(currentBarangay?.totalBudget) || 0);
                 const useBudgetTable = isAllPrograms;
                 const displaySpent = useBudgetTable ? (Number(currentBarangay?.spentBudget) || 0) : filteredSpent;
                 const displayBase = useBudgetTable ? barangayTotalBudget : filteredAllocated;
                 const filteredRemaining = Math.max(0, displayBase - displaySpent);
                 const filteredRate = displayBase > 0 ? (displaySpent / displayBase) * 100 : 0;
                 const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
-                return (
+                                                return (
                   <>
                     {isAllPrograms && barangayTotalBudget === 0 && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
-                        No FY {new Date().getFullYear()} budget has been configured for this barangay yet. The SK Federation (Super Admin) sets the total budget.
+                        No FY {new Date().getFullYear()} budget has been configured for this barangay yet. Per DILG JMC No. 1 s. 2025, the SK Chairperson prepares the barangay SK budget.
                       </div>
                     )}
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -2241,7 +2471,7 @@ return (
 
                     <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-3">
-                        <h4 className="text-sm font-extrabold text-slate-800">Monthly budget vs actual</h4>
+                                            <h4 className="text-sm font-extrabold text-slate-800">Monthly budget vs actual</h4>
                         <p className="mb-4 text-[10px] text-slate-400">Actual expenses are grouped by expense date.</p>
                         {budgetPrograms.length || expenses.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={budgetVsActualMonthlyData}><XAxis dataKey="month" fontSize={10} /><YAxis fontSize={10} tickFormatter={value => `₱${Number(value) / 1000}k`} /><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /><Legend /><Bar dataKey="budget" name="Budget" fill="#bfdbfe" radius={[4, 4, 0, 0]} /><Bar dataKey="spent" name="Actual" fill="#091d64" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No budget or expense records for this view.</div>}
                       </div>
@@ -2333,6 +2563,20 @@ return (
                             </span>
                           </td>
                           <td className="px-5 py-4 text-right">
+                            {(doc as any).fileUrl && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const url = (doc as any).fileUrl;
+                                  if (url) { window.open(url, '_blank'); return; }
+                                  alert('No file attached.');
+                                }}
+                                className="mr-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[10px] font-bold hover:bg-slate-50"
+                                title="View Uploaded File"
+                              >
+                                <Eye className="w-3.5 h-3.5" /> View
+                              </button>
+                            )}
                             {doc.status === 'Pending' && (
                               <button
                                 type="button"

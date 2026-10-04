@@ -121,7 +121,7 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
       const qrScanner = new Html5Qrcode(scannerContainerId);
       html5QrcodeRef.current = qrScanner;
 
-      // Determine best camera config with smart fallback
+      // Determine best camera config with fallback logic
       let cameraConfig: any = camId;
 
       if (!cameraConfig) {
@@ -270,6 +270,10 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-lg space-y-0">
+<style>{"#html5-live-qr-reader { position: relative !important; } #html5-live-qr-reader video { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; position: absolute !important; top: 0 !important; left: 0 !important; z-index: 2 !important; } #html5-live-qr-reader #qr-shaded-region { display: none !important; } #html5-live-qr-reader canvas { display: none !important; } #html5-live-qr-reader > div > div > span { display: none !important; } #html5-live-qr-reader > div > div > p { display: none !important; }"}</style>
+      <style>{
+        "#qr-reader video, #qr-shaded-region { width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; } #qr-reader { width: 100% !important; height: 100% !important; }"
+      }</style>
       
       {/* SCANNER CONTROL BAR */}
       <div className="bg-[#091d64] text-white p-4 flex flex-wrap justify-between items-center gap-3 border-b border-blue-950">
@@ -331,10 +335,28 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
         {/* HTML5 QR READER CONTAINER */}
         <div 
           id={scannerContainerId} 
-          className={`w-full max-w-md rounded-xl overflow-hidden border-2 transition-all ${
+          className={`w-full max-w-md aspect-square min-h-[280px] sm:min-h-[320px] rounded-xl overflow-hidden border-2 transition-all ${
             scanSuccessAnim ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)]' : 'border-slate-800'
           } ${!isStarted ? 'hidden' : 'block'}`}
         />
+        {/* QR TARGETING GUIDE — visible while camera is active */}
+        {isStarted && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[3]">
+            <div className="relative w-[70%] max-w-[280px] aspect-square">
+              {/* Corner brackets */}
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-400 rounded-tl-lg"></div>
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-400 rounded-tr-lg"></div>
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-400 rounded-bl-lg"></div>
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-400 rounded-br-lg"></div>
+              {/* Center crosshair */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 opacity-60">
+                <div className="absolute top-1/2 left-0 w-full h-0.5 bg-amber-400"></div>
+                <div className="absolute top-0 left-1/2 w-0.5 h-full bg-amber-400"></div>
+              </div>
+            </div>
+          </div>
+        )}
+
 
         {/* SCANNER INITIAL STATE PLACEHOLDER (No duplicate button) */}
         {!isStarted && !errorMsg && (

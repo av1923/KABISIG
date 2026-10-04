@@ -406,6 +406,9 @@ export default function PublicPages({
           address: `${signUpForm.address}, ${signUpForm.zone}`,
           educational_status: educationalStatus,
           employment_status: employmentStatus,
+          school: signUpForm.school,
+          course: signUpForm.course,
+          year: signUpForm.year,
           is_registered_voter: true,
         });
         if (!res.success) {
@@ -550,6 +553,8 @@ export default function PublicPages({
                       {(() => {
                         const checks = validatePassword(chairpersonPassword);
                         const match = chairpersonPassword.length > 0 && chairpersonPassword === chairpersonConfirmPassword;
+                        const allPass = checks.minLength && checks.hasUpper && checks.hasLower && checks.hasNumber && checks.hasSymbol && match;
+                        if (allPass) return null;
                         return (
                           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-[11px]">
                             <p className="font-bold text-slate-600 mb-1">Password Requirements:</p>
@@ -675,14 +680,6 @@ export default function PublicPages({
 
                       {/* Link to Chairperson First-Time Setup */}
                       <div className="text-center pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setIsChairpersonSetup(true)}
-                          className="text-[11px] text-[#091d64] font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                          Invited SK Chairperson? Set up your password here
-                        </button>
                       </div>
 
                       {/* Login Error Notification */}
@@ -1083,6 +1080,8 @@ export default function PublicPages({
                         
                         {(() => {
                           const checks = validatePassword(signUpForm.password);
+                          const allPass = checks.minLength && checks.hasUpper && checks.hasLower && checks.hasNumber && checks.hasSymbol;
+                          if (allPass) return null;
                           return (
                             <div className="mt-2 p-3 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5 text-[11px]">
                               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
