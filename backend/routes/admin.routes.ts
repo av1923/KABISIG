@@ -7,7 +7,6 @@ import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 const AssignChairpersonByEmailSchema = z.object({
   email: z.string().email('Valid email address is required'),
@@ -294,7 +293,7 @@ router.post(
         type: 'magiclink',
         email: cleanEmail,
         options: {
-          redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
+          redirectTo: `http://localhost:3000?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
         },
       });
       if (linkData?.properties?.action_link) {
@@ -304,7 +303,7 @@ router.post(
       console.warn('generateLink warning:', linkErr);
     }
 
-    const directSetupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
+    const directSetupUrl = `http://localhost:3000?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
 
     // 7. Audit Logging
     await recordAuditLog({

@@ -507,7 +507,7 @@ router.post(
       .maybeSingle();
 
     if (!registration) {
-      sendError(res, `${attendeeName} is not registered for this program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' });
+      sendError(res, `${attendeeName} is not registered for this program.`, 400);
       return;
     }
 

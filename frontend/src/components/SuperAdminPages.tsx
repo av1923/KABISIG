@@ -162,7 +162,7 @@ export default function SuperAdminPages({
   // Filtered version of chartBarangayData for Analytics tab (respects search + district filter)
   const analyticsChartData = filteredBarangays.length === sortedBarangays.length
     ? chartBarangayData
-    : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
+    : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.name === item.name));
 
   const handleOpenAssignModal = (b?: BarangayTenant) => {
     const target = b || sortedBarangays[0];
@@ -1501,6 +1501,20 @@ export default function SuperAdminPages({
                   </button>
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    AIP
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={modalForm.totalBudget ?? ''}
+                    onChange={(e) => setModalForm({ ...modalForm, totalBudget: e.target.value === '' ? null : Number(e.target.value) })}
+                    placeholder="Enter AIP budget"
+                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-[#091d64] focus:outline-none bg-slate-50"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Clear the field to delete the allocation, or enter 0 to save an explicit zero.</p>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">

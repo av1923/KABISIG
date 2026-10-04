@@ -278,7 +278,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, sk_district, allocated_budget')
+      .select('id, name, sk_district')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -361,7 +361,7 @@ router.get(
         sk_district: b.sk_district ?? null,
         registered_youth: youthPerBarangay[b.id] || 0,
         active_programs: programPerBarangay[b.id] || 0,
-        budget_allocated: (Number(b.allocated_budget) > 0 ? Number(b.allocated_budget) : bgyBudget.allocated),
+        budget_allocated: bgyBudget.allocated,
         budget_spent: bgyBudget.spent,
         budget_utilization_pct: utilization,
       };
@@ -377,7 +377,7 @@ router.get(
         citywide_totals: {
           total_barangays: loadedBarangays.length,
           total_registered_youth: youthCounts?.length || 0,
-          total_budget_allocated: loadedBarangays.reduce((sum, b) => sum + (Number(b.allocated_budget) > 0 ? Number(b.allocated_budget) : 0), 0) || cityTotalAllocated,
+          total_budget_allocated: cityTotalAllocated,
           total_budget_spent: cityTotalSpent,
           total_active_programs: Object.values(programPerBarangay).reduce((sum, count) => sum + count, 0),
           total_program_attendees: cityAttendanceCount || 0,
