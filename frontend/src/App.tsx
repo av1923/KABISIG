@@ -37,6 +37,27 @@ import {
 } from './types';
 import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
 
+function normalizeDocumentCategory(raw: string): string {
+  if (!raw) return 'Other';
+  const map: Record<string, string> = {
+    'Resolution': 'Resolutions',
+    'Resolutions': 'Resolutions',
+    'Ordinance': 'Ordinances',
+    'Ordinances': 'Ordinances',
+    'Minutes': 'Minutes',
+    'Meeting Minutes': 'Minutes',
+    'Financial Report': 'Reports',
+    'Reports': 'Reports',
+    'Project Proposal': 'Accomplishment',
+    'Accomplishment': 'Accomplishment',
+    'Budget': 'Budget',
+    'Vouchers': 'Vouchers',
+    'Liquidation': 'Liquidation',
+    'Communications': 'Communications',
+    'Other': 'Other',
+  };
+  return map[raw] || raw;
+}
 export default function App() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
@@ -288,7 +309,7 @@ export default function App() {
               age: meta.age || 20,
               civilStatus: meta.civilStatus || 'Single',
               address: resident.address || meta.address || '',
-              zone: meta.zone || 'Zone 1',
+              zone: resident.zone || meta.zone || 'Zone 1',
               mobile: user.phone || meta.mobile || '',
               email: user.email || meta.email || '',
               educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
@@ -356,7 +377,7 @@ export default function App() {
       setDocuments(docs.map((d: any): DocumentRecord => ({
         id: d.id,
         title: d.title,
-        category: d.document_type || 'Other',
+        category: normalizeDocumentCategory(d.document_type),
         uploadedBy: d.submitter?.full_name || 'Official',
         uploadedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : '',
         fileSize: '',
@@ -573,7 +594,7 @@ export default function App() {
           age: meta.age || matchedProfile?.age || 20,
           civilStatus: meta.civilStatus || matchedProfile?.civilStatus || 'Single',
           address: resident.address || meta.address || matchedProfile?.address || '',
-          zone: meta.zone || matchedProfile?.zone || 'Zone 1',
+          zone: resident.zone || meta.zone || matchedProfile?.zone || 'Zone 1',
           mobile: userObj.phone || meta.mobile || matchedProfile?.mobile || '',
           email: userObj.email || meta.email || matchedProfile?.email || emailOrName || '',
           educationalLevel: meta.educationalLevel || resident.educational_status || matchedProfile?.educationalLevel || 'College',
@@ -703,7 +724,7 @@ export default function App() {
       };
       setAuditLogs(prev => [newLog, ...prev]);
 
-      // Show alert with email mock notification
+      // Show in-app notification
       alert(`Approval Successful!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nApproved By: ${approvedByName}\nApproved At: ${approvedAtTime}\n\nNotification sent to registered email: ${matchedYouth.email}`);
     }
   };
@@ -754,7 +775,7 @@ export default function App() {
       };
       setFeedback(prev => [feedbackItem, ...prev]);
 
-      // Show alert with email mock rejection
+      // Show in-app rejection notice
       alert(`Rejection Processed!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nReason: ${reason}\n\nRejection notice sent to registered email: ${matchedYouth.email}`);
     }
   };
@@ -907,7 +928,10 @@ export default function App() {
   const handleRegisterAttendance = async (record: AttendanceRecord, qrPayload: string): Promise<AttendanceRecord> => {
     const result = await kabisigApi.recordProgramAttendance(record.programId, qrPayload);
     if (!result.success || !result.data?.attendance) {
-      throw new Error(result.message || 'Attendance could not be recorded.');
+      const err: any = new Error(result.message || 'Attendance could not be recorded.');
+      err.details = result.details;
+      err.error = result.error;
+      throw err;
     }
 
     const saved = result.data.attendance;
@@ -1151,7 +1175,6 @@ export default function App() {
           programs={programs}
           youthProfiles={youthProfiles}
           registrations={registrations}
-          attendance={[]} // Simulated log tracking inside the view
           documents={documents}
           feedback={feedback}
           resolutions={resolutions}

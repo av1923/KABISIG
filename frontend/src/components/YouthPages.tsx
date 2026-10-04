@@ -59,7 +59,8 @@ import {
   calculateEngagementScore, 
   recommendPrograms 
 } from '../lib/intelligence';
-import { KabisigLogo } from './PublicPages';
+import { KabisigLogo } from './PublicPages'
+import NotificationMenu from './NotificationMenu';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
@@ -144,7 +145,7 @@ export default function YouthPages({
           id: row.id,
           programId: row.program_id,
           programTitle: program?.title || 'Program',
-          participantId: currentYouth.id,
+          participantId: currentYouth.userId || currentYouth.id,
           participantName: currentYouth.name,
           dateRegistered: row.registered_at?.split('T')[0] || '',
           status: row.status === 'attended' ? 'Completed' : row.status === 'registered' ? 'Approved' : 'Pending',
@@ -246,7 +247,7 @@ export default function YouthPages({
   }, [youth.id, youth.name]);
 
   // Derived arrays
-  const myRegistrations = localRegs.filter(r => r.participantId === youth.id);
+  const myRegistrations = localRegs.filter(r => r.participantId === youth.userId || r.participantId === youth.id);
   const myFeedback = localFeedback.filter(f =>
     youth.userId && f.userId ? f.userId === youth.userId : f.submittedBy === youth.name
   );
@@ -576,6 +577,7 @@ export default function YouthPages({
 
           {/* User Profile Block */}
           <div className="flex items-center gap-5">
+            <NotificationMenu buttonClassName="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 relative" />
             <UserMenu 
               userName={currentYouth.name}
               role="KK Registered Youth"
@@ -594,7 +596,7 @@ export default function YouthPages({
             <div className="space-y-6">
 
               {/* Latest Announcements Preview */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-6">
+              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-4">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Megaphone className="w-4 h-4 text-[#091d64]" />
@@ -610,9 +612,9 @@ export default function YouthPages({
                 <div className="space-y-3">
                   {announcements
                     .filter(a => a.status === 'published')
-                    .slice(0, 3)
+                    .slice(0, 2)
                     .map(a => (
-                      <div key={a.id} className="rounded-lg border border-slate-100 p-3 hover:bg-slate-50 transition-colors">
+                      <div key={a.id} className="rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50 transition-colors">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <span className="rounded border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-bold uppercase text-blue-700">
                             {a.category}
@@ -821,7 +823,7 @@ export default function YouthPages({
                     </p>
                   </div>
 
-                  {/* Smart Recommendations Panel */}
+                  {/* Program Recommendations Panel */}
                   <div className="bg-white p-4 rounded-xl border border-blue-50 shadow-2xs space-y-3 md:col-span-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rule-Based Program Recommendations</span>
                     
@@ -871,7 +873,7 @@ export default function YouthPages({
               </div>
 
               {/* UPCOMING BARANGAY PROGRAMS SECTION */}
-              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-6">
+              <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-4">
                 <div className="flex justify-between items-center mb-6">
                   <div>
                     <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Upcoming Barangay Programs</h4>
@@ -889,7 +891,9 @@ export default function YouthPages({
                   {programs
                     .filter(program => program.status === 'Upcoming' || program.status === 'Ongoing')
                     .slice(0, 3)
-                    .map(program => (
+                    .map(program => {
+                      const alreadyReg = myRegistrations.some(r => r.programId === program.id);
+                      return (
                       <div key={program.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
                         <div className="flex gap-4 items-start">
                           <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
@@ -909,16 +913,26 @@ export default function YouthPages({
                           <span className="text-[11px] font-extrabold text-slate-700 font-mono bg-slate-50 px-2 py-0.5 rounded">
                             {program.registeredCount || 0} / {program.maxParticipants || 0} registered
                           </span>
-                          <button
-                            disabled={registeringProgramId !== null}
-                            onClick={() => handleRegisterProgramClick(program.id)}
-                            className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
-                          >
-                            {registeringProgramId === program.id ? 'Registering...' : 'Register Now'}
-                          </button>
+                          {alreadyReg ? (
+                            <div className="flex items-center gap-2 text-green-600">
+                              <div className="bg-green-50 p-1 rounded-full">
+                                <CheckCircle2 className="w-4 h-4" />
+                              </div>
+                              <span className="text-[11px] font-extrabold uppercase tracking-widest">Registered</span>
+                            </div>
+                          ) : (
+                            <button
+                              disabled={registeringProgramId !== null}
+                              onClick={() => handleRegisterProgramClick(program.id)}
+                              className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
+                            >
+                              {registeringProgramId === program.id ? 'Registering...' : 'Register Now'}
+                            </button>
+                          )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   {programs.filter(program => program.status === 'Upcoming' || program.status === 'Ongoing').length === 0 && (
                     <p className="py-6 text-center text-xs text-slate-400 font-semibold">
                       No upcoming programs have been published for your Barangay yet.
@@ -1217,7 +1231,7 @@ export default function YouthPages({
                               </span>
                               <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1.5">
                                 <Building className="w-3.5 h-3.5 text-slate-300" />
-                                Naga City Multi-Purpose Venue
+                                {p.location || "Venue TBA"}
                               </span>
                             </div>
                             <p className="text-xs text-slate-500 mt-4 leading-relaxed font-medium">

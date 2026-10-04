@@ -111,6 +111,9 @@ const RegisterYouthSchema = z.object({
     .enum(['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'])
     .optional(),
   employment_status: z.enum(['Employed', 'Unemployed', 'Self-Employed', 'Student']).optional(),
+  school: z.string().max(200).optional(),
+  course: z.string().max(200).optional(),
+  year: z.string().max(50).optional(),
   is_registered_voter: z.boolean().default(false),
 });
 
@@ -152,6 +155,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     address,
     educational_status,
     employment_status,
+    school,
+    course,
+    year,
     is_registered_voter,
   } = parseResult.data;
 
@@ -268,6 +274,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       address,
       educational_status: educational_status || null,
       employment_status: employment_status || null,
+      school: school || null,
+      course: course || null,
+      year_level: year || null,
       is_registered_voter,
       digital_youth_id: null,
       qr_code_url: null,
@@ -541,7 +550,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
   const { email, redirectTo } = parseResult.data;
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: redirectTo || 'http://localhost:3000/reset-password',
+    redirectTo: redirectTo || ((process.env.FRONTEND_URL || 'http://localhost:3000') + '/reset-password'),
   });
 
   if (error) {
@@ -602,6 +611,40 @@ router.post('/register-official', async (req: Request, res: Response): Promise<v
   const roleId = isChairperson ? ROLE_IDS.BARANGAY_ADMIN : ROLE_IDS.SK_OFFICIAL;
   // Chairpersons are activated immediately so they can log in; other SK officials are pending validation
   const status = isChairperson ? 'active' : 'pending';
+
+  // --- Role capacity enforcement (RA 10742 SK council structure) ---
+  // Per barangay: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad.
+  const ROLE_LIMITS: Record<string, number> = {
+    'SK Chairperson': 1,
+    'SK Secretary': 1,
+    'SK Treasurer': 1,
+    'SK Kagawad': 7,
+    'SK Official': 7,
+  };
+  const normalizeRoleKey = (r: string): string => {
+    if (/chairperson|barangay_admin/i.test(r)) return 'SK Chairperson';
+    if (/secretary/i.test(r)) return 'SK Secretary';
+    if (/treasurer/i.test(r)) return 'SK Treasurer';
+    if (/kagawad/i.test(r)) return 'SK Kagawad';
+    return 'SK Official';
+  };
+  const roleKey = normalizeRoleKey(role);
+  const roleLimit = ROLE_LIMITS[roleKey] ?? 0;
+  const { data: _capacityList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+  const _allAuthUsersForCapacity = _capacityList?.users || [];
+  const _emailAlreadyExists = _allAuthUsersForCapacity.some(u => u.email?.toLowerCase() === normalizedEmail);
+  if (!_emailAlreadyExists && roleLimit > 0) {
+    const _roleOccupants = _allAuthUsersForCapacity.filter(u => {
+      const meta = u.user_metadata || {};
+      if (meta.tenant_id !== barangay_id) return false;
+      if (!meta.role) return false;
+      return normalizeRoleKey(String(meta.role)) === roleKey;
+    });
+    if (_roleOccupants.length >= roleLimit) {
+      sendError(res, "Barangay capacity reached: only " + roleLimit + " " + roleKey + (roleLimit > 1 ? "s" : "") + " allowed per Barangay. " + _roleOccupants.length + " already registered.", 409);
+      return;
+    }
+  }
 
   // Check if user already exists in public.users
   const { data: existingUser } = await supabaseAdmin

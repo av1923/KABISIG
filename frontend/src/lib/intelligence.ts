@@ -10,7 +10,7 @@ import {
 } from '../types';
 
 /**
- * 1. Smart Demographic Classification (Rule-Based)
+ * 1. Demographic Classification (Rule-Based)
  * Categorizes youth profiles based on standard rules.
  */
 export function classifyDemographics(profile: YouthProfile): string[] {
@@ -126,7 +126,7 @@ export function calculateEngagementScore(
 }
 
 /**
- * 3. Smart Program Recommendation (Rule-Based)
+ * 3. Program Recommendation (Rule-Based)
  * Recommends relevant programs using if-then criteria logic.
  */
 export function recommendPrograms(
@@ -239,7 +239,7 @@ export function detectLowEngagement(
 }
 
 /**
- * 5. Smart Schedule Conflict Detection (Rule-Based)
+ * 5. Schedule Conflict Detection (Rule-Based)
  * Identifies schedule overlaps or venue double-bookings before event scheduling.
  */
 export function detectScheduleConflicts(
@@ -336,7 +336,7 @@ export function getBudgetAnalytics(
 }
 
 /**
- * 7. Smart Budget Monitoring (Rule-Based)
+ * 7. Budget Monitoring (Rule-Based)
  * Triggers warnings when spending patterns or thresholds are breached.
  */
 export function monitorBudgets(
@@ -407,7 +407,7 @@ export function monitorBudgets(
 }
 
 /**
- * 8. Smart Compliance Monitoring (Rule-Based)
+ * 8. Compliance Monitoring (Rule-Based)
  * Tracks documentation lapses, approval pile-ups, and pending clearances.
  */
 export function getComplianceIssues(
@@ -488,7 +488,7 @@ export function getComplianceIssues(
 }
 
 /**
- * 9. Smart Feedback Analysis (Rule-Based)
+ * 9. Feedback Analysis (Rule-Based)
  * Analyzes content using keyword parsing for sentiment tagging.
  */
 export function analyzeFeedbackSentiment(content: string): 'Positive' | 'Negative' | 'Neutral' {

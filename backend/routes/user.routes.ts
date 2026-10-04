@@ -281,6 +281,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const normalizedEmp = normalizeEmploymentStatus(rawEmp) || existingProfile?.employment_status;
 
     const residentPayload: Record<string, any> = {
+      zone: body.zone ?? body.purok ?? undefined,
       user_id: userId,
       tenant_id: tenantId,
       birthdate,
@@ -437,9 +438,9 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       mobile: dbUser?.phone || meta.mobile || '',
       email: dbUser?.email || meta.email || '',
       educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
-      school: meta.school || '',
-      course: meta.course || '',
-      year: meta.year || '1st Year',
+      school: resident.school || meta.school || '',
+      course: resident.course || meta.course || '',
+      year: resident.year_level || meta.year || '',
       employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
       scholarStatus: meta.scholarStatus || 'Non-Scholar',
       scholarshipType: meta.scholarshipType || '',

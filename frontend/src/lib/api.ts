@@ -206,6 +206,12 @@ class KabisigApiClient {
     });
   }
 
+  async setSkTotalBudget(barangayId: string, payload: { total_amount: number; fiscal_year?: number }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/barangays/${barangayId}/sk-budget`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
   async saveBarangayConfiguration(id: string, data: {
     chairperson?: string;
     chairpersonEmail?: string;
@@ -309,6 +315,9 @@ class KabisigApiClient {
     address: string;
     educational_status?: string;
     employment_status?: string;
+    school?: string;
+    course?: string;
+    year?: string;
     is_registered_voter?: boolean;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     const body = {
@@ -490,7 +499,7 @@ class KabisigApiClient {
     };
   }
 
-  async recordProgramAttendance(programId: string, qrPayload: string): Promise<{ success: boolean; data?: any; message?: string }> {
+  async recordProgramAttendance(programId: string, qrPayload: string): Promise<{ success: boolean; data?: any; message?: string; details?: any; error?: any }> {
     return await this.request(`/programs/${encodeURIComponent(programId)}/attendance`, {
       method: 'POST',
       body: JSON.stringify({ qr_payload: qrPayload }),
@@ -554,6 +563,18 @@ class KabisigApiClient {
     return res.success;
   }
 
+  async sendNotification(payload: {
+    user_id: string;
+    title: string;
+    message: string;
+    notification_type?: string;
+    link?: string | null;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/notifications', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
   async markAllNotificationsRead(): Promise<boolean> {
     const res = await this.request('/notifications/read-all', { method: 'PATCH' });
     return res.success;
@@ -617,6 +638,17 @@ class KabisigApiClient {
   }
 
   // --- BUDGET & EXPENSES ---
+  async allocateBudget(payload: {
+    fiscal_year: number;
+    category: string;
+    allocated_amount: number;
+    description?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/budget', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
   async getBudgets(tenantId?: string, fiscalYear = new Date().getFullYear()): Promise<any[]> {
     const params = new URLSearchParams({ fiscal_year: String(fiscalYear) });
     if (tenantId) params.set('tenant_id', tenantId);

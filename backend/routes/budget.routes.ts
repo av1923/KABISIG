@@ -107,29 +107,42 @@ router.post(
       .ilike('category', category)
       .maybeSingle();
 
-    if (existing) {
-      sendError(
-        res,
-        `Budget for category "${category}" in fiscal year ${fiscal_year} already exists for your Barangay.`,
-        409
-      );
-      return;
-    }
+    let newBudget: any;
+    let error: any;
 
-    const { data: newBudget, error } = await supabaseAdmin
-      .from('budget')
-      .insert([
-        {
-          tenant_id: tenantId,
-          fiscal_year,
-          category,
+    if (existing) {
+      // Update existing allocation amount (upsert behavior)
+      const result = await supabaseAdmin
+        .from('budget')
+        .update({
           allocated_amount,
           remaining_amount: allocated_amount,
           description: description || null,
-        },
-      ])
-      .select()
-      .single();
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      newBudget = result.data;
+      error = result.error;
+    } else {
+      const result = await supabaseAdmin
+        .from('budget')
+        .insert([
+          {
+            tenant_id: tenantId,
+            fiscal_year,
+            category,
+            allocated_amount,
+            remaining_amount: allocated_amount,
+            description: description || null,
+          },
+        ])
+        .select()
+        .single();
+      newBudget = result.data;
+      error = result.error;
+    }
 
     if (error) {
       sendError(res, `Failed to allocate budget: ${error.message}`, 500);
